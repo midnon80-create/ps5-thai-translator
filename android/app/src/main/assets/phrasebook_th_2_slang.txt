@@ -1,0 +1,399 @@
+# Phrase bank 2: slang-heavy lines, translated as whole lines (English | Thai)
+we're in some deep shit | งานนี้ซวยแล้ว
+we're in deep shit | เราซวยหนักแล้ว
+we're in deep trouble | เราเดือดร้อนหนักแล้ว
+you know we're in some deep shit | รู้ใช่ไหม งานนี้ซวยหนักแล้ว
+we're screwed | เราซวยแล้ว
+we're so screwed | เราซวยแน่ๆ
+we're fucked | ฉิบหายแล้วเรา
+we are so fucked | ฉิบหายแล้วงานนี้
+i'm screwed | ฉันซวยแล้ว
+you're screwed | แกซวยแล้ว
+you're dead | แกตายแน่
+you're dead meat | แกตายแน่
+you're so dead | แกตายแน่ๆ
+you're gonna pay for this | แกต้องชดใช้
+you'll pay for this | แกต้องชดใช้
+this isn't over | เรื่องยังไม่จบ
+this ain't over | เรื่องยังไม่จบหรอก
+it ain't over | มันยังไม่จบ
+you ain't seen nothing yet | นี่ยังไม่เห็นอะไรเลย
+ain't that the truth | จริงที่สุด
+that's what i'm talking about | นั่นแหละที่ฉันพูดถึง!
+now we're talking | อย่างนี้สิค่อยคุยกันได้
+now you're talking | อย่างนี้สิ
+hell yeah | เยสสส!
+hell no | ไม่มีทาง!
+heck yeah | แน่นอนอยู่แล้ว!
+fuck yeah | เยี่ยมไปเลย!
+oh hell no | ไม่มีทางเด็ดขาด!
+what the fuck | อะไรวะเนี่ย!
+what the fuck was that | เมื่อกี้มันอะไรวะ!
+what the fuck are you doing | แกทำบ้าอะไรอยู่!
+what the hell are you doing | แกทำบ้าอะไรอยู่!
+what the hell is going on | เกิดบ้าอะไรขึ้นเนี่ย?
+what the hell is that | นั่นมันอะไรวะ?
+what the hell do you want | แกต้องการอะไรวะ?
+who the hell are you | แกเป็นใครวะ?
+where the hell are you | แกอยู่ไหนวะ?
+where the hell were you | แกหายไปไหนมา?
+why the hell not | ทำไมจะไม่ได้ล่ะ
+get the fuck out | ไสหัวไป!
+get the fuck out of here | ไสหัวออกไป!
+get the hell out of here | ออกไปจากที่นี่!
+shut the fuck up | หุบปากซะ!
+shut the hell up | หุบปาก!
+fuck off | ไสหัวไป!
+fuck you | ไปตายซะ!
+fuck you man | ไปตายซะไอ้หมอนี่!
+screw you | ช่างแม่งแก!
+fuck me | ให้ตายสิ!
+fuck it | ช่างแม่งเถอะ
+screw it | ช่างมันเถอะ
+fuck that | ไม่เอาด้วยหรอก
+fuck this shit | ช่างแม่งเรื่องนี้!
+this is bullshit | นี่มันไร้สาระชัดๆ
+that's bullshit | เรื่องโกหกทั้งเพ
+bullshit | โม้!
+cut the crap | เลิกพล่ามได้แล้ว
+cut the bullshit | เลิกพล่ามได้แล้ว
+don't bullshit me | อย่ามาโกหกฉัน
+you're full of shit | แกมันขี้โม้
+no shit | ก็แหงอยู่แล้ว
+no shit sherlock | ก็แหงล่ะสิ
+holy shit | โอ้โห!
+holy crap | โห!
+holy fuck | โคตรเหลือเชื่อ!
+oh shit oh shit | ฉิบหายแล้ว ฉิบหายแล้ว!
+shit shit shit | ฉิบหาย ฉิบหาย!
+son of a bitch | ไอ้สารเลว!
+you son of a bitch | ไอ้สารเลวเอ๊ย!
+piece of shit | ไอ้สวะ!
+you piece of shit | ไอ้สวะเอ๊ย!
+asshole | ไอ้ระยำ!
+you asshole | ไอ้เลว!
+motherfucker | ไอ้ชาติชั่ว!
+dumbass | ไอ้โง่!
+you idiot | ไอ้โง่!
+idiot | ไอ้งั่ง!
+moron | ไอ้ทึ่ม!
+jesus christ | พระเจ้าช่วย!
+christ | ให้ตายสิ!
+god damn it | ให้ตายเถอะ!
+goddamn it | ให้ตายเถอะ!
+god dammit | ให้ตายเถอะ!
+damn it all | บ้าเอ๊ย!
+son of a gun | ให้ตายสิ!
+you got it | ได้เลย
+you got it boss | ได้เลยลูกพี่
+whatever you say | ตามนั้น
+whatever you say boss | ตามนั้นลูกพี่
+yes sir | ครับผม!
+yes ma'am | ค่ะ/ครับ!
+sir yes sir | ครับผม!
+yo | เฮ้ย
+yo man | เฮ้ย เพื่อน
+yo what's up | เฮ้ย ว่าไง
+yo what's good | ว่าไงเพื่อน
+what's up man | ว่าไงเพื่อน
+what's up dude | ว่าไง
+what's up bro | ว่าไงพวก
+sup bro | ไงพวก
+hey bro | เฮ้ พวก
+bro | พวก
+dude | เพื่อน
+dude seriously | เอาจริงดิ
+dude what the hell | เฮ้ย อะไรวะ
+come on man | โธ่เว้ย
+come on dude | โธ่ เพื่อน
+c'mon man | โธ่เว้ย
+come on bro | เอาน่าพวก
+easy man | ใจเย็นเพื่อน
+easy easy | ใจเย็นๆ
+whoa whoa whoa | เดี๋ยวๆๆ
+whoa easy | เฮ้ ใจเย็น
+hold up | เดี๋ยวก่อน
+hold up hold up | เดี๋ยวๆ
+wait wait wait | เดี๋ยว เดี๋ยว เดี๋ยว
+wait a minute | เดี๋ยวนะ
+wait a second | เดี๋ยวนะ
+hang on a sec | รอแป๊บ
+gimme a sec | ขอแป๊บนึง
+give me a second | ขอแป๊บ
+just a sec | แป๊บนึง
+one sec | แป๊บนึง
+my bad man | โทษทีเพื่อน
+my bad bro | โทษทีพวก
+no worries | ไม่เป็นไร
+no worries man | ไม่เป็นไรเพื่อน
+no sweat | สบายมาก
+no biggie | ไม่ใช่เรื่องใหญ่
+it's all good | ไม่เป็นไรหรอก
+we good | เราโอเคกันนะ
+we good? | เราโอเคกันนะ?
+we're good | เราโอเค
+you good | ไหวไหม
+you good? | ไหวไหม?
+i'm good | ฉันโอเค
+all good | โอเคหมด
+cool | เจ๋ง
+cool cool | โอเคๆ
+cool man | เจ๋งเพื่อน
+that's cool | เจ๋งดี
+that's dope | เจ๋งโคตร
+that's sick | โคตรเจ๋ง
+sick | โคตรเจ๋ง
+dope | เจ๋ง
+lit | สุดมัน
+legit | ของจริง
+for real | จริงดิ
+for real? | จริงเหรอ?
+for real though | จริงจังนะ
+no cap | ไม่โม้
+straight up | พูดตรงๆ
+straight up? | จริงเหรอ?
+my man | เพื่อนรัก
+that's my boy | นั่นแหละลูกผู้ชาย
+that's my girl | นั่นแหละสาวของฉัน
+attaboy | เก่งมาก
+atta girl | เก่งมาก
+good shit | เยี่ยม
+nice one | เยี่ยม
+nice one bro | เยี่ยมพวก
+way to go | ทำได้ดี
+you rock | เธอสุดยอด
+you're the man | นายสุดยอด
+you're the best | เธอดีที่สุด
+i owe you big time | ฉันติดหนี้นายครั้งใหญ่
+you owe me big time | นายติดหนี้ฉันครั้งใหญ่เลยนะ
+you owe me one | นายติดค้างฉันหนึ่งครั้ง
+we're even | เราหายกันแล้ว
+now we're even | ทีนี้หายกันแล้ว
+fair enough | ก็ได้
+good call | คิดถูก
+bad call | ตัดสินใจผิด
+your call | แล้วแต่นาย
+my call | ฉันตัดสินใจเอง
+nice try | พยายามได้ดี
+nice try buddy | อย่ามาไม้นี้เลยเพื่อน
+not today | ไม่ใช่วันนี้
+not on my watch | ไม่มีทางตราบที่ฉันยังอยู่
+over my dead body | ข้ามศพฉันไปก่อน
+in your dreams | ฝันไปเถอะ
+dream on | ฝันไปเถอะ
+yeah right | เออ เชื่อตายล่ะ
+as if | ยังกับจะเป็นไปได้
+you wish | ฝันไปเถอะ
+get real | ตื่นได้แล้ว
+get a life | ไปหาอะไรทำเถอะ
+get lost | ไปให้พ้น
+beat it | ไปให้พ้น
+scram | ไปให้พ้น!
+back off | ถอยไป!
+back off man | ถอยไปเลยเพื่อน
+step off | ถอยไป
+butt out | อย่ายุ่ง
+mind your own business | ไม่ใช่เรื่องของแก
+none of your business | ไม่ใช่ธุระของแก
+not your business | ไม่ใช่เรื่องของแก
+who asked you | ใครถามแก
+nobody asked you | ไม่มีใครถามแก
+bite me | ช่างหัวแกสิ
+kiss my ass | ไปไกลๆ เลย
+up yours | ไปไกลๆ
+eat shit | ไปกินขี้ซะ
+go to hell | ไปลงนรกซะ
+burn in hell | ไปลงนรกซะ
+rot in hell | ไปเน่าในนรกซะ
+see you in hell | เจอกันในนรก
+bring it on | เข้ามาเลย!
+bring it | เข้ามา!
+come at me | เข้ามาสิ!
+come at me bro | เข้ามาสิวะ!
+let's dance | มาลุยกัน
+you want some | อยากโดนเหรอ
+you want some of this | อยากลองดีเหรอ
+let's do this | ลุยกันเลย!
+let's roll | ไปกันเลย
+let's bounce | ชิ่งกันเถอะ
+we're outta here | เราไปล่ะ
+i'm outta here | ฉันไปล่ะ
+peace out | ไปล่ะ
+later | ไว้เจอกัน
+later man | ไว้เจอกันเพื่อน
+catch you later | ไว้เจอกัน
+see ya | ไว้เจอกัน
+see ya later | แล้วเจอกัน
+take care man | ดูแลตัวเองนะเพื่อน
+stay safe | ระวังตัวด้วยนะ
+watch yourself | ระวังตัวให้ดี
+watch your mouth | ระวังปากหน่อย
+watch your tone | ระวังน้ำเสียงหน่อย
+watch it | ระวังหน่อย
+heads up | ระวัง!
+look alive | ตื่นตัวไว้!
+eyes up | ระวังข้างบน!
+on your six | ข้างหลังนาย!
+check your six | ระวังข้างหลัง!
+got your six | ฉันคุ้มกันข้างหลังให้
+i got your back | ฉันคอยคุ้มกันให้
+i've got your back | ฉันคุ้มกันให้เอง
+got your back | คุ้มกันให้แล้ว
+cover me | คุ้มกันที!
+lock and load | เตรียมพร้อม!
+locked and loaded | พร้อมลุย!
+weapons hot | พร้อมยิง!
+weapons free | ยิงได้ตามสะดวก!
+fire at will | ยิงได้ตามใจ!
+light 'em up | ยิงมันเลย!
+light them up | ยิงมันเลย!
+waste them | ฆ่ามันให้หมด!
+smoke 'em | เก็บมันซะ!
+take 'em out | เก็บพวกมัน!
+take him out | เก็บมันซะ!
+take her out | เก็บมันซะ!
+take them out | จัดการพวกมันซะ!
+put him down | เก็บมันซะ!
+put it down | ฆ่ามันซะ!
+drop him | ยิงมันร่วงไปเลย!
+target down | เป้าหมายร่วงแล้ว!
+tango down | ศัตรูร่วงแล้ว!
+he's toast | มันจบแล้ว
+we're toast | เราจบเห่แล้ว
+game over man | จบเห่แล้ว!
+it's game over | จบแล้ว
+we're done for | เราจบแล้ว
+this is it | ถึงเวลาแล้ว
+this is the end | นี่คือจุดจบ
+it's showtime | ได้เวลาโชว์แล้ว!
+showtime | ได้เวลาแล้ว!
+it's go time | ได้เวลาลุยแล้ว
+let's get it | ลุยเลย!
+let's get this over with | รีบๆ ให้มันจบไป
+let's wrap this up | ปิดงานกันเถอะ
+we're done here | ที่นี่เสร็จแล้ว
+job's done | งานเสร็จแล้ว
+job well done | ทำได้ดีมาก
+mission accomplished | ภารกิจสำเร็จ
+nailed it | เป๊ะเลย!
+nice shooting | ยิงเยี่ยม!
+nice driving | ขับเก่งมาก!
+you drive like my grandma | นายขับรถยังกับยายฉัน
+step on it | เหยียบมิดเลย!
+floor it | เหยียบมิดไมล์!
+hit the gas | เหยียบคันเร่ง!
+punch it | เหยียบเลย!
+lose them | สลัดพวกมันให้หลุด!
+we got company | มีแขกมาแล้ว
+we've got company | มีแขกไม่ได้รับเชิญ
+we got a tail | มีคนตามเรามา
+they're on our tail | พวกมันตามติดเรามา
+cops are on our tail | ตำรวจตามมาติดๆ
+the cops are coming | ตำรวจกำลังมา!
+five-o | ตำรวจมา!
+it's the cops | ตำรวจ!
+pigs | ตำรวจมาแล้ว!
+the heat is on | เรื่องกำลังร้อน
+lay low for a while | หลบอยู่เงียบๆ สักพัก
+we need to lay low | เราต้องหลบซ่อนตัวสักพัก
+let's lay low | หลบเงียบๆ กันก่อน
+keep your head down | ก้มหัวไว้ / อย่าเด่น
+keep a low profile | อย่าทำตัวเด่น
+don't draw attention | อย่าดึงดูดความสนใจ
+easy money | เงินง่ายๆ
+quick cash | เงินด่วน
+big score | งานใหญ่
+one last job | งานสุดท้าย
+one last score | ปล้นครั้งสุดท้าย
+this is the big one | นี่แหละงานใหญ่
+we're rich | เรารวยแล้ว!
+we're gonna be rich | เราจะรวยแล้ว!
+show me the money | เอาเงินมาดูหน่อย
+where's my money | เงินฉันอยู่ไหน?
+you owe me money | แกติดเงินฉันอยู่
+pay up | จ่ายมาซะ
+cough it up | คายออกมาซะ
+hand it over | ส่งมานี่
+give it here | เอามานี่
+gimme that | เอามานี่
+what's in it for me | ฉันจะได้อะไร
+what's my cut | ส่วนแบ่งฉันเท่าไหร่
+fifty fifty | แบ่งครึ่ง
+we split it | เราแบ่งกัน
+deal | ตกลง
+it's a deal | ตกลงตามนั้น
+no deal | ไม่ตกลง
+deal's off | ยกเลิกข้อตกลง
+deal's a deal | สัญญาก็คือสัญญา
+trust me | เชื่อฉันเถอะ
+you can trust me | ไว้ใจฉันได้
+i don't trust you | ฉันไม่ไว้ใจแก
+i got a bad feeling | ฉันรู้สึกไม่ดีเลย
+something's off | มีอะไรแปลกๆ
+something stinks | มีอะไรไม่ชอบมาพากล
+this smells like a trap | กลิ่นกับดักชัดๆ
+it's a setup | เราโดนหลอกแล้ว!
+we've been set up | เราโดนจัดฉาก!
+they set us up | พวกมันจัดฉากเรา!
+he sold us out | มันหักหลังเรา!
+she sold us out | หล่อนหักหลังเรา!
+you sold me out | แกหักหลังฉัน!
+you ratted me out | แกปากโป้งเรื่องฉัน!
+snitches get stitches | ปากโป้งระวังตัวไว้
+rat | ไอ้หนอนบ่อนไส้
+you rat | ไอ้หนอนบ่อนไส้!
+traitor | ไอ้คนทรยศ!
+how could you | ทำได้ยังไง!
+how could you do this to me | แกทำกับฉันแบบนี้ได้ยังไง!
+i trusted you | ฉันไว้ใจแกนะ!
+after everything i did for you | หลังจากที่ฉันทำทุกอย่างให้แก
+you're gonna regret this | แกจะต้องเสียใจ
+you'll regret this | แกต้องเสียใจแน่
+i'll kill you | ฉันจะฆ่าแก!
+i'm gonna kill you | ฉันจะฆ่าแก!
+i'll kill you all | ฉันจะฆ่าพวกแกให้หมด!
+you're gonna die | แกต้องตาย!
+die | ตายซะ!
+die motherfucker | ตายซะไอ้ระยำ!
+eat this | กินนี่ไป!
+eat lead | กินลูกปืนซะ!
+say hello to my little friend | ทักทายเพื่อนตัวน้อยของฉันหน่อย!
+any last words | มีอะไรจะสั่งเสียไหม
+rest in peace | ไปสู่สุขคตินะ
+may god have mercy | ขอพระเจ้าเมตตา
+god help us | พระเจ้าช่วยเราด้วย
+pray for us | ภาวนาให้เราด้วย
+long live the king | ทรงพระเจริญ
+for the glory | เพื่อเกียรติยศ!
+for freedom | เพื่ออิสรภาพ!
+victory | ชัยชนะ!
+we won | เราชนะแล้ว!
+we lost | เราแพ้แล้ว
+gg | เกมดี
+good game | เกมดี
+ez | ง่ายๆ
+noob | มือใหม่
+git gud | ไปฝึกมาใหม่
+worth the wait | คุ้มค่าที่รอ
+totally worth it | คุ้มสุดๆ
+not anymore | ไม่ใช่แล้วล่ะ
+not any more | ไม่ใช่แล้วล่ะ
+really huh | จริงดิ?
+really | จริงเหรอ?
+huh | หา?
+what did i say | ฉันบอกแล้วไง?
+what did i fucking say | ฉันบอกแล้วไงวะ!
+what did i tell you | บอกแล้วไง
+told you | บอกแล้ว
+told ya | บอกแล้วไง
+i told you so | ฉันบอกแล้วไง
+fuck oh no | ฉิบหาย ไม่นะ!
+oh no | ไม่นะ!
+finally | ในที่สุด
+here we go finally | เอาล่ะ ในที่สุด
+i get that too | ฉันก็เข้าใจ
+i get it | เข้าใจแล้ว
+we're not that late | เราไม่ได้สายขนาดนั้น
+i don't like being late | ฉันไม่ชอบมาสาย
+i know as much as you | ฉันรู้เท่าที่นายรู้นั่นแหละ
+sure yeah i'm sorry | ได้ๆ ขอโทษนะ

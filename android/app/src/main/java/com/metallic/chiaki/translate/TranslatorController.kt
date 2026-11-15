@@ -65,7 +65,7 @@ class TranslatorController(
 		val mode = prefs.mode
 		val tr = TextTranslator(prefs.geminiKey, prefs.geminiModel)
 		translator = tr
-		translateWorker.execute { PhraseBank.load(context) }
+		translateWorker.execute { PhraseBank.load(context); SlangRewriter.load(context) }
 		translateWorker.execute {
 			if(!tr.offlineReady)
 			{

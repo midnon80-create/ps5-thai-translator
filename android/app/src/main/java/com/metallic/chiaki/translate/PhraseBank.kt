@@ -11,7 +11,6 @@ import android.util.Log
  */
 object PhraseBank
 {
-	private const val FILE = "phrasebook_th.txt"
 	private const val FUZZY_MIN = 0.90
 
 	@Volatile private var exact: Map<String, String> = emptyMap()
@@ -25,9 +24,10 @@ object PhraseBank
 		{
 			if(loaded) return
 			val map = HashMap<String, String>()
-			try
+			val files = (context.assets.list("") ?: emptyArray()).filter { it.startsWith("phrasebook_") && it.endsWith(".txt") }.sorted()
+			for(file in files) try
 			{
-				context.assets.open(FILE).bufferedReader(Charsets.UTF_8).useLines { lines ->
+				context.assets.open(file).bufferedReader(Charsets.UTF_8).useLines { lines ->
 					for(line in lines)
 					{
 						if(line.isBlank() || line.startsWith("#")) continue
@@ -39,7 +39,7 @@ object PhraseBank
 					}
 				}
 			}
-			catch(e: Exception) { Log.w("PhraseBank", "could not load $FILE", e) }
+			catch(e: Exception) { Log.w("PhraseBank", "could not load $file", e) }
 			exact = map
 			byFirstWord = map.entries.groupBy({ it.key.substringBefore(' ') }, { it.key to it.value })
 			loaded = true

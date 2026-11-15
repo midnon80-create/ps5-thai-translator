@@ -28,8 +28,8 @@ android {
         applicationId "com.ps5translate.tv"
         minSdk 24
         targetSdk 35
-        versionCode 120
-        versionName "1.2.0"
+        versionCode 130
+        versionName "1.3.0"
         buildConfigField "String", "UPDATE_REPO", "\"midnon80-create/ps5-thai-translator\""
         ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
         externalNativeBuild {

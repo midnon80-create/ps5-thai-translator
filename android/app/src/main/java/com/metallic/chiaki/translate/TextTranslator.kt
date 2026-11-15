@@ -85,7 +85,17 @@ class TextTranslator(private val geminiKey: String, private val geminiModel: Str
 			{
 				hit != null -> results[i] = hit
 				geminiKey.isNotEmpty() -> results[i] = translateOne(p)
-				offlineReady -> pending.add(i to mlkit.translate(p))
+				else ->
+				{
+					// slang -> plain English, then the bank again, then the offline translator
+					val plain = SlangRewriter.rewrite(p)
+					val hit2 = if(plain != p) PhraseBank.lookup(plain) else null
+					when
+					{
+						hit2 != null -> results[i] = hit2
+						offlineReady -> pending.add(i to mlkit.translate(plain))
+					}
+				}
 			}
 		}
 		for((i, task) in pending)
@@ -109,6 +119,15 @@ class TextTranslator(private val geminiKey: String, private val geminiModel: Str
 			val sentences = src.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
 			if(sentences.size > 1)
 				return translateAll(sentences)?.also { synchronized(cache) { cache[src] = it } }
+		}
+		if(geminiKey.isEmpty())
+		{
+			val plain = SlangRewriter.rewrite(src)
+			if(plain != src)
+			{
+				PhraseBank.lookup(plain)?.let { return it }
+				return translateOne(plain)?.also { synchronized(cache) { cache[src] = it } }
+			}
 		}
 		return translateOne(src)
 	}

@@ -50,13 +50,14 @@ class TranslatorTestActivity : AppCompatActivity()
 	{
 		val prefs = TranslatorPrefs(this)
 		PhraseBank.load(this)
+		SlangRewriter.load(this)
 
 		// 1. Thai dictionary
 		log("1) เตรียมคลังคำแปลไทย (ครั้งแรกต้องต่อเน็ต)…")
 		val translator = TextTranslator(prefs.geminiKey, prefs.geminiModel)
 		var t0 = SystemClock.elapsedRealtime()
 		val ready = translator.prepare()
-		if(ready) log("   ✔ พร้อม (${SystemClock.elapsedRealtime() - t0} ms) · คลังวลีเกมออฟไลน์ ${PhraseBank.size} ประโยค", green)
+		if(ready) log("   ✔ พร้อม (${SystemClock.elapsedRealtime() - t0} ms) · คลังวลีเกม ${PhraseBank.size} ประโยค · คลังแสลง/สำนวน ${SlangRewriter.size} คำ", green)
 		else log("   ✘ โหลดไม่สำเร็จ ตรวจอินเทอร์เน็ต", red)
 
 		// 2. Screen text
