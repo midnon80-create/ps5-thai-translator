@@ -83,8 +83,11 @@ class PsnLoginActivity : AppCompatActivity()
 		root.addView(status, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
 		setContentView(root)
 
-		// start from a clean session every time, and leave no Sony login behind afterwards
-		CookieManager.getInstance().removeAllCookies(null)
+		// Behave like a normal browser: Sony's login checks rely on cookies, including ones set by its
+		// security service on another domain, and on keeping them between attempts. The Sony session is
+		// cleared once the Account ID has been obtained.
+		CookieManager.getInstance().setAcceptCookie(true)
+		CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
 		webView.settings.javaScriptEnabled = true
 		webView.settings.domStorageEnabled = true
@@ -154,21 +157,25 @@ class PsnLoginActivity : AppCompatActivity()
 		val b = android.app.AlertDialog.Builder(this)
 			.setTitle("ล็อกอิน PSN ไม่ผ่าน — แก้ได้แบบนี้")
 			.setMessage("$reason\n\n$version" +
-				"1. Play Store › ค้นหา \"Android System WebView\" › กด อัปเดต\n" +
-				"   (ถ้ามี Google Chrome ในทีวี อัปเดตด้วย)\n" +
+				"1. ปิด VPN หรือ DNS กันโฆษณา (เช่น AdGuard, NextDNS) ที่ทีวีหรือเราเตอร์ชั่วคราว\n" +
+				"   หรือให้ทีวีต่อ Wi-Fi อื่นเฉพาะตอนล็อกอิน (เช่น ฮอตสปอตมือถือ)\n" +
 				"2. ตั้งค่าทีวี › วันที่และเวลา › อัตโนมัติ\n" +
-				"3. ถ้าเพิ่งลองหลายครั้ง รอประมาณ 30 นาทีแล้วค่อยลองใหม่\n" +
-				"4. กลับมากดล็อกอิน PSN อีกครั้ง")
-			.setPositiveButton("เปิด Play Store") { _, _ ->
+				"3. ถ้าเพิ่งลองหลายครั้ง รอประมาณ 30–60 นาทีแล้วค่อยลองใหม่\n" +
+				"4. ถ้ายังไม่ได้: Play Store › อัปเดต \"Android System WebView\"\n" +
+				"5. กลับมากดล็อกอิน PSN อีกครั้ง")
+			.setOnCancelListener { finish() }
+		if(askFirst)
+			b.setPositiveButton("อัปเดตใน Play Store") { _, _ ->
 				try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.webview"))) }
 				catch(e: Exception) { }
 				finish()
 			}
-			.setOnCancelListener { finish() }
+		else
+			b.setPositiveButton("ตกลง") { _, _ -> finish() }
 		if(askFirst)
 			b.setNegativeButton("ลองล็อกอินเลย") { _, _ -> helpShown = false; webView.loadUrl(LOGIN_URL); watchForSonyError() }
 		else
-			b.setNegativeButton("ปิด") { _, _ -> finish() }
+			b.setNegativeButton("ลองใหม่") { _, _ -> helpShown = false; webView.loadUrl(LOGIN_URL); watchForSonyError() }
 		b.show()
 	}
 
@@ -188,7 +195,7 @@ class PsnLoginActivity : AppCompatActivity()
 		Thread {
 			val id = try { fetchAccountId(code) } catch(e: Exception) { null }
 			runOnUiThread {
-				CookieManager.getInstance().removeAllCookies(null)
+				if(id != null) CookieManager.getInstance().removeAllCookies(null)
 				if(id == null)
 					failWith("หารหัสบัญชีไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่")
 				else
