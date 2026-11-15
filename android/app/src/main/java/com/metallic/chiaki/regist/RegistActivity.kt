@@ -128,6 +128,22 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 				null
 		binding.pinEditText.error = if(!pinValid) getString(R.string.regist_pin_invalid, PIN_LENGTH) else null
 
+		// People often type their PSN username here. Explain and offer the automatic login instead.
+		if(!psnIdValid && ps4Version != RegistViewModel.ConsoleVersion.PS4_LT_7 &&
+			Regex("^[A-Za-z][A-Za-z0-9_-]{2,15}$").matches(psnId))
+		{
+			android.app.AlertDialog.Builder(this)
+				.setTitle("\"$psnId\" คือชื่อผู้ใช้ PSN")
+				.setMessage("ช่องนี้ต้องใช้ \"รหัสบัญชี\" ซึ่งเป็นรหัสลับที่ Sony ใช้ข้างใน ไม่ใช่ชื่อผู้ใช้" + "\n\n" + "กด \"ล็อกอิน PSN\" แล้วล็อกอินด้วยอีเมลและรหัสผ่าน PSN แอปจะใส่รหัสบัญชีให้เอง")
+				.setPositiveButton("ล็อกอิน PSN") { _, _ ->
+					binding.psnIdEditText.setText("")
+					startActivityForResult(Intent(this, PsnLoginActivity::class.java), REQUEST_PSN_LOGIN)
+				}
+				.setNegativeButton("ยกเลิก", null)
+				.show()
+			return
+		}
+
 		if(!hostValid || !psnIdValid || !pinValid)
 			return
 
