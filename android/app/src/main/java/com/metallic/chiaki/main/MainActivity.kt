@@ -39,7 +39,8 @@ class MainActivity : AppCompatActivity()
 		binding = ActivityMainBinding.inflate(layoutInflater)
 		setContentView(binding.root)
 		if(savedInstanceState == null)
-			com.metallic.chiaki.update.UpdateManager.checkAndPrompt(this, manual = false)
+			try { com.metallic.chiaki.update.UpdateManager.checkAndPrompt(this, manual = false) }
+			catch(e: Throwable) { android.util.Log.e("PS5Translate", "update check failed", e) }
 
 		title = ""
 		setSupportActionBar(binding.toolbar)
@@ -101,7 +102,9 @@ class MainActivity : AppCompatActivity()
 	override fun onStart()
 	{
 		super.onStart()
-		viewModel.discoveryManager.resume()
+		// searching for the PS5 must never take the whole app down
+		try { viewModel.discoveryManager.resume() }
+		catch(e: Throwable) { android.util.Log.e("PS5Translate", "discovery failed", e) }
 	}
 
 	override fun onStop()
