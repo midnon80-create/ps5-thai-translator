@@ -103,3 +103,18 @@ JNIEXPORT jint JNICALL Java_com_metallic_chiaki_translate_AudioTap_nativeRead(JN
 		(*env)->SetShortArrayRegion(env, out, 0, n, tmp);
 	return n;
 }
+
+// Used by the video test screen: its player hands decoded PCM here instead of the PS5 stream.
+JNIEXPORT void JNICALL Java_com_metallic_chiaki_translate_AudioTap_nativeConfigure(JNIEnv *env, jclass cls, jint channels, jint rate)
+{
+	android_chiaki_audio_tap_settings((uint32_t)channels, (uint32_t)rate);
+}
+
+JNIEXPORT void JNICALL Java_com_metallic_chiaki_translate_AudioTap_nativePush(JNIEnv *env, jclass cls, jshortArray data, jint count)
+{
+	if(count <= 0) return;
+	jshort *buf = (*env)->GetShortArrayElements(env, data, NULL);
+	if(!buf) return;
+	android_chiaki_audio_tap_push((const int16_t *)buf, (size_t)count);
+	(*env)->ReleaseShortArrayElements(env, data, buf, JNI_ABORT);
+}

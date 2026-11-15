@@ -51,6 +51,14 @@
             app:title="แสดงภาษาอังกฤษใต้คำแปล"
             app:summary="ช่วยเช็กว่าอ่านข้อความถูกไหม" />
         <Preference
+            app:key="tr_video_test"
+            app:title="ทดสอบกับวิดีโอ"
+            app:summary="เปิดไฟล์วิดีโอ (เช่น คลิปเกมที่มีซับอังกฤษจากแฟลชไดรฟ์) แล้วดูการแปลแบบเดียวกับตอนเล่น PS5">
+            <intent
+                android:targetPackage="com.ps5translate.tv"
+                android:targetClass="com.metallic.chiaki.translate.VideoTestActivity" />
+        </Preference>
+        <Preference
             app:key="tr_check_update"
             app:title="เช็กอัปเดตแอป"
             app:summary="ดูว่ามีเวอร์ชันใหม่ไหม แล้วติดตั้งได้ในปุ่มเดียว">

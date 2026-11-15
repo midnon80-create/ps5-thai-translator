@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/videoRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:keepScreenOn="true">
+
+    <SurfaceView
+        android:id="@+id/videoSurface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"/>
+
+    <LinearLayout
+        android:id="@+id/translatorOverlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="28dp"
+        android:layout_marginLeft="48dp"
+        android:layout_marginRight="48dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:focusable="false"
+        android:clickable="false">
+
+        <TextView
+            android:id="@+id/translatorStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/translator_bg"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:layout_marginBottom="6dp"
+            android:textColor="#FFE082"
+            android:textSize="16sp"
+            android:visibility="gone" />
+
+        <com.metallic.chiaki.translate.SubtitleTextView
+            android:id="@+id/translatorScreenText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+                        android:background="@drawable/translator_bg"
+            android:gravity="center"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="26sp"
+            android:visibility="gone" />
+
+        <com.metallic.chiaki.translate.SubtitleTextView
+            android:id="@+id/translatorSpeechText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+            android:background="@drawable/translator_bg"
+            android:gravity="center"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textColor="#B3E5FC"
+            android:textStyle="bold"
+            android:textSize="26sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/videoHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="24dp"
+        android:background="@drawable/translator_bg"
+        android:padding="12dp"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:text="ปุ่มกลาง = เล่น/หยุด · ซ้าย/ขวา = ถอย/เดินหน้า 10 วิ · Back = ออก"/>
+</FrameLayout>

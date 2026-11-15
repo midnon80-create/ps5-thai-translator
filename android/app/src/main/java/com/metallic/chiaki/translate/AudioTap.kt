@@ -12,4 +12,6 @@ object AudioTap
 
 	@JvmStatic external fun nativeSetEnabled(enabled: Boolean)
 	@JvmStatic external fun nativeRead(out: ShortArray, max: Int): Int
+	@JvmStatic external fun nativeConfigure(channels: Int, rate: Int)
+	@JvmStatic external fun nativePush(data: ShortArray, count: Int)
 }
