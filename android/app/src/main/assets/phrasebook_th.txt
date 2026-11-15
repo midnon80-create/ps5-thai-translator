@@ -1,0 +1,543 @@
+# PS5 แปลไทย — offline phrase bank (English | Thai)
+# Matching ignores case, punctuation and apostrophes ("Let's go!" = "lets go").
+# Thai written in natural fan-sub style: short, spoken, no ครับ/ค่ะ unless polite.
+# --- movement / commands ---
+let's go | ไปกัน
+let's go now | ไปกันเลย
+let's move | ไปกันเถอะ
+move | ไป!
+move it | เร็วเข้า!
+move move move | ไป ไป ไป!
+go go go | ไป ไป ไป!
+go | ไป!
+come on | มาเร็ว
+come on let's go | มาเร็ว ไปกัน
+hurry | เร็วเข้า
+hurry up | เร็วเข้า!
+quickly | เร็วเข้า
+follow me | ตามฉันมา
+stay close | อยู่ใกล้ๆ ไว้
+stay close to me | อยู่ใกล้ๆ ฉันไว้
+follow me stay close | ตามฉันมา อยู่ใกล้ๆ ไว้
+stay here | รออยู่นี่
+stay put | อยู่ตรงนั้นแหละ
+wait here | รอตรงนี้
+wait | เดี๋ยวก่อน
+wait for me | รอฉันด้วย
+hold on | เดี๋ยวก่อน
+hold on a second | เดี๋ยวนะ
+hang on | รอเดี๋ยว
+stop | หยุด!
+stop right there | หยุดอยู่ตรงนั้น!
+freeze | อย่าขยับ!
+don't move | อย่าขยับ!
+get down | หมอบลง!
+get down now | หมอบเดี๋ยวนี้!
+get in | ขึ้นมา!
+get in the car | ขึ้นรถ!
+get out | ออกไป!
+get out of here | ออกไปจากที่นี่!
+get out of the car | ลงจากรถ!
+we have to get out of here | เราต้องออกไปจากที่นี่
+we need to get out of here | เราต้องออกไปจากที่นี่
+we need to go | เราต้องไปแล้ว
+we need to leave | เราต้องไปแล้ว
+we need to leave now | เราต้องไปเดี๋ยวนี้
+we need to leave right now | เราต้องไปเดี๋ยวนี้เลย
+we have to go | เราต้องไปแล้ว
+we have to move | เราต้องไปแล้ว
+we can't stay here | เราอยู่ที่นี่ไม่ได้
+we can't stay here long | เราอยู่ตรงนี้นานไม่ได้
+let's get out of here | ออกไปจากที่นี่กันเถอะ
+keep moving | เดินต่อไป
+keep going | ไปต่อ
+keep up | ตามให้ทัน
+this way | ทางนี้
+over here | ตรงนี้!
+over there | ตรงนั้น!
+up there | ข้างบนนั่น
+down there | ข้างล่างนั่น
+this way come on | ทางนี้ มาเร็ว
+go left | ไปทางซ้าย
+go right | ไปทางขวา
+on me | ตามฉันมา
+on my mark | รอสัญญาณฉัน
+on my signal | รอสัญญาณฉัน
+now | เดี๋ยวนี้!
+not yet | ยังก่อน
+quiet | เงียบ!
+be quiet | เงียบๆ
+keep quiet | เงียบไว้
+shh | ชู่ว
+keep your voice down | เบาเสียงหน่อย
+stay low | ก้มต่ำไว้
+stay down | หมอบไว้
+stay quiet | เงียบไว้
+stay alert | ระวังตัวด้วย
+stay sharp | อย่าประมาท
+eyes open | ตาไวๆ ไว้
+watch out | ระวัง!
+look out | ระวัง!
+careful | ระวังนะ
+be careful | ระวังตัวด้วย
+watch your step | ระวังทางเดิน
+watch your back | ระวังข้างหลัง
+behind you | ข้างหลังนาย!
+on your left | ทางซ้าย!
+on your right | ทางขวา!
+run | วิ่ง!
+run for it | วิ่งเร็ว!
+just run | วิ่งไปเลย!
+climb | ปีนขึ้นไป
+jump | กระโดด!
+help me | ช่วยด้วย!
+help | ช่วยด้วย!
+somebody help | ใครก็ได้ช่วยที!
+give me a hand | ช่วยหน่อย
+give me a boost | ดันฉันขึ้นไปที
+boost me up | ดันฉันขึ้นไปที
+grab my hand | จับมือฉันไว้
+take my hand | จับมือฉันไว้
+hold on to me | เกาะฉันไว้
+open the door | เปิดประตู
+close the door | ปิดประตู
+check it out | ดูนี่สิ
+look at this | ดูนี่สิ
+look | ดูสิ
+listen | ฟังนะ
+listen to me | ฟังฉันนะ
+trust me | เชื่อฉันเถอะ
+we have to get out of here before they find us | เราต้องออกไปจากที่นี่ก่อนพวกมันจะเจอเรา
+we need to get out of here before they find us | เราต้องออกไปจากที่นี่ก่อนพวกมันจะเจอเรา
+we have to go before they find us | เราต้องไปก่อนพวกมันจะเจอเรา
+before they find us | ก่อนพวกมันจะเจอเรา
+they're going to find us | พวกมันจะเจอเราแน่
+they'll find us | พวกมันจะเจอเรา
+stay behind me | อยู่ข้างหลังฉันไว้
+stay behind me and don't make a sound | อยู่ข้างหลังฉัน ห้ามส่งเสียง
+don't make a sound | ห้ามส่งเสียง
+not a sound | ห้ามมีเสียง
+# --- combat ---
+enemy spotted | เจอศัตรู!
+contact | เจอศัตรู!
+contact front | ศัตรูข้างหน้า!
+they're here | พวกมันมาแล้ว!
+they're coming | พวกมันมาแล้ว!
+here they come | มาแล้ว!
+they found us | พวกมันเจอเราแล้ว!
+they've spotted us | พวกมันเห็นเราแล้ว!
+we've been spotted | เราโดนเห็นแล้ว!
+take cover | หาที่กำบัง!
+get to cover | หาที่กำบัง!
+find cover | หาที่กำบัง!
+cover me | คุ้มกันฉันที!
+i'll cover you | ฉันคุ้มกันให้!
+covering fire | ยิงคุ้มกัน!
+fire | ยิง!
+open fire | เปิดฉากยิง!
+shoot | ยิงเลย!
+shoot it | ยิงมัน!
+shoot him | ยิงมัน!
+kill it | ฆ่ามัน!
+kill them | จัดการพวกมัน!
+take him down | จัดการมัน!
+take them out | จัดการพวกมัน!
+take them down | จัดการพวกมันซะ!
+hold your fire | หยุดยิง!
+cease fire | หยุดยิง!
+don't shoot | อย่ายิง!
+reloading | เปลี่ยนแม็ก!
+i'm reloading | ฉันกำลังเปลี่ยนแม็ก!
+cover me i'm reloading | คุ้มกันที ฉันเปลี่ยนแม็กอยู่!
+out of ammo | กระสุนหมด!
+i'm out of ammo | กระสุนฉันหมด!
+i'm out | ฉันหมดแล้ว!
+need ammo | ขอกระสุนหน่อย!
+grenade | ระเบิด!
+grenade out | ปาระเบิด!
+get back | ถอยไป!
+fall back | ถอย!
+retreat | ถอยทัพ!
+push forward | บุกไปข้างหน้า!
+flank them | ตีโอบพวกมัน!
+he's down | มันร่วงแล้ว!
+enemy down | ศัตรูร่วงแล้ว!
+got him | ได้ตัวแล้ว!
+got one | ได้ไปหนึ่ง!
+clear | เคลียร์!
+all clear | ปลอดภัยแล้ว
+area clear | พื้นที่ปลอดภัย
+room clear | ห้องนี้เคลียร์
+it's clear | ปลอดภัยแล้ว
+we're clear | เราปลอดภัยแล้ว
+i'm hit | ฉันโดนยิง!
+i've been hit | ฉันโดนยิง!
+man down | มีคนเจ็บ!
+i'm hurt | ฉันเจ็บ
+are you hurt | เจ็บตรงไหนไหม?
+are you okay | เป็นอะไรไหม?
+are you alright | ไหวไหม?
+you okay | ไหวไหม?
+i'm okay | ฉันไม่เป็นไร
+i'm fine | ฉันไม่เป็นไร
+i'm alright | ฉันไหว
+i'm good | ฉันโอเค
+it's a trap | มันเป็นกับดัก!
+ambush | ซุ่มโจมตี!
+sniper | สไนเปอร์!
+incoming | มาแล้ว!
+run run | วิ่ง วิ่ง!
+kill them all | ฆ่ามันให้หมด!
+surrender | ยอมแพ้ซะ!
+drop your weapon | ทิ้งอาวุธ!
+drop the gun | ทิ้งปืนซะ!
+put the gun down | วางปืนลง!
+hands up | ยกมือขึ้น!
+on the ground | หมอบลงกับพื้น!
+get on the ground | หมอบลงกับพื้น!
+nobody move | ห้ามใครขยับ!
+this is a robbery | นี่คือการปล้น!
+# --- talk / everyday ---
+yes | ใช่
+yeah | อือ
+no | ไม่
+nope | ไม่อะ
+okay | โอเค
+ok | โอเค
+alright | ได้เลย
+all right | ได้เลย
+sure | ได้สิ
+of course | แน่นอน
+got it | เข้าใจแล้ว
+understood | รับทราบ
+copy that | รับทราบ
+roger | รับทราบ
+roger that | รับทราบ
+on it | จัดให้
+i'm on it | ฉันจัดการเอง
+i know | ฉันรู้
+i don't know | ไม่รู้สิ
+i have no idea | ไม่รู้เลย
+i get it | เข้าใจแล้ว
+i understand | ฉันเข้าใจ
+i see | อ๋อ เข้าใจละ
+really | จริงเหรอ?
+seriously | เอาจริงดิ?
+are you serious | พูดจริงเหรอ?
+you're kidding | ล้อเล่นน่า
+you're kidding me | ล้อเล่นใช่ไหม
+no way | ไม่จริงน่า!
+what | อะไรนะ?
+what the hell | อะไรวะเนี่ย!
+what the hell was that | เมื่อกี้มันอะไรวะ?
+what was that | เมื่อกี้อะไรน่ะ?
+what's that | นั่นอะไรน่ะ?
+what is that | นั่นอะไรน่ะ?
+what's going on | เกิดอะไรขึ้น?
+what happened | เกิดอะไรขึ้น?
+what's happening | เกิดอะไรขึ้นเนี่ย?
+what are you doing | ทำอะไรน่ะ?
+what do you want | ต้องการอะไร?
+what do we do now | แล้วเราจะทำไงต่อ?
+what now | แล้วไงต่อ?
+now what | แล้วไงต่อ?
+where are you | อยู่ไหนน่ะ?
+where are we | เราอยู่ที่ไหนเนี่ย?
+where are you going | จะไปไหนน่ะ?
+where is he | เขาอยู่ไหน?
+where is she | เธออยู่ไหน?
+where are they | พวกมันอยู่ไหน?
+who are you | แกเป็นใคร?
+who's there | ใครอยู่ตรงนั้น?
+who was that | เมื่อกี้ใครน่ะ?
+why | ทำไม?
+why not | ทำไมล่ะ?
+how | ยังไง?
+how did you do that | ทำได้ยังไงน่ะ?
+did you hear that | ได้ยินไหม?
+you hear that | ได้ยินนั่นไหม?
+did you see that | เห็นนั่นไหม?
+you see that | เห็นนั่นไหม?
+something's moving | มีอะไรขยับอยู่
+something is moving | มีอะไรขยับอยู่
+something is moving in the dark | มีอะไรขยับอยู่ในความมืด
+something's not right | มีอะไรไม่ชอบมาพากล
+something's wrong | มีอะไรผิดปกติ
+i've got a bad feeling about this | ฉันรู้สึกไม่ดีกับเรื่องนี้เลย
+i have a bad feeling about this | ฉันรู้สึกไม่ดีกับเรื่องนี้เลย
+it's too quiet | เงียบเกินไปแล้ว
+it's quiet | เงียบดีนะ
+i heard something | ฉันได้ยินอะไรบางอย่าง
+there's something here | มีอะไรบางอย่างอยู่ตรงนี้
+we're not alone | เราไม่ได้อยู่กันแค่นี้
+someone's coming | มีคนมา!
+somebody's coming | มีคนมา!
+someone's here | มีคนอยู่ตรงนี้
+thank you | ขอบคุณนะ
+thanks | ขอบใจ
+thanks man | ขอบใจนะเพื่อน
+thank god | ขอบคุณพระเจ้า
+no problem | ไม่มีปัญหา
+you're welcome | ไม่เป็นไร
+don't mention it | ไม่ต้องพูดถึงหรอก
+sorry | ขอโทษ
+i'm sorry | ฉันขอโทษ
+i'm so sorry | ฉันขอโทษจริงๆ
+my bad | โทษที
+excuse me | ขอโทษนะ
+hello | สวัสดี
+hey | เฮ้
+hi | ไง
+hey man | เฮ้ เพื่อน
+what's up | ว่าไง
+how are you | เป็นไงบ้าง?
+long time no see | ไม่เจอกันนานเลย
+good to see you | ดีใจที่ได้เจอนะ
+nice to meet you | ยินดีที่ได้รู้จัก
+goodbye | ลาก่อน
+bye | บาย
+see you | แล้วเจอกัน
+see you later | ไว้เจอกัน
+see you soon | แล้วเจอกันนะ
+take care | ดูแลตัวเองด้วย
+good luck | โชคดีนะ
+good job | เยี่ยมมาก
+nice work | ทำได้ดีมาก
+nice job | ทำได้ดี
+well done | ทำได้ดีมาก
+great | เยี่ยม
+perfect | เพอร์เฟกต์
+nice | เยี่ยม
+nice shot | ยิงสวย!
+awesome | สุดยอด
+not bad | ไม่เลวนี่
+that was close | เฉียดไปนิดเดียว
+that was too close | เกือบไปแล้ว
+we made it | เรารอดแล้ว
+we did it | เราทำได้แล้ว!
+i did it | ฉันทำได้แล้ว!
+you did it | นายทำได้แล้ว!
+finally | ในที่สุด
+here we go | เอาล่ะนะ
+here we go again | มาอีกแล้ว
+let's do this | ลุยกันเลย
+let's do it | ลุยกัน
+i'm ready | ฉันพร้อมแล้ว
+ready | พร้อม
+are you ready | พร้อมยัง?
+you ready | พร้อมไหม?
+not now | ไม่ใช่ตอนนี้
+later | ไว้ทีหลัง
+leave me alone | อย่ามายุ่งกับฉัน
+shut up | หุบปาก!
+get lost | ไปให้พ้น!
+back off | ถอยไป!
+calm down | ใจเย็นๆ
+relax | ใจเย็นน่า
+take it easy | ใจเย็นๆ
+don't worry | ไม่ต้องห่วง
+don't worry about it | ไม่ต้องห่วงหรอก
+it's okay | ไม่เป็นไรนะ
+it's alright | ไม่เป็นไร
+it's fine | ไม่เป็นไร
+it's over | จบแล้ว
+it's done | เสร็จแล้ว
+it's not over | มันยังไม่จบ
+it's not over yet | มันยังไม่จบหรอก
+i'll be back | เดี๋ยวฉันกลับมา
+i'll be right back | เดี๋ยวมานะ
+i'll handle it | ฉันจัดการเอง
+leave it to me | ปล่อยให้ฉันจัดการ
+i got this | ฉันจัดการได้
+i've got this | ฉันจัดการได้
+i got you | ฉันอยู่นี่แล้ว
+i've got you | ฉันจับไว้แล้ว
+i'm coming | ฉันกำลังไป!
+i'm on my way | ฉันกำลังไป
+on my way | กำลังไป
+i'm here | ฉันอยู่นี่
+we're here | ถึงแล้ว
+we're almost there | ใกล้ถึงแล้ว
+almost there | อีกนิดเดียว
+let's take a break | พักกันหน่อยเถอะ
+let's rest here | พักตรงนี้กันเถอะ
+i need a break | ขอพักหน่อย
+i'm tired | ฉันเหนื่อยแล้ว
+i'm hungry | ฉันหิว
+i can't do this | ฉันทำไม่ได้
+i can't | ฉันทำไม่ได้
+you can do it | นายทำได้
+you can do this | เธอทำได้
+don't give up | อย่ายอมแพ้
+never give up | อย่ายอมแพ้เด็ดขาด
+i won't let you down | ฉันจะไม่ทำให้ผิดหวัง
+i promise | ฉันสัญญา
+promise me | สัญญากับฉันนะ
+i love you | ฉันรักเธอ
+i miss you | ฉันคิดถึงเธอ
+i hate you | ฉันเกลียดแก
+i need you | ฉันต้องการเธอ
+i'm proud of you | ฉันภูมิใจในตัวเธอนะ
+i'm scared | ฉันกลัว
+i'm not scared | ฉันไม่กลัวหรอก
+don't be scared | ไม่ต้องกลัว
+don't leave me | อย่าทิ้งฉันไว้
+i won't leave you | ฉันไม่ทิ้งเธอแน่
+i'll never leave you | ฉันจะไม่มีวันทิ้งเธอ
+we'll be fine | เราจะไม่เป็นไร
+we're gonna be okay | เราจะไม่เป็นไร
+you're gonna be okay | เธอจะไม่เป็นไร
+everything's gonna be okay | ทุกอย่างจะโอเค
+stay with me | อยู่กับฉันก่อน!
+don't die on me | อย่าตายนะ!
+wake up | ตื่นสิ!
+breathe | หายใจไว้!
+i'm dying | ฉันจะตายแล้ว
+he's dead | เขาตายแล้ว
+she's dead | เธอตายแล้ว
+they're dead | พวกมันตายหมดแล้ว
+he's alive | เขายังมีชีวิตอยู่
+she's alive | เธอยังมีชีวิตอยู่
+oh my god | พระเจ้า!
+oh god | ให้ตายสิ
+oh no | ไม่นะ!
+oh shit | ฉิบหายแล้ว!
+shit | ให้ตาย!
+damn | บ้าเอ๊ย!
+damn it | บ้าเอ๊ย!
+dammit | บ้าเอ๊ย!
+goddammit | ให้ตายเถอะ!
+fuck | ฉิบหาย!
+fuck this | ช่างแม่งเถอะ!
+holy shit | ฉิบหายแล้ว!
+no no no | ไม่ ไม่ ไม่!
+jesus | พระเจ้า!
+jesus christ | พระเจ้าช่วย!
+are you crazy | บ้าไปแล้วเหรอ?
+you're crazy | แกบ้าไปแล้ว
+this is crazy | บ้าไปแล้ว
+this is insane | นี่มันบ้าชัดๆ
+i don't believe it | ไม่อยากเชื่อเลย
+i can't believe it | ไม่อยากจะเชื่อ
+i can't believe this | ไม่อยากเชื่อเลย
+look who it is | ดูซิใครมา
+long story | เรื่องมันยาว
+it's a long story | เรื่องมันยาวน่ะ
+never mind | ช่างเถอะ
+forget it | ลืมมันไปเถอะ
+whatever | ช่างเหอะ
+fine | ก็ได้
+fair enough | ก็สมเหตุสมผล
+deal | ตกลง
+it's a deal | ตกลงตามนั้น
+you owe me | นายติดหนี้ฉันนะ
+i owe you one | ฉันติดหนี้นายครั้งนึง
+how much | เท่าไหร่?
+how much is it | ราคาเท่าไหร่?
+money | เงิน
+show me the money | เอาเงินมาดูหน่อย
+where's the money | เงินอยู่ไหน?
+cops | ตำรวจ!
+the cops are here | ตำรวจมาแล้ว!
+police | ตำรวจ!
+lose the cops | สลัดตำรวจให้หลุด!
+we lost them | สลัดพวกมันหลุดแล้ว
+step on it | เหยียบเลย!
+drive | ขับไป!
+just drive | ขับไปเลย!
+faster | เร็วกว่านี้!
+slow down | ช้าลงหน่อย!
+pull over | จอดข้างทาง!
+turn left | เลี้ยวซ้าย
+turn right | เลี้ยวขวา
+# --- HUD / menus / tutorials ---
+checkpoint | เช็กพอยต์
+checkpoint reached | ถึงเช็กพอยต์แล้ว
+game saved | บันทึกเกมแล้ว
+saving | กำลังบันทึก
+saving do not turn off | กำลังบันทึก อย่าปิดเครื่อง
+autosave | บันทึกอัตโนมัติ
+loading | กำลังโหลด
+new game | เกมใหม่
+continue | เล่นต่อ
+load game | โหลดเกม
+save game | บันทึกเกม
+settings | ตั้งค่า
+options | ตัวเลือก
+quit | ออก
+quit game | ออกจากเกม
+resume | เล่นต่อ
+restart | เริ่มใหม่
+restart from checkpoint | เริ่มใหม่จากเช็กพอยต์
+retry | ลองใหม่
+try again | ลองอีกครั้ง
+game over | เกมโอเวอร์
+you died | คุณตายแล้ว
+mission failed | ภารกิจล้มเหลว
+mission complete | ภารกิจสำเร็จ
+mission passed | ผ่านภารกิจ
+mission accomplished | ภารกิจสำเร็จ
+objective updated | อัปเดตเป้าหมาย
+new objective | เป้าหมายใหม่
+objective complete | ทำเป้าหมายสำเร็จ
+quest updated | อัปเดตเควสต์
+quest complete | เควสต์สำเร็จ
+new quest | เควสต์ใหม่
+level up | เลเวลอัป!
+new skill unlocked | ปลดล็อกสกิลใหม่
+skill unlocked | ปลดล็อกสกิลแล้ว
+achievement unlocked | ปลดล็อกความสำเร็จ
+trophy unlocked | ได้รับถ้วยรางวัล
+item acquired | ได้รับไอเทม
+inventory full | กระเป๋าเต็ม
+not enough money | เงินไม่พอ
+not enough resources | ทรัพยากรไม่พอ
+low health | เลือดเหลือน้อย
+you are being hunted | คุณกำลังถูกล่า
+you have been spotted | คุณถูกพบตัวแล้ว
+wanted level | ระดับค่าหัว
+you are wanted | คุณกำลังถูกตามล่า
+lost the police | สลัดตำรวจหลุดแล้ว
+return to the area | กลับไปในพื้นที่
+you are leaving the mission area | คุณกำลังออกนอกพื้นที่ภารกิจ
+press any button | กดปุ่มใดก็ได้
+press any button to continue | กดปุ่มใดก็ได้เพื่อไปต่อ
+press to continue | กดเพื่อไปต่อ
+hold to skip | กดค้างเพื่อข้าม
+skip | ข้าม
+interact | โต้ตอบ
+pick up | เก็บ
+open | เปิด
+search | ค้นหา
+loot | เก็บของ
+craft | คราฟต์
+upgrade | อัปเกรด
+equip | สวมใส่
+use | ใช้
+back | ย้อนกลับ
+select | เลือก
+confirm | ยืนยัน
+cancel | ยกเลิก
+exit | ออก
+show comments | ดูความคิดเห็น
+tutorials | สอนเล่น
+difficulty | ความยาก
+easy | ง่าย
+normal | ปกติ
+hard | ยาก
+subtitles | ซับไตเติล
+brightness | ความสว่าง
+controls | การควบคุม
+audio | เสียง
+display | การแสดงผล
+language | ภาษา
+accept | ยอมรับ
+decline | ปฏิเสธ
+yes no | ใช่ / ไม่
+are you sure | แน่ใจนะ?
+are you sure you want to quit | แน่ใจว่าจะออกจากเกม?
+unsaved progress will be lost | ความคืบหน้าที่ยังไม่บันทึกจะหายไป
+chapter | บท
+chapter complete | จบบท
+to be continued | โปรดติดตามตอนต่อไป
+the end | จบบริบูรณ์

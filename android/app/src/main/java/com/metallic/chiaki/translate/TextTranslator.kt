@@ -67,12 +67,55 @@ class TextTranslator(private val geminiKey: String, private val geminiModel: Str
 		}
 	}
 
+	/**
+	 * Several sentences (e.g. speech cut at pauses): bank hits instantly, the rest translated in one
+	 * parallel batch so splitting adds no waiting. Joined with spaces.
+	 */
+	fun translateAll(sentences: List<String>): String?
+	{
+		val parts = sentences.map { it.trim() }.filter { it.isNotEmpty() }
+		if(parts.isEmpty()) return null
+		if(parts.size == 1) return translate(parts[0])
+		val results = arrayOfNulls<String>(parts.size)
+		val pending = ArrayList<Pair<Int, com.google.android.gms.tasks.Task<String>>>()
+		for((i, p) in parts.withIndex())
+		{
+			val hit = PhraseBank.lookup(p) ?: synchronized(cache) { cache[p] }
+			when
+			{
+				hit != null -> results[i] = hit
+				geminiKey.isNotEmpty() -> results[i] = translateOne(p)
+				offlineReady -> pending.add(i to mlkit.translate(p))
+			}
+		}
+		for((i, task) in pending)
+		{
+			results[i] = try { Tasks.await(task, 5, TimeUnit.SECONDS) } catch(e: Exception) { null }
+			results[i]?.let { r -> synchronized(cache) { cache[parts[i]] = r } }
+		}
+		val ok = results.filterNotNull()
+		return if(ok.isEmpty()) null else ok.joinToString(" ")
+	}
+
 	fun translate(english: String): String?
 	{
 		val src = english.trim()
 		if(src.isEmpty()) return null
 		synchronized(cache) { cache[src] }?.let { return it }
+		PhraseBank.lookup(src)?.let { return it }
+		// A subtitle with several sentences: look each one up in the bank (offline only; Gemini sees the whole line)
+		if(geminiKey.isEmpty())
+		{
+			val sentences = src.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+			if(sentences.size > 1)
+				return translateAll(sentences)?.also { synchronized(cache) { cache[src] = it } }
+		}
+		return translateOne(src)
+	}
 
+	private fun translateOne(src: String): String?
+	{
+		synchronized(cache) { cache[src] }?.let { return it }
 		var out: String? = null
 		if(geminiAllowed())
 		{

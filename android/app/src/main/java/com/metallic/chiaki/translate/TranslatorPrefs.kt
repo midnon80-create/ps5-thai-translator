@@ -41,6 +41,12 @@ class TranslatorPrefs(context: Context)
 		else -> 0.040f
 	}
 
+	/** Set by the translator test: this TV can't recognise speech in real time. */
+	val speechSlow get() = sp.getBoolean(KEY_SPEECH_SLOW, false)
+	fun setSpeechSlow(v: Boolean) = sp.edit().putBoolean(KEY_SPEECH_SLOW, v).apply()
+
+	fun setMode(m: Mode) = sp.edit().putString(KEY_MODE, when(m) { Mode.SCREEN -> "screen"; Mode.SPEECH -> "speech"; Mode.BOTH -> "both" }).apply()
+
 	val showEnglish get() = sp.getBoolean("tr_show_english", false)
 
 	val geminiKey get() = sp.getString("tr_gemini_key", "")?.trim().orEmpty()
@@ -49,6 +55,9 @@ class TranslatorPrefs(context: Context)
 
 	companion object
 	{
+		const val KEY_MODE = "tr_mode"
+		const val KEY_SPEECH_SLOW = "tr_speech_slow"
+		const val KEY_SPEECH_SLOW_WARNED = "tr_speech_slow_warned"
 		const val DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest"
 	}
 }

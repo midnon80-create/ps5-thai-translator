@@ -129,6 +129,22 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 			registeredHostsPreference?.summary = getString(R.string.preferences_registered_hosts_summary, it)
 		})
 
+		// Speech translation was switched off because this TV can't keep up: warn once, but allow it.
+		preferenceScreen.findPreference<androidx.preference.ListPreference>(com.metallic.chiaki.translate.TranslatorPrefs.KEY_MODE)?.setOnPreferenceChangeListener { _, value ->
+			val sp = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
+			val wantsSpeech = value == "both" || value == "speech"
+			if(wantsSpeech && sp.getBoolean(com.metallic.chiaki.translate.TranslatorPrefs.KEY_SPEECH_SLOW, false) &&
+				!sp.getBoolean(com.metallic.chiaki.translate.TranslatorPrefs.KEY_SPEECH_SLOW_WARNED, false))
+			{
+				sp.edit().putBoolean(com.metallic.chiaki.translate.TranslatorPrefs.KEY_SPEECH_SLOW_WARNED, true).apply()
+				android.app.AlertDialog.Builder(context)
+					.setTitle("เปิดแปลเสียงพูด")
+					.setMessage("ทีวีเครื่องนี้ประมวลผลเสียงได้ช้ากว่าเวลาจริง การแปลเสียงพูดอาจทำให้ภาพเกมกระตุกหรือคำแปลขึ้นช้า" + "\n\n" + "ถ้าเล่นแล้วไม่ลื่น ให้กลับมาเลือก \"ข้อความบนจออย่างเดียว\"")
+					.setPositiveButton("เข้าใจแล้ว", null)
+					.show()
+			}
+			true
+		}
 		preferenceScreen.findPreference<Preference>(getString(R.string.preferences_export_settings_key))?.setOnPreferenceClickListener { exportSettings(); true }
 		preferenceScreen.findPreference<Preference>(getString(R.string.preferences_import_settings_key))?.setOnPreferenceClickListener { importSettings(); true }
 	}

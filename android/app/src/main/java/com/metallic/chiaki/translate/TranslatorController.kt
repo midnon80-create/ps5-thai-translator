@@ -65,6 +65,7 @@ class TranslatorController(
 		val mode = prefs.mode
 		val tr = TextTranslator(prefs.geminiKey, prefs.geminiModel)
 		translator = tr
+		translateWorker.execute { PhraseBank.load(context) }
 		translateWorker.execute {
 			if(!tr.offlineReady)
 			{
@@ -247,15 +248,17 @@ class TranslatorController(
 		return max < 30 && sum.toDouble() / a.size < 1.0
 	}
 
-	private fun onSpeech(english: String)
+	private fun onSpeech(sentences: List<String>)
 	{
 		// When the game already shows subtitles, the screen translation covers it; skip the duplicate.
 		if(prefs.mode == TranslatorPrefs.Mode.BOTH &&
 			SystemClock.elapsedRealtime() - lastScreenTextAt < SPEECH_SUPPRESS_MS)
 			return
-		val prepared = GameText.fromSpeech(english)
+		val prepared = sentences.map { GameText.fromSpeech(it).text }
+		val english = prepared.joinToString(" ")
 		translateWorker.execute {
-			val thai = translator?.translate(prepared.text) ?: return@execute
+			// each sentence separately (phrase bank first), then joined: reads far better than one run-on line
+			val thai = translator?.translateAll(prepared) ?: return@execute
 			if(!running.get()) return@execute
 			main.post {
 				ui.showSpeechText(thai, english)

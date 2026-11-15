@@ -14,7 +14,7 @@ import java.io.File
  */
 class SpeechEngine(
 	private val context: Context,
-	private val onSentence: (String) -> Unit,
+	private val onSentence: (List<String>) -> Unit,
 	private val onError: (String) -> Unit)
 {
 	@Volatile private var running = false
@@ -49,6 +49,7 @@ class SpeechEngine(
 			return
 		}
 		val recognizer = Recognizer(model, AudioTap.SAMPLE_RATE.toFloat())
+		recognizer.setWords(true) // word timings, used to cut sentences at pauses
 		AudioTap.nativeSetEnabled(true)
 		val buf = ShortArray(1600) // 100 ms
 		var utteranceStart = 0L
@@ -99,16 +100,54 @@ class SpeechEngine(
 
 	private fun emit(json: String)
 	{
-		val text = try { JSONObject(json).optString("text") } catch(e: Exception) { "" }.trim()
+		val sentences = SpeechSegments.split(json)
 		// One-word results are mostly noise from music and sound effects.
-		if(text.split(' ').count { it.isNotBlank() } >= 2 && text != "the")
-			onSentence(text)
+		if(sentences.sumOf { it.split(' ').size } >= 2 && sentences.joinToString(" ") != "the")
+			onSentence(sentences)
 	}
 
 	companion object
 	{
 		private const val TAG = "TranslatorSpeech"
 		private const val MAX_UTTERANCE_MS = 8000L
+	}
+}
+
+/**
+ * Vosk returns one run of lowercase words with no punctuation. Cut it into sentences wherever the
+ * speaker paused (gap between words > [GAP_S]), using the word timings from setWords(true).
+ * Without timings, the whole final result is one sentence.
+ */
+object SpeechSegments
+{
+	const val GAP_S = 0.35
+
+	fun split(json: String): List<String>
+	{
+		val obj = try { JSONObject(json) } catch(e: Exception) { return emptyList() }
+		val words = obj.optJSONArray("result")
+		if(words == null || words.length() == 0)
+			return obj.optString("text").trim().let { if(it.isEmpty()) emptyList() else listOf(it) }
+		val out = mutableListOf<String>()
+		val cur = StringBuilder()
+		var lastEnd = -1.0
+		for(i in 0 until words.length())
+		{
+			val w = words.optJSONObject(i) ?: continue
+			val word = w.optString("word")
+			if(word.isEmpty()) continue
+			val start = w.optDouble("start", lastEnd)
+			if(cur.isNotEmpty() && lastEnd >= 0 && start - lastEnd > GAP_S)
+			{
+				out.add(cur.toString())
+				cur.setLength(0)
+			}
+			if(cur.isNotEmpty()) cur.append(' ')
+			cur.append(word)
+			lastEnd = w.optDouble("end", start)
+		}
+		if(cur.isNotEmpty()) out.add(cur.toString())
+		return out
 	}
 }
 
