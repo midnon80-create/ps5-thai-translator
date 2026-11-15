@@ -129,7 +129,12 @@
                 android:layout_height="wrap_content"
                 app:layout_constraintTop_toBottomOf="@id/psnAccountIdHelpURLTextView"
                 android:layout_marginTop="12dp"
-                android:text="ล็อกอิน PSN เพื่อใส่รหัสบัญชีอัตโนมัติ (ไม่ต้องใช้คอม)"/>
+                android:minHeight="64dp"
+                android:textSize="18sp"
+                android:textColor="#2A1700"
+                app:backgroundTint="#FFB84D"
+                app:cornerRadius="14dp"
+                android:text="① ล็อกอิน PSN — แอปใส่รหัสบัญชีให้เอง"/>
 
             <androidx.constraintlayout.widget.Group
                 android:id="@+id/psnAccountIdHelpGroup"

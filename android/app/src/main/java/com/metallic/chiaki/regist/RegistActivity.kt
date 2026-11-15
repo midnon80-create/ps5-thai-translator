@@ -52,9 +52,7 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 
 		binding.registButton.setOnClickListener { doRegist() }
 
-		binding.psnLoginButton.setOnClickListener {
-			startActivityForResult(Intent(this, PsnLoginActivity::class.java), REQUEST_PSN_LOGIN)
-		}
+		binding.psnLoginButton.setOnClickListener { chooseLogin() }
 		// reuse the Account ID from an earlier login so a second PS5 needs no login at all
 		if(savedInstanceState == null && binding.psnIdEditText.text.isNullOrEmpty())
 			androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
@@ -89,6 +87,18 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 			binding.pinHelpBeforeTextView.setText(if(it.isPS5) R.string.regist_pin_instructions_ps5_before else R.string.regist_pin_instructions_ps4_before)
 			binding.pinHelpNavigationTextView.setText(if(it.isPS5) R.string.regist_pin_instructions_ps5_navigation else R.string.regist_pin_instructions_ps4_navigation)
 		})
+	}
+
+	/** Phone login is the reliable route: Sony sometimes refuses logins from the TV's built-in web view. */
+	private fun chooseLogin()
+	{
+		android.app.AlertDialog.Builder(this)
+			.setTitle("ล็อกอิน PSN เพื่อหารหัสบัญชี")
+			.setItems(arrayOf("ล็อกอินผ่านมือถือ (แนะนำ · สแกน QR)", "ล็อกอินบนทีวี")) { _, which ->
+				val target = if(which == 0) PhoneLoginActivity::class.java else PsnLoginActivity::class.java
+				startActivityForResult(Intent(this, target), REQUEST_PSN_LOGIN)
+			}
+			.show()
 	}
 
 	private fun doRegist()
@@ -127,6 +137,13 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 			else
 				null
 		binding.pinEditText.error = if(!pinValid) getString(R.string.regist_pin_invalid, PIN_LENGTH) else null
+
+		if(psnId.isEmpty() && ps4Version != RegistViewModel.ConsoleVersion.PS4_LT_7)
+		{
+			android.widget.Toast.makeText(this, "ล็อกอิน PSN ก่อน แอปจะใส่รหัสบัญชีให้", android.widget.Toast.LENGTH_LONG).show()
+			chooseLogin()
+			return
+		}
 
 		// People often type their PSN username here. Explain and offer the automatic login instead.
 		if(!psnIdValid && ps4Version != RegistViewModel.ConsoleVersion.PS4_LT_7 &&

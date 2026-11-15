@@ -15,7 +15,10 @@ class TranslatorPrefs(context: Context)
 
 	val enabled get() = sp.getBoolean("tr_enabled", true)
 
-	val mode get() = when(sp.getString("tr_mode", "both")) {
+	// 32-bit-only TVs are usually slow: listening to speech on top of the stream makes them lag
+	private val slowDevice = android.os.Build.SUPPORTED_64_BIT_ABIS.isEmpty()
+
+	val mode get() = when(sp.getString("tr_mode", if(slowDevice) "screen" else "both")) {
 		"screen" -> Mode.SCREEN
 		"speech" -> Mode.SPEECH
 		else -> Mode.BOTH

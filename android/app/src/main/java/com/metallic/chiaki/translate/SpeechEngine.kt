@@ -18,6 +18,8 @@ class SpeechEngine(
 	private val onError: (String) -> Unit)
 {
 	@Volatile private var running = false
+	/** True while the game shows subtitles: those get translated from the screen, so listening is wasted CPU. */
+	@Volatile var paused = false
 	private var thread: Thread? = null
 
 	fun start()
@@ -37,6 +39,7 @@ class SpeechEngine(
 
 	private fun loop()
 	{
+		android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
 		val model = try { Model(ModelAssets.ensure(context).absolutePath) }
 		catch(e: Throwable)
 		{
@@ -60,6 +63,12 @@ class SpeechEngine(
 					continue
 				}
 				val now = SystemClock.elapsedRealtime()
+				if(paused)
+				{
+					// keep draining the audio so nothing old piles up, but skip the expensive recognition
+					if(utteranceStart != 0L) { recognizer.reset(); utteranceStart = 0L }
+					continue
+				}
 				if(utteranceStart == 0L) utteranceStart = now
 				if(recognizer.acceptWaveForm(buf, n))
 				{

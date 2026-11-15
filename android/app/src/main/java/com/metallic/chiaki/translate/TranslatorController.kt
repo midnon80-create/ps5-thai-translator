@@ -36,8 +36,13 @@ class TranslatorController(
 
 	private val prefs = TranslatorPrefs(context)
 	private val main = Handler(Looper.getMainLooper())
-	private val worker = Executors.newSingleThreadExecutor { Thread(it, "translator-ocr") }
-	private val translateWorker = Executors.newSingleThreadExecutor { Thread(it, "translator-text") }
+	// translator work runs at background priority so the game picture always comes first
+	private fun lowPriority(name: String) = java.util.concurrent.ThreadFactory { r ->
+		Thread({ android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); r.run() }, name)
+	}
+	private val worker = Executors.newSingleThreadExecutor(lowPriority("translator-ocr"))
+	private val translateWorker = Executors.newSingleThreadExecutor(lowPriority("translator-text"))
+	@Volatile private var quietFrames = 0
 	private var copyThread: HandlerThread? = null
 
 	private var screenReader: ScreenReader? = null
@@ -118,7 +123,8 @@ class TranslatorController(
 		override fun run()
 		{
 			if(!running.get()) return
-			main.postDelayed(this, FRAME_INTERVAL_MS)
+			// read less often while nothing new appears on screen (saves CPU on slow TVs)
+			main.postDelayed(this, if(quietFrames >= 4) FRAME_INTERVAL_IDLE_MS else FRAME_INTERVAL_MS)
 			if(!streamConnected || busy.get()) return
 			grabFrame()
 		}
@@ -157,10 +163,27 @@ class TranslatorController(
 			val region = if(yOffset > 0)
 				Bitmap.createBitmap(bmp, 0, yOffset, bmp.width, bmp.height - yOffset)
 			else bmp
-			val found = reader.find(region)
+			// Cheap check first: if the subtitle area looks the same as last time, reuse the last result
+			// instead of running text recognition again (most of the CPU cost).
+			val sig = signature(region)
+			val prev = lastSignature
+			val found = if(prev != null && sameImage(prev, sig) && skippedInARow < MAX_SKIPS)
+			{
+				skippedInARow++
+				lastFound
+			}
+			else
+			{
+				skippedInARow = 0
+				reader.find(region).also { lastFound = it }
+			}
+			lastSignature = sig
 			if(region !== bmp) region.recycle()
 			val english = found?.text ?: ""
 			val now = SystemClock.elapsedRealtime()
+			quietFrames = if(english.isEmpty()) quietFrames + 1 else 0
+			if(english.isNotEmpty()) lastScreenTextAt = now
+			speech?.paused = prefs.mode == TranslatorPrefs.Mode.BOTH && now - lastScreenTextAt < SPEECH_SUPPRESS_MS
 			when(val action = tracker.update(english, now))
 			{
 				is SubtitleTracker.Action.Show ->
@@ -188,6 +211,42 @@ class TranslatorController(
 		}
 	}
 
+	private var lastSignature: IntArray? = null
+	private var lastFound: ScreenReader.Found? = null
+	private var skippedInARow = 0
+
+	/** 64x16 grayscale thumbnail of the area being read. */
+	private fun signature(region: Bitmap): IntArray
+	{
+		val small = Bitmap.createScaledBitmap(region, SIG_W, SIG_H, true)
+		val px = IntArray(SIG_W * SIG_H)
+		small.getPixels(px, 0, SIG_W, 0, 0, SIG_W, SIG_H)
+		small.recycle()
+		for(i in px.indices)
+		{
+			val c = px[i]
+			px[i] = ((c shr 16 and 0xff) * 3 + (c shr 8 and 0xff) * 6 + (c and 0xff)) / 10
+		}
+		return px
+	}
+
+	/**
+	 * Same picture only if nothing changed anywhere: a new subtitle line on a still scene barely moves the
+	 * average but makes a few cells jump by 100+ (measured on real footage), so the largest change decides.
+	 */
+	private fun sameImage(a: IntArray, b: IntArray): Boolean
+	{
+		var sum = 0L
+		var max = 0
+		for(i in a.indices)
+		{
+			val d = kotlin.math.abs(a[i] - b[i])
+			sum += d
+			if(d > max) max = d
+		}
+		return max < 30 && sum.toDouble() / a.size < 1.0
+	}
+
 	private fun onSpeech(english: String)
 	{
 		// When the game already shows subtitles, the screen translation covers it; skip the duplicate.
@@ -212,8 +271,12 @@ class TranslatorController(
 	{
 		private const val TAG = "Translator"
 		private const val FRAME_INTERVAL_MS = 450L
-		private const val FRAME_W = 1280
-		private const val FRAME_H = 720
+		private const val FRAME_INTERVAL_IDLE_MS = 900L
+		private const val SIG_W = 64
+		private const val SIG_H = 16
+		private const val MAX_SKIPS = 6 // re-read at least every ~3 s anyway
+		private const val FRAME_W = 960
+		private const val FRAME_H = 540
 		private const val SPEECH_SUPPRESS_MS = 3000L
 		private const val SPEECH_SHOW_MS = 6000L
 	}
