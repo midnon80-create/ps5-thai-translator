@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>เช็กทีวี · PS5 แปลไทย</title>
+<meta name="description" content="ใส่รุ่นทีวี แล้วดูว่าใช้แอป PS5 แปลไทยได้ไหม และต้องทำอะไรเพิ่ม">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@500;700;800&family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#070b16;--card:#111a2e;--line:#22304f;--cyan:#38d6ff;--amber:#ffb84d;--green:#4ade80;--red:#ff6b6b;--text:#eef3ff;--mute:#9fb0d0}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(120% 60% at 50% 0%,#14244a 0%,var(--bg) 60%) fixed;background-color:var(--bg);color:var(--text);font-family:Sarabun,sans-serif;font-size:17px;line-height:1.55}
+.wrap{max-width:760px;margin:0 auto;padding:28px 16px 60px}
+.tag{display:inline-block;font-family:Kanit;font-weight:500;font-size:14px;border:1.5px solid var(--cyan);color:var(--cyan);border-radius:30px;padding:2px 14px}
+h1{font-family:Kanit;font-weight:800;font-size:clamp(30px,7vw,46px);line-height:1.12;margin:12px 0 6px}
+h1 em{font-style:normal;color:var(--cyan)}
+.lead{color:#cdd8ef;margin:0 0 22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px}
+label{font-family:Kanit;font-weight:500;display:block;margin:0 0 6px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+select,input{font:inherit;color:var(--text);background:#0b1426;border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+select{flex:0 0 170px}
+input{flex:1 1 220px}
+input:focus,select:focus{outline:none;border-color:var(--cyan)}
+button{font-family:Kanit;font-weight:700;font-size:18px;border:0;border-radius:12px;padding:12px 22px;cursor:pointer}
+.go{background:var(--cyan);color:#04121c;width:100%;margin-top:12px}
+.hint{font-size:14px;color:var(--mute);margin-top:8px}
+.q{margin-top:16px;padding-top:14px;border-top:1px dashed var(--line)}
+.q .opts{display:flex;gap:8px;flex-wrap:wrap}
+.q button{font-size:15px;font-weight:500;background:#0b1426;color:var(--text);border:1.5px solid var(--line);padding:8px 14px}
+.q button.on{border-color:var(--cyan);color:var(--cyan)}
+#result{margin-top:22px;display:none}
+.verdict{border-radius:18px;padding:20px;border:2px solid}
+.v-ok{background:rgba(74,222,128,.08);border-color:var(--green)}
+.v-maybe{background:rgba(255,184,77,.08);border-color:var(--amber)}
+.v-no{background:rgba(255,107,107,.08);border-color:var(--red)}
+.v-head{font-family:Kanit;font-weight:800;font-size:28px;line-height:1.2}
+.v-ok .v-head{color:var(--green)}.v-maybe .v-head{color:var(--amber)}.v-no .v-head{color:var(--red)}
+.v-sub{color:#dbe4f6;margin-top:4px}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:14px 0 0;font-size:15px}
+.facts dt{color:var(--mute)}.facts dd{margin:0}
+h2{font-family:Kanit;font-weight:700;font-size:22px;margin:22px 0 10px}
+ol,ul{padding-left:22px;margin:6px 0}
+li{margin:5px 0}
+.dongles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px}
+.dg{background:#0b1426;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.dg b{font-family:Kanit;font-weight:500;display:block}
+.dg span{font-size:14px;color:var(--mute)}
+.dg .best{color:var(--green);font-family:Kanit;font-size:13px}
+.copy{background:#0b1426;color:var(--cyan);border:1.5px solid var(--cyan);font-size:16px;margin-top:14px}
+.foot{font-size:13px;color:#6f7f9f;margin-top:28px}
+a{color:var(--cyan)}
+.tips li b{color:#fff}
+@media (max-width:520px){select{flex:1 1 100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">PS5 แปลไทย · เช็กทีวีก่อนใช้</span>
+  <h1>ทีวีของคุณ<br><em>ใช้แอปได้ไหม?</em></h1>
+  <p class="lead">ใส่ยี่ห้อและรุ่นทีวี (ดูได้ที่ป้ายหลังทีวี หรือ ตั้งค่า › เกี่ยวกับ) แล้วกดเช็ก</p>
+
+  <div class="card">
+    <label for="model">ยี่ห้อ และ รุ่นทีวี</label>
+    <div class="row">
+      <select id="brand" aria-label="ยี่ห้อ">
+        <option value="">ไม่แน่ใจ / ให้ระบบเดา</option>
+        <option>Sony</option><option>Samsung</option><option>LG</option><option>TCL</option>
+        <option>Xiaomi</option><option>Hisense</option><option>Toshiba</option><option>Sharp</option>
+        <option>Philips</option><option>Panasonic</option><option>Skyworth</option><option>Coocaa</option>
+        <option>Aconatic</option><option>Haier</option><option>Casper</option><option>Prismapro</option>
+        <option>Worldtech</option><option>Altron</option><option value="box">กล่อง/ดองเกิลทีวี</option><option value="other">ยี่ห้ออื่น</option>
+      </select>
+      <input id="model" placeholder="เช่น KD-55X80L, 55P735, QA55Q60D" autocomplete="off">
+    </div>
+    <div class="hint">ไม่รู้รุ่นก็ไม่เป็นไร เลือกยี่ห้ออย่างเดียว แล้วตอบคำถามด้านล่าง</div>
+
+    <div class="q">
+      <label>ในทีวีมีแอป <b>Google Play Store</b> ไหม?</label>
+      <div class="opts" id="play">
+        <button type="button" data-v="yes">มี</button>
+        <button type="button" data-v="no">ไม่มี</button>
+        <button type="button" data-v="unknown" class="on">ไม่แน่ใจ</button>
+      </div>
+    </div>
+    <button class="go" id="check">เช็กเลย</button>
+  </div>
+
+  <div id="result" aria-live="polite"></div>
+
+  <h2>สเปกที่แอปต้องการ</h2>
+  <ul class="tips">
+    <li><b>ระบบ:</b> Google TV หรือ Android TV, Android 7.0 ขึ้นไป (มี Google Play Store)</li>
+    <li><b>หน่วยความจำ:</b> RAM 2 GB ขึ้นไป (3–4 GB ลื่นกว่า) · พื้นที่ว่าง 500 MB</li>
+    <li><b>เน็ต:</b> PS5 กับทีวีอยู่เน็ตบ้านเดียวกัน · แนะนำต่อสาย LAN ที่ PS5 หรือ Wi-Fi 5 GHz</li>
+    <li><b>อื่นๆ:</b> จอย PS5 (DualSense) จับคู่บลูทูธกับทีวี · บัญชี PSN</li>
+  </ul>
+
+  <h2>เช็กเองแบบแน่ที่สุด</h2>
+  <ol>
+    <li>หน้าโฮมทีวีมี <b>Google Play Store</b> = ใช้ได้เกือบแน่นอน</li>
+    <li>ดูรุ่น Android: <b>ตั้งค่า › ระบบ › เกี่ยวกับ › เวอร์ชัน</b> ต้องเป็น 7 ขึ้นไป</li>
+    <li>ลงแอปแล้วกด <b>Settings › ทดสอบตัวแปล</b> ขึ้น ✔ ครบ = พร้อมใช้</li>
+  </ol>
+
+  <p class="foot">ผลเช็กเป็นการประเมินจากยี่ห้อและรหัสรุ่น ทีวีรุ่นเดียวกันอาจใช้ระบบต่างกันตามประเทศที่ขาย ถ้าไม่แน่ใจ ทักถามผู้ขายพร้อมรูปป้ายหลังทีวีได้เลย<br>
+  ไม่ได้เป็นผลิตภัณฑ์ของ Sony Interactive Entertainment / PlayStation · "PlayStation" และ "PS5" เป็นเครื่องหมายการค้าของ Sony Interactive Entertainment Inc.</p>
+</div>
+
+<script>
+// ---------- knowledge: what OS each brand / model family runs ----------
+// verdict: ok = Google/Android TV, maybe = depends on model/country, no = not Android
+const BRANDS = {
+  Sony:      {os:"Google TV / Android TV", v:"ok", note:"ทีวี Sony BRAVIA รหัส KD- / XR- / K- ตั้งแต่ปี 2015 เป็น Android TV หรือ Google TV"},
+  Samsung:   {os:"Tizen", v:"no", note:"ทีวี Samsung ใช้ระบบ Tizen ไม่ใช่ Android ลงแอปนี้ไม่ได้"},
+  LG:        {os:"webOS", v:"no", note:"ทีวี LG ใช้ระบบ webOS ไม่ใช่ Android ลงแอปนี้ไม่ได้"},
+  TCL:       {os:"Google TV / Android TV", v:"ok", note:"ทีวี TCL ที่ขายในไทยส่วนใหญ่เป็น Google TV / Android TV (รุ่นที่เป็น Roku TV ใช้ไม่ได้)"},
+  Xiaomi:    {os:"Google TV / Android TV", v:"ok", note:"ทีวี Xiaomi ที่ขายในไทยเป็น Google TV / Android TV (เวอร์ชันจีนที่ไม่มี Play Store ใช้ไม่ได้)"},
+  Hisense:   {os:"VIDAA หรือ Android TV", v:"maybe", note:"Hisense ส่วนใหญ่ในไทยใช้ระบบ VIDAA (ใช้ไม่ได้) มีบางรุ่นเป็น Android TV / Google TV"},
+  Toshiba:   {os:"Google TV / Android TV หรือ VIDAA", v:"maybe", note:"Toshiba มีทั้งรุ่น Google TV / Android TV (ใช้ได้) และรุ่น VIDAA (ใช้ไม่ได้)"},
+  Sharp:     {os:"Google TV / Android TV", v:"ok", note:"ทีวี Sharp AQUOS รุ่นใหม่ส่วนใหญ่เป็น Google TV / Android TV"},
+  Philips:   {os:"Google TV / Android TV หรือ Saphi/Titan", v:"maybe", note:"Philips รุ่นกลาง–บนเป็น Android/Google TV ส่วนรุ่นเล็กบางรุ่นใช้ Saphi หรือ Titan OS (ใช้ไม่ได้)"},
+  Panasonic: {os:"My Home Screen / Fire TV", v:"no", note:"Panasonic ส่วนใหญ่ใช้ My Home Screen หรือ Fire TV ไม่ใช่ Google TV"},
+  Skyworth:  {os:"Google TV / Android TV", v:"ok", note:"Skyworth ส่วนใหญ่เป็น Google TV / Android TV"},
+  Coocaa:    {os:"Coolita OS", v:"no", note:"Coocaa ส่วนใหญ่ใช้ระบบ Coolita OS ไม่มี Google Play Store"},
+  Aconatic:  {os:"Android TV / Google TV หรือ ทีวีธรรมดา", v:"maybe", note:"Aconatic มีทั้งรุ่น Android/Google TV และรุ่นสมาร์ททีวีระบบอื่น"},
+  Haier:     {os:"Google TV / Android TV", v:"maybe", note:"Haier รุ่นใหม่มักเป็น Google TV แต่บางรุ่นเป็นระบบอื่น"},
+  Casper:    {os:"Android TV หรือ ระบบอื่น", v:"maybe", note:"Casper มีหลายระบบ ต้องเช็กว่ามี Google Play Store"},
+  Prismapro: {os:"Android TV / ระบบอื่น", v:"maybe", note:"ทีวีราคาประหยัดบางรุ่นเป็น Android ที่ไม่มี Google Play Store ต้องเช็กก่อน"},
+  Worldtech: {os:"Android TV / ระบบอื่น", v:"maybe", note:"ทีวีราคาประหยัดบางรุ่นเป็น Android ที่ไม่มี Google Play Store ต้องเช็กก่อน"},
+  Altron:    {os:"Android TV / ระบบอื่น", v:"maybe", note:"ทีวีราคาประหยัดบางรุ่นเป็น Android ที่ไม่มี Google Play Store ต้องเช็กก่อน"},
+};
+
+// model-number patterns → brand (and sometimes an exact OS)
+const PATTERNS = [
+  // TV boxes / dongles
+  {re:/google\s*tv\s*streamer|chromecast/i, brand:"box", os:"Google TV", v:"ok", note:"กล่อง/ดองเกิล Google TV ใช้ได้"},
+  {re:/mi\s*box|tv\s*box\s*s|xiaomi\s*box|mdz-\d/i, brand:"box", os:"Google TV / Android TV", v:"ok", note:"Xiaomi TV Box / Mi Box ใช้ได้"},
+  {re:/shield/i, brand:"box", os:"Android TV", v:"ok", note:"NVIDIA Shield TV ใช้ได้ (แรงมาก)"},
+  {re:/onn|walmart/i, brand:"box", os:"Google TV", v:"ok", note:"onn. Google TV box ใช้ได้"},
+  {re:/fire\s*tv|firestick|fire\s*stick/i, brand:"box", os:"Fire OS (Amazon)", v:"maybe", note:"Fire TV เป็น Android ดัดแปลง ไม่มี Google Play Store ลงแอปได้ แต่ยังไม่รับประกันว่าตัวแปลออฟไลน์จะทำงาน"},
+  {re:/apple\s*tv/i, brand:"box", os:"tvOS", v:"no", note:"Apple TV ไม่ใช่ Android ใช้ไม่ได้"},
+  {re:/roku/i, brand:"box", os:"Roku OS", v:"no", note:"Roku ไม่ใช่ Android ใช้ไม่ได้"},
+  // Sony
+  {re:/^kdl[-\s]?/i, brand:"Sony", os:"Linux (ทีวีรุ่นเก่า) — ยกเว้นบางรุ่นปี 2015", v:"maybe", note:"Sony รหัส KDL- ส่วนใหญ่เป็นรุ่นเก่าก่อน Android TV (ยกเว้นบางรุ่นปี 2015 เช่น W800C/W950C) ต้องเช็กว่ามี Google Play Store"},
+  {re:/^(kd|xr|k)[-\s]?\d{2}/i, brand:"Sony"},
+  {re:/bravia/i, brand:"Sony"},
+  // Samsung
+  {re:/^(ua|un|qa|qn|ue|gq|qe|ku|ls\d{2})/i, brand:"Samsung"},
+  // LG
+  {re:/^oled|^\d{2}(u[a-z]\d|nano|qned|lm|lh|lk|uh|uk|um|un|up|uq|ur|us|ut|uv)/i, brand:"LG"},
+  // Panasonic
+  {re:/^(th|tx)[-\s]?\d{2}/i, brand:"Panasonic"},
+  // Philips
+  {re:/\d{2}(pus|put|pfs|pft|phs|pht|oled|pml)\d/i, brand:"Philips"},
+  // Sharp
+  {re:/^(\d)t[-\s]?c\d{2}|^lc[-\s]?\d{2}|aquos/i, brand:"Sharp"},
+  // Xiaomi
+  {re:/^l\d{2}m\d|^(mi|xiaomi)\s*tv|^redmi|tv\s*a\s*pro|tv\s*q\d|tv\s*p1|tv\s*a\d/i, brand:"Xiaomi"},
+  // Hisense (A/E/U series, VIDAA by default)
+  {re:/^\d{2}(a\d|e\d|u\d|q\d)[a-z0-9]{0,4}$/i, brand:"Hisense?"},
+  // Toshiba Thai models end in L + letter (55C350LP, 43V35LN)
+  {re:/^\d{2}[a-z]\d{2,3}l[a-z]$/i, brand:"Toshiba"},
+  // TCL
+  {re:/^\d{2}(p|c|q|s|v)\d{3}/i, brand:"TCL"},
+  // Toshiba
+  {re:/^\d{2}(c3|c4|c5|c6|m5|m4|z5|z6|x9|u7|v3|e3|l5|lf)\d*/i, brand:"Toshiba?"},
+];
+
+const DONGLES = [
+  {n:"Google TV Streamer", p:"≈ 3,500 บาท", s:"แรงสุด RAM 4 GB ลื่นที่สุด", best:true},
+  {n:"Xiaomi TV Box S (Gen 3)", p:"≈ 1,800–2,200 บาท", s:"คุ้มราคา Google TV 4K"},
+  {n:"Chromecast with Google TV (4K)", p:"≈ 1,800–2,500 บาท", s:"ใช้ได้ ถ้ายังหาซื้อได้"},
+  {n:"onn. 4K Pro / NVIDIA Shield", p:"ราคาแล้วแต่ร้าน", s:"ใช้ได้ดี (Shield แรงมาก)"},
+];
+
+let play = "unknown";
+document.querySelectorAll("#play button").forEach(b => b.onclick = () => {
+  play = b.dataset.v;
+  document.querySelectorAll("#play button").forEach(x => x.classList.toggle("on", x === b));
+});
+
+function detect(brandSel, model) {
+  const m = model.trim();
+  for (const p of PATTERNS) {
+    if (p.re.test(m)) {
+      if (p.brand === "box") return {...p, brand:"กล่อง/ดองเกิลทีวี", guessed:!brandSel};
+      let brand = p.brand;
+      let unsure = brand.endsWith("?");
+      brand = brand.replace("?", "");
+      if (brandSel && brandSel !== "other" && brandSel !== "box" && brandSel !== brand) brand = brandSel, unsure = false;
+      const base = BRANDS[brand] || {};
+      return {brand, os:p.os || base.os, v:p.v || base.v, note:p.note || base.note, guessed:!brandSel, unsure};
+    }
+  }
+  if (brandSel === "box") return {brand:"กล่อง/ดองเกิลทีวี", os:"ไม่ทราบ", v:"maybe", note:"กล่องทีวีที่เป็น Google TV / Android TV (มี Play Store) ใช้ได้ ส่วน Fire TV, Apple TV, Roku ใช้ไม่ได้หรือไม่รับประกัน"};
+  if (brandSel && BRANDS[brandSel]) return {brand:brandSel, ...BRANDS[brandSel]};
+  if (brandSel === "other") return {brand:"ยี่ห้ออื่น", os:"ไม่ทราบ", v:"maybe", note:"ไม่มีข้อมูลยี่ห้อนี้ เช็กจาก Google Play Store บนทีวีได้แน่ที่สุด"};
+  return null;
+}
+
+function render(r, model) {
+  // the Play Store answer from the person beats any guess from the model number
+  let v = r.v, why = r.note;
+  if (play === "yes" && r.v !== "ok") { v = "ok"; why = "ทีวีมี Google Play Store = เป็น Android TV / Google TV ใช้แอปนี้ได้"; }
+  if (play === "no") { v = (r.brand === "กล่อง/ดองเกิลทีวี" && /fire/i.test(model)) ? "maybe" : "no"; if (v === "no") why = "ทีวีไม่มี Google Play Store = ไม่ใช่ Android TV / Google TV ลงแอปนี้โดยตรงไม่ได้"; }
+
+  const head = {ok:"✅ ใช้ได้", maybe:"⚠️ น่าจะได้ — ต้องเช็กอีกนิด", no:"❌ ใช้ตรงๆ ไม่ได้"}[v];
+  const sub = {ok:"ลงแอปบนทีวีเครื่องนี้ได้เลย ไม่ต้องซื้ออะไรเพิ่ม",
+               maybe:"ขึ้นกับรุ่นย่อยหรือประเทศที่ขาย ทำตามขั้นตอนด้านล่างเพื่อเช็ก",
+               no:"แต่ใช้ได้ ถ้าเสียบดองเกิล Google TV ที่ช่อง HDMI (ไม่ต้องใช้คอม)"}[v];
+
+  let steps = "";
+  if (v === "ok") steps = `
+    <h2>ขั้นต่อไป</h2>
+    <ol>
+      <li>ทีวี: Play Store › ลงแอป <b>Downloader</b></li>
+      <li>ตั้งค่า › แอป › ความปลอดภัย › แหล่งที่ไม่รู้จัก › เปิดให้ Downloader</li>
+      <li>ใส่รหัส / ลิงก์ที่ได้จากผู้ขาย › ติดตั้ง › เปิดแอป › Settings › <b>ทดสอบตัวแปล</b></li>
+      <li>ต่อสาย LAN ที่ PS5 หรือใช้ Wi-Fi 5 GHz ภาพจะลื่นที่สุด</li>
+    </ol>`;
+  if (v === "maybe") steps = `
+    <h2>เช็กให้แน่ใน 1 นาที</h2>
+    <ol>
+      <li>กดปุ่มโฮมบนรีโมท ดูว่ามีแอป <b>Google Play Store</b> ไหม</li>
+      <li><b>มี</b> → ใช้ได้ ทำตามคู่มือติดตั้งได้เลย</li>
+      <li><b>ไม่มี</b> → เสียบดองเกิล Google TV (ด้านล่าง) แล้วใช้แอปบนดองเกิลแทน</li>
+    </ol>
+    <p class="hint">ตอบคำถาม "มี Google Play Store ไหม" ด้านบน แล้วกดเช็กใหม่ จะได้ผลชัดเจน</p>`;
+  if (v === "no" || v === "maybe") steps += `
+    <h2>วิธีแก้: เสียบดองเกิล Google TV</h2>
+    <ol>
+      <li>ซื้อดองเกิล/กล่อง Google TV สักตัว (ตัวเลือกด้านล่าง)</li>
+      <li>เสียบที่ช่อง <b>HDMI</b> ของทีวี + เสียบไฟ › เลือกช่อง HDMI นั้นด้วยรีโมททีวี</li>
+      <li>ตั้งค่าดองเกิลด้วยบัญชี Google และต่อ Wi-Fi บ้านเดียวกับ PS5</li>
+      <li>ลงแอป PS5 แปลไทยบน <b>ดองเกิล</b> ตามคู่มือ (เหมือนลงบนทีวี Google TV ทุกอย่าง)</li>
+      <li>จับคู่จอย PS5 กับ <b>ดองเกิล</b> (ไม่ใช่กับทีวี)</li>
+    </ol>
+    <div class="dongles">${DONGLES.map(d => `<div class="dg">${d.best ? '<div class="best">แนะนำ</div>' : ''}<b>${d.n}</b><span>${d.p} · ${d.s}</span></div>`).join("")}</div>
+    <p class="hint">หลีกเลี่ยงรุ่นที่ RAM 2 GB หรือน้อยกว่า (เช่น Chromecast HD) อาจแปลเสียงพูดไม่ทัน · Fire TV Stick ไม่รับประกัน</p>`;
+
+  const summary = `เช็กทีวี PS5 แปลไทย\nยี่ห้อ: ${r.brand}${model ? "\nรุ่น: " + model : ""}\nระบบ: ${r.os || "-"}\nGoogle Play Store: ${({yes:"มี",no:"ไม่มี",unknown:"ไม่แน่ใจ"})[play]}\nผล: ${head.replace(/^\S+\s/, "")}`;
+
+  const el = document.getElementById("result");
+  el.style.display = "block";
+  el.innerHTML = `
+    <div class="verdict v-${v}">
+      <div class="v-head">${head}</div>
+      <div class="v-sub">${sub}</div>
+      <dl class="facts">
+        <dt>ยี่ห้อ</dt><dd>${r.brand}${r.guessed ? " <span style='color:var(--mute)'>(เดาจากรหัสรุ่น)</span>" : ""}</dd>
+        ${model ? `<dt>รุ่น</dt><dd>${model.replace(/[<>&]/g, "")}</dd>` : ""}
+        <dt>ระบบทีวี</dt><dd>${r.os || "-"}</dd>
+        <dt>เหตุผล</dt><dd>${why}</dd>
+      </dl>
+      <button class="copy" id="copy">คัดลอกผลไปส่งผู้ขาย</button>
+    </div>${steps}`;
+  document.getElementById("copy").onclick = async () => {
+    try { await navigator.clipboard.writeText(summary); document.getElementById("copy").textContent = "คัดลอกแล้ว ✓ วางในแชตผู้ขายได้เลย"; }
+    catch (e) { prompt("คัดลอกข้อความนี้", summary); }
+  };
+  el.scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+document.getElementById("check").onclick = () => {
+  const brand = document.getElementById("brand").value;
+  const model = document.getElementById("model").value.trim();
+  let r = detect(brand, model);
+  if (!r) {
+    if (play !== "unknown") r = {brand:"ไม่ทราบ", os:"ไม่ทราบ", v:"maybe", note:"ไม่รู้จักรหัสรุ่นนี้"};
+    else {
+      const el = document.getElementById("result");
+      el.style.display = "block";
+      el.innerHTML = `<div class="verdict v-maybe"><div class="v-head">ยังบอกไม่ได้</div><div class="v-sub">ไม่รู้จักรหัสรุ่นนี้ เลือกยี่ห้อในช่องด้านซ้าย หรือตอบว่าทีวีมี Google Play Store ไหม แล้วกดเช็กอีกครั้ง</div></div>`;
+      return;
+    }
+  }
+  render(r, model);
+};
+document.getElementById("model").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("check").click(); });
+</script>
+</body>
+</html>
