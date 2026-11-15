@@ -39,3 +39,8 @@ chiaki.conf
 .cache/
 *.vscode
 site/
+
+# PS5 Thai Translator: never publish local SDK paths or signing keys
+android/local.properties
+*.jks
+*.keystore
