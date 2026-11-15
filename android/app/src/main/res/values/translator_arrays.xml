@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="tr_mode_titles">
+        <item>ข้อความบนจอ + เสียงพูด</item>
+        <item>ข้อความบนจออย่างเดียว</item>
+        <item>เสียงพูดอย่างเดียว</item>
+    </string-array>
+    <string-array name="tr_mode_values"><item>both</item><item>screen</item><item>speech</item></string-array>
+    <string-array name="tr_region_titles">
+        <item>ครึ่งล่าง (ซับไตเติ้ล) แนะนำ</item>
+        <item>ทั้งจอ (กล่องข้อความ เมนู)</item>
+    </string-array>
+    <string-array name="tr_region_values"><item>bottom</item><item>full</item></string-array>
+    <string-array name="tr_position_titles">
+        <item>วางเหนือซับอังกฤษ (อัตโนมัติ) แนะนำ</item>
+        <item>ด้านบนจอ</item>
+        <item>ด้านล่างจอ</item>
+    </string-array>
+    <string-array name="tr_position_values"><item>above</item><item>top</item><item>bottom</item></string-array>
+    <string-array name="tr_font_titles">
+        <item>Sarabun (มีหัว อ่านง่าย แบบซับหนัง) แนะนำ</item>
+        <item>Kanit (ไม่มีหัว ทันสมัย)</item>
+    </string-array>
+    <string-array name="tr_font_values"><item>sarabun</item><item>kanit</item></string-array>
+    <string-array name="tr_size_titles"><item>เล็ก</item><item>กลาง</item><item>ใหญ่</item></string-array>
+    <string-array name="tr_size_values"><item>small</item><item>medium</item><item>large</item></string-array>
+</resources>
