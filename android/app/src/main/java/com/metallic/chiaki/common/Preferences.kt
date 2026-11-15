@@ -59,6 +59,12 @@ class Preferences(context: Context)
 
 	private val resources = context.resources
 
+	// TVs have a real controller and no touchscreen: the on-screen touch controls only cover the game there.
+	private val isTv = context.packageManager.let {
+		it.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+			!it.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
+	}
+
 	val discoveryEnabledKey get() = resources.getString(R.string.preferences_discovery_enabled_key)
 	var discoveryEnabled
 		get() = sharedPreferences.getBoolean(discoveryEnabledKey, true)
@@ -66,7 +72,7 @@ class Preferences(context: Context)
 
 	val onScreenControlsEnabledKey get() = resources.getString(R.string.preferences_on_screen_controls_enabled_key)
 	var onScreenControlsEnabled
-		get() = sharedPreferences.getBoolean(onScreenControlsEnabledKey, true)
+		get() = !isTv && sharedPreferences.getBoolean(onScreenControlsEnabledKey, true)
 		set(value) { sharedPreferences.edit().putBoolean(onScreenControlsEnabledKey, value).apply() }
 
 	val touchpadOnlyEnabledKey get() = resources.getString(R.string.preferences_touchpad_only_enabled_key)
