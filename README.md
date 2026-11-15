@@ -53,8 +53,8 @@ LAN play only (internet remote play is off in this build).
 ## License & credits
 
 GNU AGPL v3 — see [COPYING](COPYING) and [LICENSES](LICENSES). Based on Chiaki by Florian Märkl and chiaki-ng by Street Pea and contributors.
-Speech recognition: [Vosk](https://alphacephei.com/vosk/) (Apache 2.0). OCR and offline translation: Google ML Kit.
-Fonts: Sarabun and Kanit (SIL Open Font License).
+Speech recognition: [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache 2.0) with [Moonshine Tiny](https://github.com/usefulsensors/moonshine) (MIT, Useful Sensors) and [Silero VAD](https://github.com/snakers4/silero-vad) (MIT); the model is downloaded on first use from the `speech-model-1` release. OCR and offline translation: Google ML Kit.
+Fonts: Sarabun and Kanit (SIL Open Font License). Offline game phrase bank: `android/app/src/main/assets/phrasebook_th.txt`.
 
 **ไม่ได้เป็นผลิตภัณฑ์ของ Sony Interactive Entertainment / PlayStation**
 This project is not affiliated with, endorsed by, or sponsored by Sony Interactive Entertainment. "PlayStation" and "PS5" are trademarks of Sony Interactive Entertainment Inc.

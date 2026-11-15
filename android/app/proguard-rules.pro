@@ -96,3 +96,6 @@
 -keepclassmembers class * extends com.sun.jna.** { public *; }
 -dontwarn java.awt.**
 -dontwarn com.sun.jna.**
+
+# sherpa-onnx: native code reads these classes and fields by name
+-keep class com.k2fsa.sherpa.onnx.** { *; }

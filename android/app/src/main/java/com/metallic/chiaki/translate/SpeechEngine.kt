@@ -1,23 +1,31 @@
 package com.metallic.chiaki.translate
 
 import android.content.Context
-import android.os.SystemClock
 import android.util.Log
-import org.json.JSONObject
-import org.vosk.Model
-import org.vosk.Recognizer
+import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineModelConfig
+import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.SileroVadModelConfig
+import com.k2fsa.sherpa.onnx.Vad
+import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
+import java.util.zip.ZipInputStream
 
 /**
- * Offline English speech recognition (Vosk) on the game audio.
- * Calls [onSentence] with each finished English sentence, on its own thread.
+ * Offline English speech recognition on the game audio:
+ * Silero VAD finds each spoken phrase (so sentences are cut at the speaker's pauses), then
+ * Moonshine Tiny transcribes it with punctuation. Measured on PC: about 4-6x faster than the
+ * previous Vosk engine, so slow TVs can keep up.
+ * Calls [onSentence] with the sentences of each phrase, on its own thread.
  */
 class SpeechEngine(
 	private val context: Context,
 	private val onSentence: (List<String>) -> Unit,
 	private val onError: (String) -> Unit,
-	/** true = lighter decoding settings (about 1.7x faster, slightly less accurate) for slow TVs */
-	private val fast: Boolean = false,
 	/** called (on the speech thread, which then stops) when recognition can't keep up with real time */
 	private val onTooSlow: (() -> Unit)? = null)
 {
@@ -44,20 +52,16 @@ class SpeechEngine(
 	private fun loop()
 	{
 		android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
-		val model = try { Model(ModelAssets.ensure(context, fast).absolutePath) }
-		catch(e: Throwable)
+		val asr = try { Speech.open(context) } catch(e: Throwable)
 		{
-			Log.e(TAG, "Vosk model load failed", e)
+			Log.e(TAG, "speech engine load failed", e)
 			onError("โหลดระบบฟังเสียงไม่สำเร็จ")
 			running = false
 			return
 		}
-		val recognizer = Recognizer(model, AudioTap.SAMPLE_RATE.toFloat())
-		recognizer.setWords(true) // word timings, used to cut sentences at pauses
 		AudioTap.nativeSetEnabled(true)
 		val buf = ShortArray(1600) // 100 ms
-		var utteranceStart = 0L
-		// watchdog: CPU time spent recognising vs. seconds of audio, in 10 s windows
+		// watchdog: CPU time spent on speech vs. seconds of audio, in 10 s windows
 		var windowAudio = 0.0
 		var windowBusyNs = 0L
 		var slowWindows = 0
@@ -71,18 +75,16 @@ class SpeechEngine(
 					Thread.sleep(25)
 					continue
 				}
-				val now = SystemClock.elapsedRealtime()
 				if(paused)
 				{
-					// keep draining the audio so nothing old piles up, but skip the expensive recognition
-					if(utteranceStart != 0L) { recognizer.reset(); utteranceStart = 0L }
+					asr.vad.clear() // keep draining the audio but skip the work
 					continue
 				}
-				if(utteranceStart == 0L) utteranceStart = now
 				val t0 = System.nanoTime()
-				val endOfSentence = recognizer.acceptWaveForm(buf, n)
+				val phrases = asr.feed(buf, n)
 				windowBusyNs += System.nanoTime() - t0
 				windowAudio += n / AudioTap.SAMPLE_RATE.toDouble()
+				for(text in phrases) emit(text)
 				if(windowAudio >= WATCH_WINDOW_S)
 				{
 					val ratio = windowBusyNs / 1e9 / windowAudio
@@ -91,24 +93,11 @@ class SpeechEngine(
 					windowBusyNs = 0L
 					if(slowWindows >= 2 && onTooSlow != null)
 					{
-						Log.w(TAG, "speech recognition slower than real time (x%.2f), giving up".format(ratio))
+						Log.w(TAG, "speech slower than real time (x%.2f), stopping".format(ratio))
 						running = false
 						onTooSlow.invoke()
 						break
 					}
-				}
-				if(endOfSentence)
-				{
-					emit(recognizer.result)
-					utteranceStart = 0L
-				}
-				else if(now - utteranceStart > MAX_UTTERANCE_MS)
-				{
-					// Music or constant noise can keep Vosk from ever ending a sentence; cut it.
-					val partial = JSONObject(recognizer.partialResult).optString("partial")
-					if(partial.isNotBlank())
-						emit(recognizer.finalResult)
-					utteranceStart = 0L
 				}
 			}
 		}
@@ -119,108 +108,202 @@ class SpeechEngine(
 		finally
 		{
 			AudioTap.nativeSetEnabled(false)
-			recognizer.close()
-			model.close()
+			asr.release()
 		}
 	}
 
-	private fun emit(json: String)
+	private fun emit(text: String)
 	{
-		val sentences = SpeechSegments.split(json)
-		// One-word results are mostly noise from music and sound effects.
-		if(sentences.sumOf { it.split(' ').size } >= 2 && sentences.joinToString(" ") != "the")
+		val sentences = SpeechSegments.split(text)
+		// one-word results are mostly noise from music and sound effects
+		if(sentences.sumOf { it.split(' ').count { w -> w.isNotBlank() } } >= 2)
 			onSentence(sentences)
 	}
 
 	companion object
 	{
 		private const val TAG = "TranslatorSpeech"
-		private const val MAX_UTTERANCE_MS = 8000L
 		private const val WATCH_WINDOW_S = 10.0
 	}
 }
 
-/**
- * Vosk returns one run of lowercase words with no punctuation. Cut it into sentences wherever the
- * speaker paused (gap between words > [GAP_S]), using the word timings from setWords(true).
- * Without timings, the whole final result is one sentence.
- */
+/** Moonshine already punctuates: split its text into sentences so each is translated on its own. */
 object SpeechSegments
 {
-	const val GAP_S = 0.35
+	fun split(text: String): List<String> =
+		text.trim().split(Regex("(?<=[.!?])\\s+")).map { it.trim() }.filter { it.isNotEmpty() }
+}
 
-	fun split(json: String): List<String>
+/** VAD + recogniser pair. Not thread-safe: one per thread. */
+class Speech private constructor(val vad: Vad, private val recognizer: OfflineRecognizer)
+{
+	private val window = FloatArray(WINDOW)
+	private var filled = 0
+
+	/** Feed 16 kHz mono PCM; returns the text of every phrase that just ended. */
+	fun feed(pcm: ShortArray, n: Int): List<String>
 	{
-		val obj = try { JSONObject(json) } catch(e: Exception) { return emptyList() }
-		val words = obj.optJSONArray("result")
-		if(words == null || words.length() == 0)
-			return obj.optString("text").trim().let { if(it.isEmpty()) emptyList() else listOf(it) }
-		val out = mutableListOf<String>()
-		val cur = StringBuilder()
-		var lastEnd = -1.0
-		for(i in 0 until words.length())
+		val out = ArrayList<String>(0)
+		for(i in 0 until n)
 		{
-			val w = words.optJSONObject(i) ?: continue
-			val word = w.optString("word")
-			if(word.isEmpty()) continue
-			val start = w.optDouble("start", lastEnd)
-			if(cur.isNotEmpty() && lastEnd >= 0 && start - lastEnd > GAP_S)
+			window[filled++] = pcm[i] / 32768f
+			if(filled == WINDOW)
 			{
-				out.add(cur.toString())
-				cur.setLength(0)
+				vad.acceptWaveform(window.copyOf())
+				filled = 0
+				drain(out)
 			}
-			if(cur.isNotEmpty()) cur.append(' ')
-			cur.append(word)
-			lastEnd = w.optDouble("end", start)
 		}
-		if(cur.isNotEmpty()) out.add(cur.toString())
 		return out
+	}
+
+	/** End of input (tests): finish the last phrase. */
+	fun finish(): List<String>
+	{
+		val out = ArrayList<String>()
+		vad.flush()
+		drain(out)
+		return out
+	}
+
+	private fun drain(out: MutableList<String>)
+	{
+		while(!vad.empty())
+		{
+			val seg = vad.front()
+			vad.pop()
+			val stream = recognizer.createStream()
+			stream.acceptWaveform(seg.samples, AudioTap.SAMPLE_RATE)
+			recognizer.decode(stream)
+			val text = recognizer.getResult(stream).text.trim()
+			stream.release()
+			if(text.isNotEmpty()) out.add(text)
+		}
+	}
+
+	fun release()
+	{
+		try { vad.release() } catch(_: Throwable) { }
+		try { recognizer.release() } catch(_: Throwable) { }
+	}
+
+	companion object
+	{
+		private const val WINDOW = 512 // Silero VAD window at 16 kHz
+
+		/** Needs the model on the TV first (see [SpeechModel.ensure]). */
+		fun open(context: Context, threads: Int = 2): Speech
+		{
+			val dir = SpeechModel.dir(context)
+			require(SpeechModel.isReady(context)) { "speech model not downloaded" }
+			val vad = Vad(context.assets, VadModelConfig(
+				sileroVadModelConfig = SileroVadModelConfig(
+					model = "silero_vad.onnx", threshold = 0.5f,
+					minSilenceDuration = 0.25f, minSpeechDuration = 0.25f,
+					windowSize = WINDOW, maxSpeechDuration = 8.0f),
+				sampleRate = AudioTap.SAMPLE_RATE, numThreads = 1))
+			val recognizer = OfflineRecognizer(null, OfflineRecognizerConfig(
+				modelConfig = OfflineModelConfig(
+					moonshine = OfflineMoonshineModelConfig(
+						preprocessor = File(dir, "preprocess.onnx").path,
+						encoder = File(dir, "encode.int8.onnx").path,
+						uncachedDecoder = File(dir, "uncached_decode.int8.onnx").path,
+						cachedDecoder = File(dir, "cached_decode.int8.onnx").path),
+					tokens = File(dir, "tokens.txt").path,
+					numThreads = threads)))
+			return Speech(vad, recognizer)
+		}
 	}
 }
 
-/** Copies the bundled Vosk model out of the APK assets once, so Vosk can read it as files. */
-object ModelAssets
+/**
+ * The speech model (~100 MB) is downloaded once from the app's GitHub releases instead of being
+ * inside the APK, so app updates stay small. Checked with SHA-256, then kept on the TV.
+ */
+object SpeechModel
 {
-	private const val ASSET_DIR = "vosk-en"
-	private const val VERSION = "small-en-us-0.15"
+	private const val NAME = "moonshine-tiny-en-int8"
+	private const val URL_ZIP = "https://github.com/midnon80-create/ps5-thai-translator/releases/download/speech-model-1/moonshine-tiny-en-int8.zip"
+	private const val SHA256 = "504aae319a2856e4b92b40ed3b6fa9e5886150d02b06c9762869ddc4dfa933c8"
+	const val SIZE_MB = 100
 
-	fun ensure(context: Context, fast: Boolean = false): File
+	fun dir(context: Context) = File(context.filesDir, NAME)
+	fun isReady(context: Context) = File(dir(context), ".complete").exists()
+
+	/** Blocking. Downloads and unpacks the model if needed. [progress] gets 0..100. */
+	fun ensure(context: Context, progress: (Int) -> Unit = {}): Boolean
 	{
-		val target = File(context.filesDir, "$ASSET_DIR-$VERSION")
-		val marker = File(target, ".complete")
-		if(!marker.exists())
+		if(isReady(context)) return true
+		val zip = File(context.cacheDir, "$NAME.zip")
+		try
 		{
+			var url = URL(URL_ZIP)
+			var conn: HttpURLConnection
+			var hops = 0
+			while(true)
+			{
+				conn = (url.openConnection() as HttpURLConnection).apply {
+					instanceFollowRedirects = false
+					connectTimeout = 15000
+					readTimeout = 30000
+					setRequestProperty("User-Agent", "ps5-thai-translator")
+				}
+				val code = conn.responseCode
+				if(code in 300..399 && hops++ < 5)
+				{
+					url = URL(url, conn.getHeaderField("Location"))
+					conn.disconnect()
+					continue
+				}
+				break
+			}
+			if(conn.responseCode != 200) return false
+			val total = conn.contentLengthLong
+			val md = MessageDigest.getInstance("SHA-256")
+			conn.inputStream.use { input ->
+				zip.outputStream().use { out ->
+					val b = ByteArray(64 * 1024)
+					var done = 0L
+					var last = -1
+					while(true)
+					{
+						val r = input.read(b)
+						if(r < 0) break
+						out.write(b, 0, r)
+						md.update(b, 0, r)
+						done += r
+						if(total > 0) { val p = (done * 100 / total).toInt(); if(p != last) { last = p; progress(p) } }
+					}
+				}
+			}
+			conn.disconnect()
+			val hash = md.digest().joinToString("") { "%02x".format(it) }
+			if(hash != SHA256) { Log.e("SpeechModel", "bad checksum $hash"); return false }
+			val target = dir(context)
+			val tmp = File(context.filesDir, "$NAME.tmp")
+			tmp.deleteRecursively(); tmp.mkdirs()
+			ZipInputStream(zip.inputStream()).use { zin ->
+				while(true)
+				{
+					val e = zin.nextEntry ?: break
+					val f = File(tmp, e.name)
+					if(!f.canonicalPath.startsWith(tmp.canonicalPath)) continue // no path tricks
+					if(e.isDirectory) f.mkdirs() else { f.parentFile?.mkdirs(); f.outputStream().use { zin.copyTo(it) } }
+				}
+			}
 			target.deleteRecursively()
-			copyDir(context, ASSET_DIR, target)
-			marker.createNewFile()
+			if(!tmp.renameTo(target)) return false
+			File(target, ".complete").createNewFile()
+			return true
 		}
-		// Same model files either way; only the search width differs (read by Vosk when the Model is created).
-		val conf = File(target, "conf/model.conf")
-		val wanted = if(fast) FAST_CONF else NORMAL_CONF
-		if(!conf.exists() || conf.readText() != wanted) conf.writeText(wanted)
-		return target
-	}
-
-	private const val COMMON =
-		"--min-active=200\n--acoustic-scale=1.0\n--frame-subsampling-factor=3\n" +
-		"--endpoint.silence-phones=1:2:3:4:5:6:7:8:9:10\n--endpoint.rule2.min-trailing-silence=0.5\n" +
-		"--endpoint.rule3.min-trailing-silence=0.75\n--endpoint.rule4.min-trailing-silence=1.0\n"
-	// the model's own settings
-	private const val NORMAL_CONF = "--max-active=3000\n--beam=10.0\n--lattice-beam=2.0\n" + COMMON
-	// measured on real game dialogue: ~1.7x faster, word error 55% -> 58%
-	private const val FAST_CONF = "--max-active=2000\n--beam=8.0\n--lattice-beam=2.0\n" + COMMON
-
-	private fun copyDir(context: Context, assetPath: String, dest: File)
-	{
-		val children = context.assets.list(assetPath) ?: emptyArray()
-		if(children.isEmpty())
+		catch(e: Exception)
 		{
-			dest.parentFile?.mkdirs()
-			context.assets.open(assetPath).use { input -> dest.outputStream().use { input.copyTo(it) } }
-			return
+			Log.e("SpeechModel", "download failed", e)
+			return false
 		}
-		dest.mkdirs()
-		for(child in children)
-			copyDir(context, "$assetPath/$child", File(dest, child))
+		finally
+		{
+			zip.delete()
+		}
 	}
 }

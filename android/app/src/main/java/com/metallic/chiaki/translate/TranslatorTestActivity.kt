@@ -12,8 +12,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONObject
-import org.vosk.Model
-import org.vosk.Recognizer
 
 /**
  * "ทดสอบตัวแปล": checks every translator part on the TV without a PS5.
@@ -85,50 +83,49 @@ class TranslatorTestActivity : AppCompatActivity()
 		}
 		val core = ready && readOk && thaiOk
 
-		// 3. Speech: warm up once (not timed), time a second pass; if too slow, try the lighter settings the same way
+		// 3. Speech: download the model once if needed, warm up (not timed), then time a second pass
 		log("\n3) ฟังเสียงพูด")
 		var speechWorks = false
 		var speechOk = false
-		var usedFast = false
+		val usedFast = false
 		try
 		{
+			if(!SpeechModel.isReady(this))
+			{
+				log("   โหลดระบบฟังเสียงครั้งแรก (~${SpeechModel.SIZE_MB} MB ต้องต่อเน็ต)…")
+				var lastShown = -10
+				val ok = SpeechModel.ensure(this) { p -> if(p >= lastShown + 10) { lastShown = p; log("   … $p%") } }
+				if(!ok) throw RuntimeException("โหลดไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วกดทดสอบใหม่")
+			}
 			val pcm = assets.open("speech_test.pcm").use { it.readBytes() } // raw 16 kHz mono 16-bit LE
 			val samples = ShortArray(pcm.size / 2) { i ->
 				((pcm[i * 2].toInt() and 0xff) or (pcm[i * 2 + 1].toInt() shl 8)).toShort()
 			}
 			val audioSec = samples.size / AudioTap.SAMPLE_RATE.toFloat()
-			log("   เสียงจริง: we have to get out of here before they find us / follow me, stay close")
-			for(fast in listOf(false, true))
+			t0 = SystemClock.elapsedRealtime()
+			val asr = Speech.open(this)
+			log("   โหลดระบบฟังเสียง ${SystemClock.elapsedRealtime() - t0} ms · อุ่นเครื่อง…")
+			recognise(asr, samples)
+			t0 = SystemClock.elapsedRealtime()
+			val sentences = recognise(asr, samples).flatMap { SpeechSegments.split(it) }
+			val took = (SystemClock.elapsedRealtime() - t0) / 1000f
+			asr.release()
+			speechWorks = sentences.sumOf { it.split(' ').size } >= 5
+			val inTime = took <= audioSec
+			log("   เสียงจริง: We have to get out of here before they find us. / Follow me. / Stay close.")
+			log("   ได้ยิน:   ${sentences.joinToString(" / ")}")
+			if(inTime) log("   ใช้เวลา %.1f วิ กับเสียงยาว %.1f วิ (ทันเวลาจริง ✔)".format(took, audioSec), green)
+			else log("   ใช้เวลา %.1f วิ กับเสียงยาว %.1f วิ (ช้ากว่าเวลาจริง)".format(took, audioSec), amber)
+			speechOk = speechWorks && inTime
+			if(speechWorks)
 			{
-				t0 = SystemClock.elapsedRealtime()
-				val model = Model(ModelAssets.ensure(this, fast).absolutePath)
-				val label = if(fast) "โหมดเร็ว" else "โหมดปกติ"
-				log("   [$label] โหลดระบบฟังเสียง ${SystemClock.elapsedRealtime() - t0} ms · อุ่นเครื่อง…")
-				recognise(model, samples)
-				t0 = SystemClock.elapsedRealtime()
-				val sentences = recognise(model, samples)
-				val took = (SystemClock.elapsedRealtime() - t0) / 1000f
-				model.close()
-				speechWorks = sentences.sumOf { it.split(' ').size } >= 5
-				val inTime = took <= audioSec
-				log("   [$label] ได้ยิน: ${sentences.joinToString(" / ")}")
-				if(inTime) log("   [$label] ใช้เวลา %.1f วิ กับเสียงยาว %.1f วิ (ทันเวลาจริง ✔)".format(took, audioSec), green)
-				else log("   [$label] ใช้เวลา %.1f วิ กับเสียงยาว %.1f วิ (ช้ากว่าเวลาจริง)".format(took, audioSec), amber)
-				if(speechWorks && inTime)
-				{
-					speechOk = true
-					usedFast = fast
-					val thai = translator.translateAll(sentences.map { GameText.fromSpeech(it).text })
-					log("   คำแปล:   ${thai ?: "(แปลไม่ได้)"}")
-					break
-				}
-				if(!speechWorks) break
-				if(!fast) log("   ลองโหมดเร็ว (เบากว่า แม่นลดลงเล็กน้อย)…")
+				val thai = translator.translateAll(sentences.map { GameText.fromSpeech(it).text })
+				log("   คำแปล:   ${thai ?: "(แปลไม่ได้)"}")
 			}
 		}
 		catch(e: Throwable)
 		{
-			log("   ระบบฟังเสียงใช้ไม่ได้บนเครื่องนี้: ${e.message}", amber)
+			log("   ระบบฟังเสียงใช้ไม่ได้: ${e.message}", amber)
 		}
 		translator.close()
 
@@ -162,22 +159,20 @@ class TranslatorTestActivity : AppCompatActivity()
 		}
 	}
 
-	/** Runs the clip through Vosk and returns the sentences cut at pauses. */
-	private fun recognise(model: Model, samples: ShortArray): List<String>
+	/** Feeds the clip to the VAD + recogniser like live audio; returns the recognised phrases. */
+	private fun recognise(asr: Speech, samples: ShortArray): List<String>
 	{
-		val rec = Recognizer(model, AudioTap.SAMPLE_RATE.toFloat())
-		rec.setWords(true)
 		val out = ArrayList<String>()
 		var i = 0
 		while(i < samples.size)
 		{
 			val n = minOf(1600, samples.size - i)
-			if(rec.acceptWaveForm(samples.copyOfRange(i, i + n), n))
-				out += SpeechSegments.split(rec.result)
+			out += asr.feed(samples.copyOfRange(i, i + n), n)
 			i += n
 		}
-		out += SpeechSegments.split(rec.finalResult)
-		rec.close()
+		// half a second of silence lets the VAD close the last phrase, then flush whatever is left
+		out += asr.feed(ShortArray(8000), 8000)
+		out += asr.finish()
 		return out
 	}
 

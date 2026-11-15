@@ -248,12 +248,26 @@ class TranslatorController(
 		return max < 30 && sum.toDouble() / a.size < 1.0
 	}
 
-	private fun startSpeech(fast: Boolean)
+	private fun startSpeech(@Suppress("UNUSED_PARAMETER") fast: Boolean)
 	{
-		speech = SpeechEngine(context, ::onSpeech, { msg -> status(msg) }, fast, ::onSpeechTooSlow).also { it.start() }
+		if(SpeechModel.isReady(context))
+		{
+			speech = SpeechEngine(context, ::onSpeech, { msg -> status(msg) }, ::onSpeechTooSlow).also { it.start() }
+			return
+		}
+		// first use: fetch the speech model once (about 100 MB), then start listening
+		Thread {
+			val ok = SpeechModel.ensure(context) { p -> if(p % 5 == 0) status("กำลังโหลดระบบฟังเสียง (ครั้งแรกครั้งเดียว) $p%") }
+			main.post {
+				ui.showStatus(null)
+				if(!running.get()) return@post
+				if(ok) speech = SpeechEngine(context, ::onSpeech, { msg -> status(msg) }, ::onSpeechTooSlow).also { it.start() }
+				else status("โหลดระบบฟังเสียงไม่สำเร็จ ตรวจอินเทอร์เน็ต (แปลซับบนจอได้ตามปกติ)")
+			}
+		}.start()
 	}
 
-	/** Live watchdog: speech can't keep up (e.g. a heavy game scene). Try the lighter settings, then give up for this session. */
+	/** Live watchdog: speech can't keep up (e.g. a heavy game scene): pause it for this session. */
 	private fun onSpeechTooSlow()
 	{
 		main.post {
@@ -261,21 +275,13 @@ class TranslatorController(
 			val old = speech
 			speech = null
 			Thread {
-				old?.stop() // the engine thread is already ending; wait for it so the audio tap is released first
+				old?.stop() // the engine thread is already ending; wait so the audio tap is released first
 				main.post {
 					if(!running.get()) return@post
-					if(!prefs.speechFast)
-					{
-						prefs.setSpeechFast(true)
-						startSpeech(true)
-					}
-					else
-					{
-						prefs.setSpeechSlow(true)
-						if(prefs.modeIsAutomatic) prefs.setModeAutomatically(TranslatorPrefs.Mode.SCREEN)
-						ui.showStatus("ทีวีแปลเสียงพูดไม่ทัน ปิดชั่วคราว — แปลซับบนจอต่อ")
-						main.postDelayed({ ui.showStatus(null) }, 6000)
-					}
+					prefs.setSpeechSlow(true)
+					if(prefs.modeIsAutomatic) prefs.setModeAutomatically(TranslatorPrefs.Mode.SCREEN)
+					ui.showStatus("ทีวีแปลเสียงพูดไม่ทัน ปิดชั่วคราว — แปลซับบนจอต่อ")
+					main.postDelayed({ ui.showStatus(null) }, 6000)
 				}
 			}.start()
 		}
