@@ -89,16 +89,9 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 		})
 	}
 
-	/** Phone login is the reliable route: Sony sometimes refuses logins from the TV's built-in web view. */
 	private fun chooseLogin()
 	{
-		android.app.AlertDialog.Builder(this)
-			.setTitle("ล็อกอิน PSN เพื่อหารหัสบัญชี")
-			.setItems(arrayOf("ล็อกอินผ่านมือถือ (แนะนำ · สแกน QR)", "ล็อกอินบนทีวี")) { _, which ->
-				val target = if(which == 0) PhoneLoginActivity::class.java else PsnLoginActivity::class.java
-				startActivityForResult(Intent(this, target), REQUEST_PSN_LOGIN)
-			}
-			.show()
+		startActivityForResult(Intent(this, PsnLoginActivity::class.java), REQUEST_PSN_LOGIN)
 	}
 
 	private fun doRegist()

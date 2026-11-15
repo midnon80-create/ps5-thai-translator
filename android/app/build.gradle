@@ -28,8 +28,8 @@ android {
         applicationId "com.ps5translate.tv"
         minSdk 24
         targetSdk 35
-        versionCode 106
-        versionName "1.0.6"
+        versionCode 107
+        versionName "1.0.7"
         buildConfigField "String", "UPDATE_REPO", "\"midnon80-create/ps5-thai-translator\""
         ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
         externalNativeBuild {
@@ -144,7 +144,6 @@ dependencies {
 
     // Live translator
     implementation 'androidx.media3:media3-exoplayer:1.4.1'
-    implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.google.mlkit:text-recognition:16.0.1'
     implementation 'com.google.mlkit:translate:17.0.3'
     implementation 'com.alphacephei:vosk-android:0.3.47@aar'

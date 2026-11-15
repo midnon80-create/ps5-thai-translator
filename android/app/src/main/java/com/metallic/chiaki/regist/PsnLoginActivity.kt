@@ -38,6 +38,10 @@ class PsnLoginActivity : AppCompatActivity()
 		const val EXTRA_ACCOUNT_ID = "psn_account_id"
 		const val PREF_LAST_ACCOUNT_ID = "psn_last_account_id"
 
+		// Chromium major version below which Sony's login protection tends to refuse the browser
+		private const val MIN_WEBVIEW = 110
+		private val SONY_ERRORS = listOf("เชื่อมต่อกับเซิร์ฟเวอร์ไม่ได้", "can't connect to the server", "cannot connect to the server", "could not connect to the server")
+
 		// Same public client as Sony's Remote Play app for Windows (see scripts/psn-account-id.py)
 		private const val CLIENT_ID = "ba495a24-818c-472b-b12d-ff231c1b5745"
 		private const val CLIENT_SECRET = "mvaiZkRsAsI1IBkY"
@@ -102,7 +106,70 @@ class PsnLoginActivity : AppCompatActivity()
 				progress.visibility = View.GONE
 			}
 		}
-		webView.loadUrl(LOGIN_URL)
+
+		val major = webViewMajorVersion()
+		if(major in 1 until MIN_WEBVIEW)
+			showHelp("ตัวแสดงเว็บของทีวีเครื่องนี้เก่า (เวอร์ชัน $major)\nSony อาจไม่ยอมให้ล็อกอินจากเวอร์ชันนี้", askFirst = true)
+		else
+			webView.loadUrl(LOGIN_URL)
+		watchForSonyError()
+	}
+
+	// ---------------------------------------------------------------- help when Sony refuses the login
+	private val watcher = android.os.Handler(android.os.Looper.getMainLooper())
+	private var helpShown = false
+
+	/** Sony's login is a single page; its error appears after "sign in", so check the page text now and then. */
+	private fun watchForSonyError()
+	{
+		watcher.postDelayed(object : Runnable
+		{
+			override fun run()
+			{
+				if(isFinishing || handled || helpShown) return
+				webView.evaluateJavascript("(document.body && document.body.innerText) || ''") { raw ->
+					// the result is a JSON string literal; decode it so escaped Thai text is readable
+					val text = try { org.json.JSONArray("[" + (raw ?: "\"\"") + "]").optString(0) } catch(e: Exception) { raw ?: "" }
+					if(SONY_ERRORS.any { text.contains(it, ignoreCase = true) })
+						showHelp("Sony ตอบว่า \"เชื่อมต่อกับเซิร์ฟเวอร์ไม่ได้\"", askFirst = false)
+				}
+				watcher.postDelayed(this, 2000)
+			}
+		}, 2000)
+	}
+
+	private fun webViewMajorVersion(): Int = try
+	{
+		if(android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
+			WebView.getCurrentWebViewPackage()?.versionName?.substringBefore('.')?.toIntOrNull() ?: 0
+		else 0
+	}
+	catch(e: Exception) { 0 }
+
+	private fun showHelp(reason: String, askFirst: Boolean)
+	{
+		if(helpShown) return
+		helpShown = true
+		val version = webViewMajorVersion().let { if(it > 0) "เวอร์ชันตัวแสดงเว็บตอนนี้: $it\n\n" else "" }
+		val b = android.app.AlertDialog.Builder(this)
+			.setTitle("ล็อกอิน PSN ไม่ผ่าน — แก้ได้แบบนี้")
+			.setMessage("$reason\n\n$version" +
+				"1. Play Store › ค้นหา \"Android System WebView\" › กด อัปเดต\n" +
+				"   (ถ้ามี Google Chrome ในทีวี อัปเดตด้วย)\n" +
+				"2. ตั้งค่าทีวี › วันที่และเวลา › อัตโนมัติ\n" +
+				"3. ถ้าเพิ่งลองหลายครั้ง รอประมาณ 30 นาทีแล้วค่อยลองใหม่\n" +
+				"4. กลับมากดล็อกอิน PSN อีกครั้ง")
+			.setPositiveButton("เปิด Play Store") { _, _ ->
+				try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.webview"))) }
+				catch(e: Exception) { }
+				finish()
+			}
+			.setOnCancelListener { finish() }
+		if(askFirst)
+			b.setNegativeButton("ลองล็อกอินเลย") { _, _ -> helpShown = false; webView.loadUrl(LOGIN_URL); watchForSonyError() }
+		else
+			b.setNegativeButton("ปิด") { _, _ -> finish() }
+		b.show()
 	}
 
 	private fun intercept(uri: Uri): Boolean
@@ -199,6 +266,7 @@ class PsnLoginActivity : AppCompatActivity()
 
 	override fun onDestroy()
 	{
+		watcher.removeCallbacksAndMessages(null)
 		if(::webView.isInitialized) webView.destroy()
 		super.onDestroy()
 	}
