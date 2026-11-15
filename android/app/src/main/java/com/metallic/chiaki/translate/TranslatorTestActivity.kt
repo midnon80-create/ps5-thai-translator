@@ -85,36 +85,45 @@ class TranslatorTestActivity : AppCompatActivity()
 		}
 		val core = ready && readOk && thaiOk
 
-		// 3. Speech: one warm-up pass (not timed) so a slow first run doesn't count; the timed pass decides
+		// 3. Speech: warm up once (not timed), time a second pass; if too slow, try the lighter settings the same way
 		log("\n3) ฟังเสียงพูด")
-		var speechFast = false
 		var speechWorks = false
+		var speechOk = false
+		var usedFast = false
 		try
 		{
-			t0 = SystemClock.elapsedRealtime()
-			val model = Model(ModelAssets.ensure(this).absolutePath)
-			log("   โหลดระบบฟังเสียง ${SystemClock.elapsedRealtime() - t0} ms")
 			val pcm = assets.open("speech_test.pcm").use { it.readBytes() } // raw 16 kHz mono 16-bit LE
 			val samples = ShortArray(pcm.size / 2) { i ->
 				((pcm[i * 2].toInt() and 0xff) or (pcm[i * 2 + 1].toInt() shl 8)).toShort()
 			}
-			log("   อุ่นเครื่อง…")
-			recognise(model, samples)
-			t0 = SystemClock.elapsedRealtime()
-			val sentences = recognise(model, samples)
-			val took = (SystemClock.elapsedRealtime() - t0) / 1000f
-			model.close()
 			val audioSec = samples.size / AudioTap.SAMPLE_RATE.toFloat()
-			speechWorks = sentences.sumOf { it.split(' ').size } >= 5
-			speechFast = took <= audioSec
 			log("   เสียงจริง: we have to get out of here before they find us / follow me, stay close")
-			log("   ได้ยิน:   ${sentences.joinToString(" / ")}")
-			if(speechFast) log("   ใช้เวลา %.1f วิ กับเสียงยาว %.1f วิ (ทันเวลาจริง ✔)".format(took, audioSec), green)
-			else log("   ใช้เวลา %.1f วิ กับเสียงยาว %.1f วิ (ช้ากว่าเวลาจริง)".format(took, audioSec), amber)
-			if(speechWorks)
+			for(fast in listOf(false, true))
 			{
-				val thai = translator.translateAll(sentences.map { GameText.fromSpeech(it).text })
-				log("   คำแปล:   ${thai ?: "(แปลไม่ได้)"}")
+				t0 = SystemClock.elapsedRealtime()
+				val model = Model(ModelAssets.ensure(this, fast).absolutePath)
+				val label = if(fast) "โหมดเร็ว" else "โหมดปกติ"
+				log("   [$label] โหลดระบบฟังเสียง ${SystemClock.elapsedRealtime() - t0} ms · อุ่นเครื่อง…")
+				recognise(model, samples)
+				t0 = SystemClock.elapsedRealtime()
+				val sentences = recognise(model, samples)
+				val took = (SystemClock.elapsedRealtime() - t0) / 1000f
+				model.close()
+				speechWorks = sentences.sumOf { it.split(' ').size } >= 5
+				val inTime = took <= audioSec
+				log("   [$label] ได้ยิน: ${sentences.joinToString(" / ")}")
+				if(inTime) log("   [$label] ใช้เวลา %.1f วิ กับเสียงยาว %.1f วิ (ทันเวลาจริง ✔)".format(took, audioSec), green)
+				else log("   [$label] ใช้เวลา %.1f วิ กับเสียงยาว %.1f วิ (ช้ากว่าเวลาจริง)".format(took, audioSec), amber)
+				if(speechWorks && inTime)
+				{
+					speechOk = true
+					usedFast = fast
+					val thai = translator.translateAll(sentences.map { GameText.fromSpeech(it).text })
+					log("   คำแปล:   ${thai ?: "(แปลไม่ได้)"}")
+					break
+				}
+				if(!speechWorks) break
+				if(!fast) log("   ลองโหมดเร็ว (เบากว่า แม่นลดลงเล็กน้อย)…")
 			}
 		}
 		catch(e: Throwable)
@@ -123,19 +132,27 @@ class TranslatorTestActivity : AppCompatActivity()
 		}
 		translator.close()
 
-		// A: a TV that can't listen in real time gets speech translation switched off (and remembered)
-		val speechOk = speechWorks && speechFast
+		// A: remember what this TV can do; switch speech off only when even the fast mode can't keep up
+		prefs.setSpeechFast(usedFast)
 		prefs.setSpeechSlow(!speechOk)
-		if(!speechOk && prefs.mode != TranslatorPrefs.Mode.SCREEN)
+		if(!speechOk && prefs.mode != TranslatorPrefs.Mode.SCREEN && prefs.modeIsAutomatic)
 		{
-			prefs.setMode(TranslatorPrefs.Mode.SCREEN)
+			prefs.setModeAutomatically(TranslatorPrefs.Mode.SCREEN)
 			log("\nทีวีเครื่องนี้แปลเสียงพูดไม่ทัน แอปปิดให้แล้ว จะแปลจากซับบนจอแทน (เปิดเองได้ในตั้งค่า)", amber)
 		}
+		else if(!speechOk && prefs.mode != TranslatorPrefs.Mode.SCREEN)
+			log("\nทีวีเครื่องนี้แปลเสียงพูดไม่ทัน แนะนำ ตั้งค่า › แปลอะไร › ข้อความบนจออย่างเดียว", amber)
+		else if(speechOk && prefs.modeIsAutomatic && prefs.mode != TranslatorPrefs.Mode.BOTH)
+			prefs.setModeAutomatically(TranslatorPrefs.Mode.BOTH) // e.g. a 32-bit TV that turned out fast enough
 
 		// B: overall result
 		when
 		{
-			core && speechOk -> log("\nผลรวม: ✔ ตัวแปลทำงานครบ พร้อมใช้กับ PS5", green)
+			core && speechOk ->
+			{
+				log("\nผลรวม: ✔ ตัวแปลทำงานครบ พร้อมใช้กับ PS5", green)
+				if(usedFast) log("แปลเสียงพูด: ใช้โหมดเร็ว เพราะเครื่องประมวลผลช้า", amber)
+			}
 			core ->
 			{
 				log("\nผลรวม: ✔ พร้อมใช้ (แปลซับบนจอ)", green)

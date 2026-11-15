@@ -45,6 +45,14 @@ class TranslatorPrefs(context: Context)
 	val speechSlow get() = sp.getBoolean(KEY_SPEECH_SLOW, false)
 	fun setSpeechSlow(v: Boolean) = sp.edit().putBoolean(KEY_SPEECH_SLOW, v).apply()
 
+	/** Set by the test / the live watchdog: use the lighter speech settings on this TV. */
+	val speechFast get() = sp.getBoolean(KEY_SPEECH_FAST, false)
+	fun setSpeechFast(v: Boolean) = sp.edit().putBoolean(KEY_SPEECH_FAST, v).apply()
+
+	/** True when "แปลอะไร" was chosen by the app (not the user), so the app may change it again. */
+	val modeIsAutomatic get() = !sp.contains(KEY_MODE) || sp.getBoolean(KEY_MODE_AUTO, false)
+	fun setModeAutomatically(m: Mode) { setMode(m); sp.edit().putBoolean(KEY_MODE_AUTO, true).apply() }
+
 	fun setMode(m: Mode) = sp.edit().putString(KEY_MODE, when(m) { Mode.SCREEN -> "screen"; Mode.SPEECH -> "speech"; Mode.BOTH -> "both" }).apply()
 
 	val showEnglish get() = sp.getBoolean("tr_show_english", false)
@@ -58,6 +66,8 @@ class TranslatorPrefs(context: Context)
 		const val KEY_MODE = "tr_mode"
 		const val KEY_SPEECH_SLOW = "tr_speech_slow"
 		const val KEY_SPEECH_SLOW_WARNED = "tr_speech_slow_warned"
+		const val KEY_SPEECH_FAST = "tr_speech_fast"
+		const val KEY_MODE_AUTO = "tr_mode_auto"
 		const val DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest"
 	}
 }

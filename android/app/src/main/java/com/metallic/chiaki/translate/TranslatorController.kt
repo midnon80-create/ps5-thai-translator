@@ -86,7 +86,7 @@ class TranslatorController(
 		}
 		if(mode != TranslatorPrefs.Mode.SCREEN)
 		{
-			speech = SpeechEngine(context, ::onSpeech) { msg -> status(msg) }.also { it.start() }
+			startSpeech(prefs.speechFast)
 		}
 	}
 
@@ -246,6 +246,39 @@ class TranslatorController(
 			if(d > max) max = d
 		}
 		return max < 30 && sum.toDouble() / a.size < 1.0
+	}
+
+	private fun startSpeech(fast: Boolean)
+	{
+		speech = SpeechEngine(context, ::onSpeech, { msg -> status(msg) }, fast, ::onSpeechTooSlow).also { it.start() }
+	}
+
+	/** Live watchdog: speech can't keep up (e.g. a heavy game scene). Try the lighter settings, then give up for this session. */
+	private fun onSpeechTooSlow()
+	{
+		main.post {
+			if(!running.get()) return@post
+			val old = speech
+			speech = null
+			Thread {
+				old?.stop() // the engine thread is already ending; wait for it so the audio tap is released first
+				main.post {
+					if(!running.get()) return@post
+					if(!prefs.speechFast)
+					{
+						prefs.setSpeechFast(true)
+						startSpeech(true)
+					}
+					else
+					{
+						prefs.setSpeechSlow(true)
+						if(prefs.modeIsAutomatic) prefs.setModeAutomatically(TranslatorPrefs.Mode.SCREEN)
+						ui.showStatus("ทีวีแปลเสียงพูดไม่ทัน ปิดชั่วคราว — แปลซับบนจอต่อ")
+						main.postDelayed({ ui.showStatus(null) }, 6000)
+					}
+				}
+			}.start()
+		}
 	}
 
 	private fun onSpeech(sentences: List<String>)

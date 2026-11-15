@@ -15,7 +15,11 @@ import java.io.File
 class SpeechEngine(
 	private val context: Context,
 	private val onSentence: (List<String>) -> Unit,
-	private val onError: (String) -> Unit)
+	private val onError: (String) -> Unit,
+	/** true = lighter decoding settings (about 1.7x faster, slightly less accurate) for slow TVs */
+	private val fast: Boolean = false,
+	/** called (on the speech thread, which then stops) when recognition can't keep up with real time */
+	private val onTooSlow: (() -> Unit)? = null)
 {
 	@Volatile private var running = false
 	/** True while the game shows subtitles: those get translated from the screen, so listening is wasted CPU. */
@@ -40,7 +44,7 @@ class SpeechEngine(
 	private fun loop()
 	{
 		android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
-		val model = try { Model(ModelAssets.ensure(context).absolutePath) }
+		val model = try { Model(ModelAssets.ensure(context, fast).absolutePath) }
 		catch(e: Throwable)
 		{
 			Log.e(TAG, "Vosk model load failed", e)
@@ -53,6 +57,10 @@ class SpeechEngine(
 		AudioTap.nativeSetEnabled(true)
 		val buf = ShortArray(1600) // 100 ms
 		var utteranceStart = 0L
+		// watchdog: CPU time spent recognising vs. seconds of audio, in 10 s windows
+		var windowAudio = 0.0
+		var windowBusyNs = 0L
+		var slowWindows = 0
 		try
 		{
 			while(running)
@@ -71,7 +79,25 @@ class SpeechEngine(
 					continue
 				}
 				if(utteranceStart == 0L) utteranceStart = now
-				if(recognizer.acceptWaveForm(buf, n))
+				val t0 = System.nanoTime()
+				val endOfSentence = recognizer.acceptWaveForm(buf, n)
+				windowBusyNs += System.nanoTime() - t0
+				windowAudio += n / AudioTap.SAMPLE_RATE.toDouble()
+				if(windowAudio >= WATCH_WINDOW_S)
+				{
+					val ratio = windowBusyNs / 1e9 / windowAudio
+					slowWindows = if(ratio > 1.0) slowWindows + 1 else 0
+					windowAudio = 0.0
+					windowBusyNs = 0L
+					if(slowWindows >= 2 && onTooSlow != null)
+					{
+						Log.w(TAG, "speech recognition slower than real time (x%.2f), giving up".format(ratio))
+						running = false
+						onTooSlow.invoke()
+						break
+					}
+				}
+				if(endOfSentence)
 				{
 					emit(recognizer.result)
 					utteranceStart = 0L
@@ -110,6 +136,7 @@ class SpeechEngine(
 	{
 		private const val TAG = "TranslatorSpeech"
 		private const val MAX_UTTERANCE_MS = 8000L
+		private const val WATCH_WINDOW_S = 10.0
 	}
 }
 
@@ -157,17 +184,31 @@ object ModelAssets
 	private const val ASSET_DIR = "vosk-en"
 	private const val VERSION = "small-en-us-0.15"
 
-	fun ensure(context: Context): File
+	fun ensure(context: Context, fast: Boolean = false): File
 	{
 		val target = File(context.filesDir, "$ASSET_DIR-$VERSION")
 		val marker = File(target, ".complete")
-		if(marker.exists())
-			return target
-		target.deleteRecursively()
-		copyDir(context, ASSET_DIR, target)
-		marker.createNewFile()
+		if(!marker.exists())
+		{
+			target.deleteRecursively()
+			copyDir(context, ASSET_DIR, target)
+			marker.createNewFile()
+		}
+		// Same model files either way; only the search width differs (read by Vosk when the Model is created).
+		val conf = File(target, "conf/model.conf")
+		val wanted = if(fast) FAST_CONF else NORMAL_CONF
+		if(!conf.exists() || conf.readText() != wanted) conf.writeText(wanted)
 		return target
 	}
+
+	private const val COMMON =
+		"--min-active=200\n--acoustic-scale=1.0\n--frame-subsampling-factor=3\n" +
+		"--endpoint.silence-phones=1:2:3:4:5:6:7:8:9:10\n--endpoint.rule2.min-trailing-silence=0.5\n" +
+		"--endpoint.rule3.min-trailing-silence=0.75\n--endpoint.rule4.min-trailing-silence=1.0\n"
+	// the model's own settings
+	private const val NORMAL_CONF = "--max-active=3000\n--beam=10.0\n--lattice-beam=2.0\n" + COMMON
+	// measured on real game dialogue: ~1.7x faster, word error 55% -> 58%
+	private const val FAST_CONF = "--max-active=2000\n--beam=8.0\n--lattice-beam=2.0\n" + COMMON
 
 	private fun copyDir(context: Context, assetPath: String, dest: File)
 	{

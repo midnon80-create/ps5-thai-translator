@@ -143,6 +143,8 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 					.setPositiveButton("เข้าใจแล้ว", null)
 					.show()
 			}
+			// the user chose this themselves: the app must not switch it automatically any more
+			sp.edit().putBoolean(com.metallic.chiaki.translate.TranslatorPrefs.KEY_MODE_AUTO, false).apply()
 			true
 		}
 		preferenceScreen.findPreference<Preference>(getString(R.string.preferences_export_settings_key))?.setOnPreferenceClickListener { exportSettings(); true }
