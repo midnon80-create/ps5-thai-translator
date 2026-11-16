@@ -373,10 +373,9 @@ class TranslatorController(
 	/**
 	 * Best translation without making the player wait:
 	 *  1. hand-written bank / earlier Gemini line -> shown at once, no server call;
-	 *  2. otherwise ask the shared server cache and run the offline translator at the same time;
-	 *     if the server answers within [CLOUD_WAIT_MS] its Gemini line is shown directly,
-	 *     else the offline line is shown first and quietly replaced when Gemini arrives
-	 *     (only while that subtitle is still the current one).
+	 *  2. otherwise wait for the shared server (cache or Gemini) and show only that text
+	 *     (while that subtitle is still the current one);
+	 *  3. the offline translator is used only without a server/licence, or when the server fails a line.
 	 * Runs on translateWorker; [show] is called with the Thai text (it posts to the UI itself).
 	 */
 	private fun smartTranslate(lines: List<String>, kind: TextKind, isCurrent: () -> Boolean, show: (String) -> Unit)
@@ -400,8 +399,8 @@ class TranslatorController(
 				c.translate(src, ctx, kind, src.map { l -> if(kind == TextKind.DIALOGUE) SlangRewriter.rewrite(l).takeIf { it != l } else null })
 			}, cloudPool)
 		else null
-		val started = SystemClock.elapsedRealtime()
-		val offline = tr.translateEach(lines, kind)
+		// offline text only when it is really needed (no server, or the server failed this line)
+		val offline by lazy { tr.translateEach(lines, kind) }
 		fun merge(fromCloud: List<String?>?): String?
 		{
 			val out = lines.indices.map { i ->
@@ -410,15 +409,11 @@ class TranslatorController(
 			return if(out.isEmpty()) null else out.joinToString(" ")
 		}
 		if(future == null) { merge(null)?.let(show); return }
-		val wait = (CLOUD_WAIT_MS - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(0L)
-		val early = try { future.get(wait, TimeUnit.MILLISECONDS) } catch(e: Exception) { null }
-		if(future.isDone) { merge(early)?.let(show); return }
-		val first = merge(null)
-		first?.let(show)
-		future.thenAccept { fromCloud ->
-			if(fromCloud == null || fromCloud.all { it == null } || !running.get()) return@thenAccept
-			val better = merge(fromCloud)
-			if(better != null && better != first && isCurrent()) show(better)
+		// AI only: while the server is reachable the player sees Gemini text, never the stiff offline line.
+		// The offline translator is used only when the server fails for this line (network, quota, error).
+		future.whenComplete { fromCloud, _ ->
+			if(!running.get() || !isCurrent()) return@whenComplete
+			merge(fromCloud)?.let(show)
 		}
 	}
 
@@ -436,6 +431,6 @@ class TranslatorController(
 		private const val FRAME_H = 540
 		private const val SPEECH_SUPPRESS_MS = 3000L
 		private const val SPEECH_SHOW_MS = 6000L
-		private const val CLOUD_WAIT_MS = 400L
+
 	}
 }

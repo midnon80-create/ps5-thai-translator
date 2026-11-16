@@ -171,6 +171,7 @@ class ScreenReader
 	}
 
 	private fun wordCount(s: String) = s.split(' ').count { w -> w.count { it.isLetter() } >= 2 }
+
 }
 
 /** Decides when on-screen text has settled and is new enough to translate. */
