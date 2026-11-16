@@ -153,6 +153,7 @@ class StartActivity : Activity()
 			addView(ScrollView(this@StartActivity).apply { addView(details) },
 				LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = (12 * dp).toInt() })
 		}
+		root.fitsSystemWindows = true
 		setContentView(root)
 		open.requestFocus()
 	}

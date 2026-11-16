@@ -53,7 +53,7 @@ class PurchaseActivity : AppCompatActivity()
 		col.addView(lifetimeBtn)
 		col.addView(button("กู้คืนการซื้อ / ตรวจสถานะ") { status.text = "กำลังตรวจสอบ…"; Store.refresh(this) { status.text = it } })
 		col.addView(text("ยกเลิกการต่ออายุได้ทุกเมื่อใน Google Play › การชำระเงินและการสมัครใช้บริการ", 14f, Color.rgb(130, 136, 150)))
-		setContentView(ScrollView(this).apply { addView(col) })
+		setContentView(ScrollView(this).apply { fitsSystemWindows = true; setBackgroundColor(Color.rgb(8, 6, 13)); addView(col) })
 		dayBtn.requestFocus()
 
 		client = BillingClient.newBuilder(this)

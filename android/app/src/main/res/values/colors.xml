@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#162d50</color>
-    <color name="primary_dark">#000128</color>
-    <color name="accent">#ffaaee</color>
+    <color name="primary">#120a22</color>
+    <color name="primary_dark">#07050c</color>
+    <color name="accent">#a855f7</color>
+    <color name="window_bg">#08060d</color>
+    <color name="on_accent">#ffffff</color>
 
     <color name="stream_text">@android:color/white</color>
     <color name="stream_background">@android:color/black</color>
     <color name="stream_overlay_background">#77000000</color>
 
-    <color name="floating_action_button_speed_dial_background">#fafafa</color>
-    <color name="floating_action_button_speed_dial_tint">#333333</color>
+    <color name="floating_action_button_speed_dial_background">#1c1030</color>
+    <color name="floating_action_button_speed_dial_tint">#e9d5ff</color>
 
     <color name="control_primary">#22ffffff</color>
     <color name="control_pressed">#88ffffff</color>

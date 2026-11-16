@@ -81,6 +81,7 @@ class PsnLoginActivity : AppCompatActivity()
 		root.addView(webView, FrameLayout.LayoutParams(-1, -1))
 		root.addView(progress, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
 		root.addView(status, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+		root.fitsSystemWindows = true
 		setContentView(root)
 
 		// Behave like a normal browser: Sony's login checks rely on cookies, including ones set by its
@@ -257,7 +258,7 @@ class PsnLoginActivity : AppCompatActivity()
 	{
 		if(!::status.isInitialized)
 		{
-			setContentView(TextView(this).apply { text = msg; textSize = 20f; setPadding(48, 48, 48, 48) })
+			setContentView(TextView(this).apply { fitsSystemWindows = true; text = msg; textSize = 20f; setPadding(48, 48, 48, 48) })
 			return
 		}
 		progress.visibility = View.GONE

@@ -29,7 +29,7 @@ class TranslatorTestActivity : AppCompatActivity()
 			setPadding(48, 48, 48, 48)
 			setTextColor(Color.WHITE)
 		}
-		setContentView(ScrollView(this).apply { setBackgroundColor(Color.BLACK); addView(out) })
+		setContentView(ScrollView(this).apply { fitsSystemWindows = true; setBackgroundColor(Color.BLACK); addView(out) })
 		log("ทดสอบตัวแปลภาษา…\n")
 		Thread { runTests() }.start()
 	}
