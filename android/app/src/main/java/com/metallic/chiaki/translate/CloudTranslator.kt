@@ -19,7 +19,7 @@ import java.security.MessageDigest
  */
 class CloudTranslator(private val serverUrl: String, private val licence: String, private val device: String)
 {
-	enum class Problem { NONE, NO_LICENCE, LICENCE_INVALID, OTHER_DEVICE, EXPIRED, POOL_EMPTY, DAILY_LIMIT, OFFLINE }
+	enum class Problem { NONE, NO_LICENCE, LICENCE_INVALID, OTHER_DEVICE, EXPIRED, TRIAL_OVER, POOL_EMPTY, DAILY_LIMIT, OFFLINE }
 
 	@Volatile var problem = if(licence.isBlank()) Problem.NO_LICENCE else Problem.NONE
 		private set
@@ -27,9 +27,15 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 	/** False after a licence error (for the rest of the session) or while the network is failing. */
 	val usable get() = serverUrl.isNotBlank() && problem != Problem.NO_LICENCE &&
 		problem != Problem.LICENCE_INVALID && problem != Problem.OTHER_DEVICE && problem != Problem.EXPIRED &&
+		problem != Problem.TRIAL_OVER &&
 		System.currentTimeMillis() >= pausedUntil
 
 	@Volatile private var pausedUntil = 0L
+	/** From the last check: "trial" / "year" / "life" and the end date (ms, 0 = never). */
+	var plan = ""
+		private set
+	var expires = 0L
+		private set
 	private var failStreak = 0
 
 	/** One result per line, null where the cloud had nothing (e.g. pool empty and line not cached). */
@@ -54,6 +60,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		if(serverUrl.isBlank()) return Problem.OFFLINE
 		if(licence.isBlank()) return Problem.NO_LICENCE
 		val res = post("/v1/check", JSONObject().put("code", licence).put("device", device)) ?: return Problem.OFFLINE
+		plan = res.optString("plan"); expires = res.optLong("expires", 0L)
 		if(!res.optBoolean("ok")) { onError(res.optString("error")); return problem }
 		problem = if(res.optBoolean("pool_ok")) Problem.NONE else Problem.POOL_EMPTY
 		return problem
@@ -66,6 +73,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			"licence_invalid", "licence_missing" -> Problem.LICENCE_INVALID
 			"licence_other_device" -> Problem.OTHER_DEVICE
 			"licence_expired" -> Problem.EXPIRED
+			"trial_over" -> Problem.TRIAL_OVER
 			"daily_limit" -> Problem.DAILY_LIMIT
 			else -> problem
 		}
@@ -121,6 +129,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			Problem.NO_LICENCE -> "ยังไม่ได้ใส่รหัสไลเซนส์ (ตั้งค่า › รหัสไลเซนส์) — ใช้ตัวแปลออฟไลน์"
 			Problem.LICENCE_INVALID -> "รหัสไลเซนส์ไม่ถูกต้อง ตรวจรหัสอีกครั้ง — ใช้ตัวแปลออฟไลน์"
 			Problem.OTHER_DEVICE -> "รหัสนี้ใช้กับทีวีเครื่องอื่นไปแล้ว ติดต่อผู้ขาย — ใช้ตัวแปลออฟไลน์"
+			Problem.TRIAL_OVER -> "ทดลองแปลด้วย AI ฟรี 7 วันครบแล้ว ติดต่อผู้ขายเพื่อซื้อรหัส — ยังแปลออฟไลน์ได้ฟรี"
 			Problem.EXPIRED -> "รหัสหมดอายุแล้ว ต่ออายุกับผู้ขายเพื่อใช้ Gemini ต่อ — ตอนนี้ใช้ตัวแปลออฟไลน์"
 			Problem.POOL_EMPTY -> "โควตาแปล Gemini เต็มชั่วคราว ประโยคที่เคยแปลแล้วยังใช้ได้ ที่เหลือใช้ตัวแปลออฟไลน์"
 			Problem.DAILY_LIMIT -> "วันนี้แปลประโยคใหม่ครบโควตาแล้ว — ใช้ตัวแปลออฟไลน์ถึงพรุ่งนี้"

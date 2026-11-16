@@ -82,7 +82,7 @@ class TranslatorController(
 		val mode = prefs.mode
 		val tr = TextTranslator(prefs.geminiKey, prefs.geminiModel)
 		translator = tr
-		cloud = prefs.serverUrl.takeIf { it.isNotBlank() }?.let { CloudTranslator(it, prefs.licence, CloudTranslator.deviceId(context)) }
+		cloud = prefs.serverUrl.takeIf { it.isNotBlank() }?.let { CloudTranslator(it, prefs.cloudCode, CloudTranslator.deviceId(context)) }
 		cloud?.let { c ->
 			cloudPool.execute {
 				val p = c.check()

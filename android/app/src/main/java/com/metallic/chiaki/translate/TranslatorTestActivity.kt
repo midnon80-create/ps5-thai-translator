@@ -135,8 +135,13 @@ class TranslatorTestActivity : AppCompatActivity()
 		if(prefs.serverUrl.isBlank()) log("   ยังไม่เปิดใช้ในเวอร์ชันนี้ — ใช้ตัวแปลออฟไลน์", amber)
 		else
 		{
-			val cloud = CloudTranslator(prefs.serverUrl, prefs.licence, CloudTranslator.deviceId(this))
+			val cloud = CloudTranslator(prefs.serverUrl, prefs.cloudCode, CloudTranslator.deviceId(this))
 			val p = cloud.check()
+			if(cloud.plan == "trial" && cloud.expires > 0)
+			{
+				val days = ((cloud.expires - System.currentTimeMillis()) / 86_400_000L + 1).coerceAtLeast(0)
+				log("   ทดลองแปลด้วย AI ฟรี เหลืออีก $days วัน", if(days > 0) green else amber)
+			}
 			if(p != CloudTranslator.Problem.NONE) log("   " + CloudTranslator.problemText(p), amber)
 			else
 			{

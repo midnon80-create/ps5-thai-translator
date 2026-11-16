@@ -61,6 +61,12 @@ class TranslatorPrefs(context: Context)
 	/** Licence code from the seller (EYE-XXXX-XXXX): turns on Gemini translation through the shared server. */
 	val licence get() = sp.getString(KEY_LICENCE, "")?.trim()?.uppercase().orEmpty()
 
+	/**
+	 * Code sent to the server: the typed licence, or "AUTO-TRIAL" (a free 7-day Gemini trial that every new TV
+	 * gets without typing anything; the GitHub build only, Google Play has its own trial).
+	 */
+	val cloudCode get() = licence.ifBlank { if(com.metallic.chiaki.store.Store.IS_PLAY) "" else "AUTO-TRIAL" }
+
 	/** Hidden override for testing; normally the built-in server. */
 	val serverUrl get() = sp.getString("tr_server_url", "")?.trim().orEmpty().ifEmpty { SERVER_URL }
 
