@@ -23,7 +23,8 @@ import java.net.URL
 
 /**
  * Google Play build: Gemini access is bought with Google Play Billing.
- *  - eyes_yearly   subscription (base plan "yearly", optional 7-day free-trial offer)
+ *  - eyes_day      one-time 29 ฿ pass, 24 hours (one per Google account)
+ *  - eyes_yearly   subscription (base plan "yearly")
  *  - eyes_lifetime one-time product
  * Every purchase is checked by the Eyesmaxxing server (Google Play Developer API), which turns it into a
  * licence for this TV; the licence code is stored like a typed code, so the translator works unchanged.
@@ -31,6 +32,7 @@ import java.net.URL
 object Store
 {
 	const val IS_PLAY = true
+	const val ONE_TIME_DAY = "eyes_day"
 	const val SUB_YEARLY = "eyes_yearly"
 	const val ONE_TIME_LIFETIME = "eyes_lifetime"
 	private const val TAG = "EyesStore"
@@ -80,8 +82,8 @@ object Store
 		val done = purchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
 		if(done.isEmpty())
 			return if(purchases.any { it.purchaseState == Purchase.PurchaseState.PENDING }) "รอการชำระเงินจาก Google Play" else "ยังไม่ได้สมัคร"
-		// lifetime first: it never runs out
-		val best = done.sortedByDescending { if(it.products.contains(ONE_TIME_LIFETIME)) 1 else 0 }
+		// lifetime first (never runs out), then yearly, then the 1-day pass
+		val best = done.sortedByDescending { if(it.products.contains(ONE_TIME_LIFETIME)) 2 else if(it.products.contains(SUB_YEARLY)) 1 else 0 }
 		var status = "ยืนยันการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง"
 		for(p in best)
 		{
@@ -109,6 +111,7 @@ object Store
 		{
 			"life" -> "ใช้งานแบบตลอดชีพ ✔"
 			"trial" -> "ช่วงทดลองฟรี$until ✔"
+			"day" -> "แพ็กทดลอง 1 วัน" + (if(expires > 0) " ถึง " + java.text.SimpleDateFormat("d MMM HH:mm น.", java.util.Locale("th", "TH")).format(java.util.Date(expires)) else "") + " ✔"
 			else -> "สมาชิกรายปี$until ✔"
 		}
 	}

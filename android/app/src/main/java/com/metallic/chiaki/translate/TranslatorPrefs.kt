@@ -62,8 +62,8 @@ class TranslatorPrefs(context: Context)
 	val licence get() = sp.getString(KEY_LICENCE, "")?.trim()?.uppercase().orEmpty()
 
 	/**
-	 * Code sent to the server: the typed licence, or "AUTO-TRIAL" (a free 7-day Gemini trial that every new TV
-	 * gets without typing anything; the GitHub build only, Google Play has its own trial).
+	 * Code sent to the server: the typed licence, or "AUTO-TRIAL" (GitHub build only). Free trials are switched
+	 * off on the server now (paid 1-day code instead); trials that already started still run to their end date.
 	 */
 	val cloudCode get() = licence.ifBlank { if(com.metallic.chiaki.store.Store.IS_PLAY) "" else "AUTO-TRIAL" }
 

@@ -19,7 +19,7 @@ import java.security.MessageDigest
  */
 class CloudTranslator(private val serverUrl: String, private val licence: String, private val device: String)
 {
-	enum class Problem { NONE, NO_LICENCE, LICENCE_INVALID, OTHER_DEVICE, EXPIRED, TRIAL_OVER, POOL_EMPTY, DAILY_LIMIT, OFFLINE }
+	enum class Problem { NONE, NO_LICENCE, NEED_BUY, LICENCE_INVALID, OTHER_DEVICE, EXPIRED, TRIAL_OVER, POOL_EMPTY, DAILY_LIMIT, OFFLINE }
 
 	@Volatile var problem = if(licence.isBlank()) Problem.NO_LICENCE else Problem.NONE
 		private set
@@ -27,7 +27,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 	/** False after a licence error (for the rest of the session) or while the network is failing. */
 	val usable get() = serverUrl.isNotBlank() && problem != Problem.NO_LICENCE &&
 		problem != Problem.LICENCE_INVALID && problem != Problem.OTHER_DEVICE && problem != Problem.EXPIRED &&
-		problem != Problem.TRIAL_OVER &&
+		problem != Problem.TRIAL_OVER && problem != Problem.NEED_BUY &&
 		System.currentTimeMillis() >= pausedUntil
 
 	@Volatile private var pausedUntil = 0L
@@ -73,7 +73,8 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			"licence_invalid", "licence_missing" -> Problem.LICENCE_INVALID
 			"licence_other_device" -> Problem.OTHER_DEVICE
 			"licence_expired" -> Problem.EXPIRED
-			"trial_over" -> Problem.TRIAL_OVER
+			// no expiry date = this TV never had a free trial (free trials are off): it needs a bought code
+			"trial_over" -> if(expires > 0L) Problem.TRIAL_OVER else Problem.NEED_BUY
 			"daily_limit" -> Problem.DAILY_LIMIT
 			else -> problem
 		}
@@ -123,14 +124,18 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			return d.take(12).joinToString("") { "%02x".format(it) }
 		}
 
-		fun problemText(p: Problem) = when(p)
+		private val BUY = if(com.metallic.chiaki.store.Store.IS_PLAY) "กดสมัครในตั้งค่า" else "ซื้อรหัสจากผู้ขาย"
+		const val PRICES = "ทดลอง 1 วัน 29 บาท · รายปี 329 บาท · ตลอดชีพ 759 บาท"
+
+		fun problemText(p: Problem, plan: String = "") = when(p)
 		{
 			Problem.NONE -> "แปลด้วย Gemini พร้อมใช้"
-			Problem.NO_LICENCE -> "ยังไม่ได้ใส่รหัสไลเซนส์ (ตั้งค่า › รหัสไลเซนส์) — ใช้ตัวแปลออฟไลน์"
+			Problem.NO_LICENCE, Problem.NEED_BUY -> "แปลด้วย AI ต้องใช้รหัส ($PRICES) $BUY — ตอนนี้ใช้ตัวแปลออฟไลน์ฟรี"
+			Problem.EXPIRED -> if(plan == "day") "ครบ 1 วันแล้ว ถ้าพอใจ อัปเกรดเป็นรายปี 329 บาท หรือตลอดชีพ 759 บาท ($BUY) — ตอนนี้ใช้ตัวแปลออฟไลน์"
+				else "รหัสหมดอายุแล้ว ต่ออายุ ($BUY) เพื่อใช้ AI ต่อ — ตอนนี้ใช้ตัวแปลออฟไลน์"
 			Problem.LICENCE_INVALID -> "รหัสไลเซนส์ไม่ถูกต้อง ตรวจรหัสอีกครั้ง — ใช้ตัวแปลออฟไลน์"
 			Problem.OTHER_DEVICE -> "รหัสนี้ใช้กับทีวีเครื่องอื่นไปแล้ว ติดต่อผู้ขาย — ใช้ตัวแปลออฟไลน์"
-			Problem.TRIAL_OVER -> "ทดลองแปลด้วย AI ฟรี 7 วันครบแล้ว ติดต่อผู้ขายเพื่อซื้อรหัส — ยังแปลออฟไลน์ได้ฟรี"
-			Problem.EXPIRED -> "รหัสหมดอายุแล้ว ต่ออายุกับผู้ขายเพื่อใช้ Gemini ต่อ — ตอนนี้ใช้ตัวแปลออฟไลน์"
+			Problem.TRIAL_OVER -> "ช่วงทดลองฟรีครบแล้ว $BUY ($PRICES) — ยังแปลออฟไลน์ได้ฟรี"
 			Problem.POOL_EMPTY -> "โควตาแปล Gemini เต็มชั่วคราว ประโยคที่เคยแปลแล้วยังใช้ได้ ที่เหลือใช้ตัวแปลออฟไลน์"
 			Problem.DAILY_LIMIT -> "วันนี้แปลประโยคใหม่ครบโควตาแล้ว — ใช้ตัวแปลออฟไลน์ถึงพรุ่งนี้"
 			Problem.OFFLINE -> "ต่อเซิร์ฟเวอร์แปลไม่ได้ — ใช้ตัวแปลออฟไลน์"

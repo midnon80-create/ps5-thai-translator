@@ -22,8 +22,10 @@ class PurchaseActivity : AppCompatActivity()
 {
 	private lateinit var client: BillingClient
 	private lateinit var status: TextView
+	private lateinit var dayBtn: Button
 	private lateinit var yearlyBtn: Button
 	private lateinit var lifetimeBtn: Button
+	private var day: ProductDetails? = null
 	private var yearly: ProductDetails? = null
 	private var lifetime: ProductDetails? = null
 
@@ -43,14 +45,16 @@ class PurchaseActivity : AppCompatActivity()
 		col.addView(text("แปลซับ ปุ่มกด คำแนะนำ และเอกสารในเกม ด้วย Gemini แบบได้อารมณ์ (ต้องต่อเน็ต) — ถ้าไม่สมัคร แอปยังแปลแบบออฟไลน์ได้ฟรี", 16f, Color.rgb(170, 176, 190)))
 		status = text("กำลังเชื่อมต่อ Google Play…", 18f, Color.rgb(253, 224, 130))
 		col.addView(status)
-		yearlyBtn = button("รายปี (ทดลองฟรีก่อน)") { buy(yearly) }
-		lifetimeBtn = button("ตลอดชีพ จ่ายครั้งเดียว") { buy(lifetime) }
+		dayBtn = button("ทดลอง 1 วัน 29 บาท") { buy(day) }
+		yearlyBtn = button("รายปี 329 บาท") { buy(yearly) }
+		lifetimeBtn = button("ตลอดชีพ 759 บาท จ่ายครั้งเดียว") { buy(lifetime) }
+		col.addView(dayBtn)
 		col.addView(yearlyBtn)
 		col.addView(lifetimeBtn)
 		col.addView(button("กู้คืนการซื้อ / ตรวจสถานะ") { status.text = "กำลังตรวจสอบ…"; Store.refresh(this) { status.text = it } })
 		col.addView(text("ยกเลิกการต่ออายุได้ทุกเมื่อใน Google Play › การชำระเงินและการสมัครใช้บริการ", 14f, Color.rgb(130, 136, 150)))
 		setContentView(ScrollView(this).apply { addView(col) })
-		yearlyBtn.requestFocus()
+		dayBtn.requestFocus()
 
 		client = BillingClient.newBuilder(this)
 			.setListener(Store.listener(applicationContext, { status.text = it }) { client })
@@ -80,6 +84,11 @@ class PurchaseActivity : AppCompatActivity()
 			.setProductList(listOf(q(Store.SUB_YEARLY, BillingClient.ProductType.SUBS))).build()) { _, res ->
 			yearly = res.productDetailsList.firstOrNull()
 			runOnUiThread { yearly?.let { yearlyBtn.text = "รายปี " + yearlyPrice(it) } }
+		}
+		client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder()
+			.setProductList(listOf(q(Store.ONE_TIME_DAY, BillingClient.ProductType.INAPP))).build()) { _, res ->
+			day = res.productDetailsList.firstOrNull()
+			runOnUiThread { day?.oneTimePurchaseOfferDetails?.let { dayBtn.text = "ทดลอง 1 วัน " + it.formattedPrice } }
 		}
 		client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder()
 			.setProductList(listOf(q(Store.ONE_TIME_LIFETIME, BillingClient.ProductType.INAPP))).build()) { _, res ->

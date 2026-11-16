@@ -142,7 +142,12 @@ class TranslatorTestActivity : AppCompatActivity()
 				val days = ((cloud.expires - System.currentTimeMillis()) / 86_400_000L + 1).coerceAtLeast(0)
 				log("   ทดลองแปลด้วย AI ฟรี เหลืออีก $days วัน", if(days > 0) green else amber)
 			}
-			if(p != CloudTranslator.Problem.NONE) log("   " + CloudTranslator.problemText(p), amber)
+			if(cloud.plan == "day" && cloud.expires > System.currentTimeMillis())
+			{
+				val hours = ((cloud.expires - System.currentTimeMillis()) / 3_600_000L + 1).coerceAtLeast(1)
+				log("   แพ็กทดลอง 1 วัน เหลืออีกประมาณ $hours ชั่วโมง", green)
+			}
+			if(p != CloudTranslator.Problem.NONE) log("   " + CloudTranslator.problemText(p, cloud.plan), amber)
 			else
 			{
 				val sampleLine = "What the hell are you doing here? We gotta bounce, now!"
