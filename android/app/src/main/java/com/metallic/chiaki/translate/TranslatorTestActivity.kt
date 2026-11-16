@@ -130,6 +130,25 @@ class TranslatorTestActivity : AppCompatActivity()
 		}
 		translator.close()
 
+		// 4. Gemini through the shared server (needs the licence code)
+		log("\n4) แปลด้วย Gemini (รหัสไลเซนส์)")
+		if(prefs.serverUrl.isBlank()) log("   ยังไม่เปิดใช้ในเวอร์ชันนี้ — ใช้ตัวแปลออฟไลน์", amber)
+		else
+		{
+			val cloud = CloudTranslator(prefs.serverUrl, prefs.licence, CloudTranslator.deviceId(this))
+			val p = cloud.check()
+			if(p != CloudTranslator.Problem.NONE) log("   " + CloudTranslator.problemText(p), amber)
+			else
+			{
+				val sampleLine = "What the hell are you doing here? We gotta bounce, now!"
+				t0 = SystemClock.elapsedRealtime()
+				val th = cloud.translate(listOf(sampleLine), emptyList())?.firstOrNull()
+				log("   ตัวอย่าง: $sampleLine")
+				if(th != null) log("   Gemini:   $th  (${SystemClock.elapsedRealtime() - t0} ms)", green)
+				else log("   " + CloudTranslator.problemText(cloud.problem), amber)
+			}
+		}
+
 		// A: remember what this TV can do; switch speech off only when even the fast mode can't keep up
 		prefs.setSpeechFast(usedFast)
 		prefs.setSpeechSlow(!speechOk)

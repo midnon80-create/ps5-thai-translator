@@ -38,9 +38,10 @@ class MainActivity : AppCompatActivity()
 		super.onCreate(savedInstanceState)
 		binding = ActivityMainBinding.inflate(layoutInflater)
 		setContentView(binding.root)
+		// direct build: GitHub update check · Play build: re-checks Google Play purchases
 		if(savedInstanceState == null)
-			try { com.metallic.chiaki.update.UpdateManager.checkAndPrompt(this, manual = false) }
-			catch(e: Throwable) { android.util.Log.e("PS5Translate", "update check failed", e) }
+			try { com.metallic.chiaki.store.Store.onAppStart(this) }
+			catch(e: Throwable) { android.util.Log.e("Eyesmaxxing", "store start failed", e) }
 
 		title = ""
 		setSupportActionBar(binding.toolbar)

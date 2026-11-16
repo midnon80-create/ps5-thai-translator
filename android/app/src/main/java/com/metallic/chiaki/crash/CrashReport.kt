@@ -60,7 +60,7 @@ object CrashReport
 	}
 
 	private fun header() =
-		"PS5 แปลไทย ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n" +
+		"Eyesmaxxing ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n" +
 		"เครื่อง: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})\n" +
 		"Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · CPU ${Build.SUPPORTED_ABIS.joinToString()}\n" +
 		"เวลา: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}\n"

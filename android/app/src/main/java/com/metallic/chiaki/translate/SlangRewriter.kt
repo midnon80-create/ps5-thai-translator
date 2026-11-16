@@ -23,7 +23,8 @@ object SlangRewriter
 		synchronized(this)
 		{
 			if(loaded) return
-			val rules = HashMap<String, MutableList<Rule>>()
+			// phrase -> rule; files load in name order and a later file overrides the same phrase
+			val all = LinkedHashMap<String, Rule>()
 			val files = (context.assets.list("") ?: emptyArray()).filter { it.startsWith("slang_en") && it.endsWith(".txt") }.sorted()
 			for(f in files)
 			{
@@ -37,13 +38,14 @@ object SlangRewriter
 							if(i <= 0) continue
 							val words = tokens(line.substring(0, i))
 							if(words.isEmpty()) continue
-							rules.getOrPut(words[0]) { ArrayList() }.add(Rule(words, line.substring(i + 4).trim()))
+							all[words.joinToString(" ")] = Rule(words, line.substring(i + 4).trim())
 						}
 					}
 				}
 				catch(e: Exception) { Log.w("SlangRewriter", "could not load $f", e) }
 			}
 			// longest phrase wins
+			val rules = all.values.groupBy { it.words[0] }
 			byFirst = rules.mapValues { (_, v) -> v.sortedByDescending { it.words.size } }
 			loaded = true
 		}

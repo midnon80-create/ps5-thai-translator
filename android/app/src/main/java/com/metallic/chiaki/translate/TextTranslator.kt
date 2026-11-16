@@ -34,6 +34,17 @@ class TextTranslator(private val geminiKey: String, private val geminiModel: Str
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > 400
 	}
 	private val recent = ArrayDeque<String>()
+	// Gemini lines from the shared server cache: preferred over offline output for the rest of the session
+	private val cloudCache = object : LinkedHashMap<String, String>(256, 0.75f, true)
+	{
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > 2000
+	}
+
+	fun remember(src: String, thai: String) = synchronized(cloudCache) { cloudCache[src.trim()] = thai }
+
+	/** Hand-written bank line or an earlier Gemini line: already the best we have, no need to ask the server. */
+	fun best(src: String): String? = PhraseBank.lookup(src) ?: synchronized(cloudCache) { cloudCache[src.trim()] }
+
 
 	// Free Gemini keys allow about 15 requests a minute; stay under it and back off when told to.
 	private val geminiCalls = ArrayDeque<Long>()
@@ -67,103 +78,108 @@ class TextTranslator(private val geminiKey: String, private val geminiModel: Str
 		}
 	}
 
-	/**
-	 * Several sentences (e.g. speech cut at pauses): bank hits instantly, the rest translated in one
-	 * parallel batch so splitting adds no waiting. Joined with spaces.
-	 */
-	fun translateAll(sentences: List<String>): String?
+	/** Several sentences (e.g. speech cut at pauses), each translated on its own, joined with spaces. */
+	fun translateAll(sentences: List<String>, kind: TextKind = TextKind.DIALOGUE): String?
 	{
-		val parts = sentences.map { it.trim() }.filter { it.isNotEmpty() }
-		if(parts.isEmpty()) return null
-		if(parts.size == 1) return translate(parts[0])
-		val results = arrayOfNulls<String>(parts.size)
-		val pending = ArrayList<Pair<Int, com.google.android.gms.tasks.Task<String>>>()
-		for((i, p) in parts.withIndex())
-		{
-			val hit = PhraseBank.lookup(p) ?: synchronized(cache) { cache[p] }
-			when
-			{
-				hit != null -> results[i] = hit
-				geminiKey.isNotEmpty() -> results[i] = translateOne(p)
-				else ->
-				{
-					// slang -> plain English, then the bank again, then the offline translator
-					val plain = SlangRewriter.rewrite(p)
-					val hit2 = if(plain != p) PhraseBank.lookup(plain) else null
-					when
-					{
-						hit2 != null -> results[i] = hit2
-						offlineReady -> pending.add(i to mlkit.translate(plain))
-					}
-				}
-			}
-		}
-		for((i, task) in pending)
-		{
-			results[i] = try { Tasks.await(task, 5, TimeUnit.SECONDS) } catch(e: Exception) { null }
-			results[i]?.let { r -> synchronized(cache) { cache[parts[i]] = r } }
-		}
-		val ok = results.filterNotNull()
+		val ok = translateEach(sentences.map { it.trim() }.filter { it.isNotEmpty() }, kind).filterNotNull()
 		return if(ok.isEmpty()) null else ok.joinToString(" ")
 	}
 
-	fun translate(english: String): String?
+	/** One Thai line per input (null where nothing worked). */
+	fun translateEach(parts: List<String>, kind: TextKind = TextKind.DIALOGUE): List<String?> = parts.map { translate(it, kind) }
+
+	fun translate(english: String, kind: TextKind = TextKind.DIALOGUE): String?
 	{
 		val src = english.trim()
 		if(src.isEmpty()) return null
-		synchronized(cache) { cache[src] }?.let { return it }
-		PhraseBank.lookup(src)?.let { return it }
-		// A subtitle with several sentences: look each one up in the bank (offline only; Gemini sees the whole line)
-		if(geminiKey.isEmpty())
+		if(kind == TextKind.DIALOGUE) best(src)?.let { return it }
+		else synchronized(cloudCache) { cloudCache[kind.name + ":" + src] }?.let { return it }
+		val key = kind.name + ":" + src
+		synchronized(cache) { cache[key] }?.let { return it }
+		val out = when
 		{
-			val sentences = src.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
-			if(sentences.size > 1)
-				return translateAll(sentences)?.also { synchronized(cache) { cache[src] = it } }
+			geminiKey.isNotEmpty() && kind == TextKind.DIALOGUE -> translateOne(src) ?: offline(src, kind)
+			kind == TextKind.PROMPT -> UiText.prompt(src) { offline(it, TextKind.HINT) } ?: offline(src, TextKind.HINT)
+			else -> offline(src, kind)
 		}
-		if(geminiKey.isEmpty())
-		{
-			val plain = SlangRewriter.rewrite(src)
-			if(plain != src)
-			{
-				PhraseBank.lookup(plain)?.let { return it }
-				return translateOne(plain)?.also { synchronized(cache) { cache[src] = it } }
-			}
-		}
-		return translateOne(src)
+		if(out != null) synchronized(cache) { cache[key] = out }
+		return out
 	}
 
+	/** Gemini line for a non-dialogue kind, kept apart from dialogue (different style). */
+	fun remember(src: String, thai: String, kind: TextKind) =
+		if(kind == TextKind.DIALOGUE) remember(src, thai) else synchronized(cloudCache) { cloudCache[kind.name + ":" + src.trim()] = thai }
+
+	/** Already have the best possible line for this kind (bank / earlier Gemini)? */
+	fun best(src: String, kind: TextKind): String? =
+		if(kind == TextKind.DIALOGUE) best(src) else synchronized(cloudCache) { cloudCache[kind.name + ":" + src.trim()] }
+
+	/**
+	 * Offline: sentences one by one; each goes hand-written bank -> fixed-Thai phrases masked ->
+	 * slang to plain English -> ML Kit -> phrases put back -> spoken Thai (+ speaker's tone for dialogue).
+	 */
+	private fun offline(src: String, kind: TextKind): String?
+	{
+		val sentences = splitSentences(src)
+		if(sentences.size > 1)
+		{
+			val ok = sentences.mapNotNull { offlineSentence(it, kind) }
+			return if(ok.isEmpty()) null else ok.joinToString(" ")
+		}
+		return offlineSentence(src, kind)
+	}
+
+	private fun offlineSentence(src: String, kind: TextKind): String?
+	{
+		PhraseBank.lookup(src)?.let { return it }
+		// intensifiers would split known phrases ("deep fucking shit"); the tone still comes from src
+		val masked = ThaiPhrases.mask(src.replace(INTENSIFIERS, ""))
+		val thai: String? = if(masked.onlyPhrases) ThaiPhrases.unmask(masked.text, masked)
+		else
+		{
+			val plain = if(kind == TextKind.DIALOGUE) SlangRewriter.rewrite(masked.text) else masked.text
+			if(!masked.any) PhraseBank.lookup(plain)?.let { return it }
+			val mt = machine(plain) ?: return null
+			if(!masked.any) mt
+			else ThaiPhrases.unmask(mt, masked)
+				// the translator mangled a placeholder: translate the pieces between the phrases instead
+				?: ThaiPhrases.joinParts(masked.parts().map { p ->
+					val piece = p.trim().trim(',', ' ')
+					if(piece.none { it.isLetter() }) null
+					else machine(if(kind == TextKind.DIALOGUE) SlangRewriter.rewrite(piece) else piece)
+				}, masked)
+		}
+		thai ?: return null
+		return if(kind == TextKind.DIALOGUE) ThaiTone.apply(src, thai) else ThaiTone.polish(thai)
+	}
+
+	private fun machine(text: String): String?
+	{
+		if(!offlineReady || text.isBlank()) return null
+		return try { Tasks.await(mlkit.translate(text), 5, TimeUnit.SECONDS) }
+		catch(e: Exception) { Log.w(TAG, "ML Kit translate failed", e); null }
+	}
+
+	/** Sentence ends, plus ", they/we/you..." where a comma starts a new clause (reads better in Thai). */
+	private fun splitSentences(s: String): List<String> =
+		s.split(Regex("""(?<=[.!?;])\s+|,\s+(?=(?:the|they|we|you|i|he|she|it|so|but|and)\b)""", RegexOption.IGNORE_CASE))
+			.map { it.trim() }.filter { it.any { c -> c.isLetter() } }
+
+	/** BYO Gemini key (old setting, hidden now): dialogue only. */
 	private fun translateOne(src: String): String?
 	{
-		synchronized(cache) { cache[src] }?.let { return it }
-		var out: String? = null
-		if(geminiAllowed())
+		if(!geminiAllowed()) return null
+		val out = try { gemini(src) }
+		catch(e: GeminiRateLimited) { geminiPausedUntil = System.currentTimeMillis() + 60_000; null }
+		catch(e: Exception)
 		{
-			out = try { gemini(src) }
-			catch(e: GeminiRateLimited)
-			{
-				geminiPausedUntil = System.currentTimeMillis() + 60_000
-				null
-			}
-			catch(e: Exception)
-			{
-				Log.w(TAG, "Gemini failed, using offline", e)
-				if(++geminiFailStreak >= 3)
-				{
-					geminiPausedUntil = System.currentTimeMillis() + 30_000
-					geminiFailStreak = 0
-				}
-				null
-			}
-			if(out != null) geminiFailStreak = 0
-		}
-		if(out == null && offlineReady)
-		{
-			out = try { Tasks.await(mlkit.translate(src), 5, TimeUnit.SECONDS) }
-			catch(e: Exception) { Log.w(TAG, "ML Kit translate failed", e); null }
+			Log.w(TAG, "Gemini failed, using offline", e)
+			if(++geminiFailStreak >= 3) { geminiPausedUntil = System.currentTimeMillis() + 30_000; geminiFailStreak = 0 }
+			null
 		}
 		if(out != null)
 		{
-			synchronized(cache) { cache[src] = out }
+			geminiFailStreak = 0
 			recent.addLast(src)
 			while(recent.size > 3) recent.removeFirst()
 		}
@@ -222,6 +238,7 @@ class TextTranslator(private val geminiKey: String, private val geminiModel: Str
 
 	companion object
 	{
+		private val INTENSIFIERS = Regex("""(?i)\b(fucking|fuckin'?|freaking|freakin'?|goddamn|goddamned)\s+""")
 		private const val TAG = "TranslatorText"
 		private const val GEMINI_PER_MINUTE = 14
 	}

@@ -24,7 +24,8 @@ class TranslatorPrefs(context: Context)
 		else -> Mode.BOTH
 	}
 
-	val region get() = if(sp.getString("tr_region", "bottom") == "full") Region.FULL else Region.BOTTOM
+	/** FULL = whole screen sorted into dialogue / prompts / hints / documents; BOTTOM = subtitles only (lighter). */
+	val region get() = if(sp.getString("tr_read_area", "full") == "bottom") Region.BOTTOM else Region.FULL
 
 	val position get() = when(sp.getString("tr_position", "above")) {
 		"top" -> Position.TOP
@@ -57,6 +58,12 @@ class TranslatorPrefs(context: Context)
 
 	val showEnglish get() = sp.getBoolean("tr_show_english", false)
 
+	/** Licence code from the seller (EYE-XXXX-XXXX): turns on Gemini translation through the shared server. */
+	val licence get() = sp.getString(KEY_LICENCE, "")?.trim()?.uppercase().orEmpty()
+
+	/** Hidden override for testing; normally the built-in server. */
+	val serverUrl get() = sp.getString("tr_server_url", "")?.trim().orEmpty().ifEmpty { SERVER_URL }
+
 	val geminiKey get() = sp.getString("tr_gemini_key", "")?.trim().orEmpty()
 
 	val geminiModel get() = sp.getString("tr_gemini_model", "")?.trim().orEmpty().ifEmpty { DEFAULT_GEMINI_MODEL }
@@ -64,6 +71,9 @@ class TranslatorPrefs(context: Context)
 	companion object
 	{
 		const val KEY_MODE = "tr_mode"
+		const val KEY_LICENCE = "tr_licence"
+		/** Eyesmaxxing server (Cloudflare Worker); empty = cloud off until it is deployed. */
+		const val SERVER_URL = "https://eyesmaxxing.midtdqxx.workers.dev"
 		const val KEY_SPEECH_SLOW = "tr_speech_slow"
 		const val KEY_SPEECH_SLOW_WARNED = "tr_speech_slow_warned"
 		const val KEY_SPEECH_FAST = "tr_speech_fast"

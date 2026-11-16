@@ -28,8 +28,8 @@ android {
         applicationId "com.ps5translate.tv"
         minSdk 24
         targetSdk 35
-        versionCode 130
-        versionName "1.3.0"
+        versionCode 140
+        versionName "1.4.0"
         buildConfigField "String", "UPDATE_REPO", "\"midnon80-create/ps5-thai-translator\""
         ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
         externalNativeBuild {
@@ -58,6 +58,22 @@ android {
                         "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
                         "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
             }
+        }
+    }
+
+    // direct = APK from GitHub (self-update, licence codes sold via LINE)
+    // play   = Google Play (no self-update, no install permission, Google Play Billing)
+    flavorDimensions "store"
+    productFlavors {
+        direct {
+            dimension "store"
+            buildConfigField "boolean", "PLAY", "false"
+        }
+        play {
+            dimension "store"
+            // own package on Google Play (no "PS5" trademark in the id); permanent once published
+            applicationId "com.eyesmaxxing.tv"
+            buildConfigField "boolean", "PLAY", "true"
         }
     }
 
@@ -148,6 +164,9 @@ dependencies {
     implementation 'com.google.mlkit:translate:17.0.3'
     // offline speech: Silero VAD + Moonshine Tiny via sherpa-onnx (Apache-2.0; model MIT)
     implementation files('libs/sherpa-onnx-2.0.1.aar')
+
+    // Google Play Billing (play flavour only)
+    playImplementation 'com.android.billingclient:billing:8.0.0'
 
     testImplementation 'junit:junit:4.13.2'
 }

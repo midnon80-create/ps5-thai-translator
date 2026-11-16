@@ -1,0 +1,28 @@
+# Swearing intensifiers: dropped before the offline translator; ThaiTone reads the ORIGINAL line
+# and puts the anger back in Thai (มึง/กู, วะ, เว้ย). Overrides the same phrases in earlier files.
+what the fuck => what
+what the hell => what
+what the heck => what
+where the fuck => where
+where the hell => where
+who the fuck => who
+who the hell => who
+why the fuck => why
+why the hell => why
+how the fuck => how
+how the hell => how
+when the fuck => when
+the fuck => 
+the hell => 
+the heck => 
+fucking => 
+fuckin => 
+freaking => 
+freakin => 
+goddamn => 
+goddamned => 
+damn well => 
+wtf => what
+what the fuck is that => what is that
+what the fuck was that => what was that
+what the fuck are you doing => what are you doing

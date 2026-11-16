@@ -7,8 +7,8 @@
     </string-array>
     <string-array name="tr_mode_values"><item>both</item><item>screen</item><item>speech</item></string-array>
     <string-array name="tr_region_titles">
-        <item>ครึ่งล่าง (ซับไตเติ้ล) แนะนำ</item>
-        <item>ทั้งจอ (กล่องข้อความ เมนู)</item>
+        <item>ซับล่างจออย่างเดียว (เบาเครื่อง)</item>
+        <item>ทั้งจอ: ซับ ปุ่มกด คำแนะนำ เอกสาร (แนะนำ)</item>
     </string-array>
     <string-array name="tr_region_values"><item>bottom</item><item>full</item></string-array>
     <string-array name="tr_position_titles">

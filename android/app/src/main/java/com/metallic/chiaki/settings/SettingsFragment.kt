@@ -148,6 +148,27 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 			true
 		}
 		preferenceScreen.findPreference<Preference>(getString(R.string.preferences_export_settings_key))?.setOnPreferenceClickListener { exportSettings(); true }
+		// the screen links in preferences.xml name the direct build's package; point them at this build
+		fun fixIntents(g: androidx.preference.PreferenceGroup)
+		{
+			for(i in 0 until g.preferenceCount)
+			{
+				val p = g.getPreference(i)
+				p.intent?.component?.let { c -> p.intent = android.content.Intent().setClassName(requireContext().packageName, c.className) }
+				if(p is androidx.preference.PreferenceGroup) fixIntents(p)
+			}
+		}
+		fixIntents(preferenceScreen)
+		// Google Play build: buy inside the app (Play Billing); no self-update, no typed codes
+		if(com.metallic.chiaki.store.Store.IS_PLAY)
+		{
+			preferenceScreen.findPreference<Preference>("tr_check_update")?.isVisible = false
+			preferenceScreen.findPreference<Preference>(com.metallic.chiaki.translate.TranslatorPrefs.KEY_LICENCE)?.isVisible = false
+			preferenceScreen.findPreference<Preference>("tr_buy")?.let {
+				it.isVisible = true
+				it.setOnPreferenceClickListener { activity?.let { a -> com.metallic.chiaki.store.Store.openPurchase(a) }; true }
+			}
+		}
 		preferenceScreen.findPreference<Preference>(getString(R.string.preferences_import_settings_key))?.setOnPreferenceClickListener { importSettings(); true }
 	}
 

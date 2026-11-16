@@ -18,9 +18,9 @@
             app:entryValues="@array/tr_mode_values"
             app:useSimpleSummaryProvider="true" />
         <ListPreference
-            app:key="tr_region"
-            app:defaultValue="bottom"
-            app:title="อ่านข้อความจากส่วนไหนของจอ"
+            app:key="tr_read_area"
+            app:defaultValue="full"
+            app:title="แปลอะไรบนจอ"
             app:entries="@array/tr_region_titles"
             app:entryValues="@array/tr_region_values"
             app:useSimpleSummaryProvider="true" />
@@ -74,15 +74,16 @@
                 android:targetPackage="com.ps5translate.tv"
                 android:targetClass="com.metallic.chiaki.translate.TranslatorTestActivity" />
         </Preference>
+        <Preference
+            app:key="tr_buy"
+            app:title="สมัครใช้งาน แปลด้วย Gemini"
+            app:summary="ทดลองฟรี · รายปี · ตลอดชีพ — ดูสถานะการสมัคร"
+            app:isPreferenceVisible="false" />
         <EditTextPreference
-            app:key="tr_gemini_key"
-            app:title="Gemini API key (ไม่ใส่ก็ได้)"
-            app:summary="ใส่แล้วภาษาไทยจะลื่นขึ้น ต้องใช้อินเทอร์เน็ต ถ้าไม่ใส่จะแปลแบบออฟไลน์ฟรีไม่จำกัด" />
-        <EditTextPreference
-            app:key="tr_gemini_model"
-            app:title="รุ่น Gemini"
-            app:defaultValue="gemini-flash-lite-latest"
-            app:useSimpleSummaryProvider="true" />
+            app:key="tr_licence"
+            app:title="รหัสไลเซนส์ (แปลด้วย Gemini)"
+            app:dialogMessage="ใส่รหัสที่ได้จากผู้ขาย เช่น EYE-AB12-CD34 แล้วกดทดสอบตัวแปลเพื่อเช็ก"
+            app:summary="ใส่รหัสจากผู้ขายเพื่อแปลด้วย Gemini (ลื่นและได้อารมณ์กว่า ต้องต่อเน็ต) ถ้าไม่ใส่จะแปลออฟไลน์" />
     </PreferenceCategory>
 
     <PreferenceCategory

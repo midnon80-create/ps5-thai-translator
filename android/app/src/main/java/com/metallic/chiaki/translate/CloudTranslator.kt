@@ -1,0 +1,130 @@
+package com.metallic.chiaki.translate
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.provider.Settings
+import android.util.Log
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
+
+/**
+ * Client for the Eyesmaxxing server: one shared cache of Gemini translations for every customer.
+ * Lines someone already met come back from the cache (free, ~0.1-0.3 s); new lines are translated by
+ * Gemini on the server and paid from the pool. The Gemini key is only on the server.
+ * Blocking: call from a background thread. Returns null whenever the cloud can't help, so the
+ * caller simply keeps the offline translation.
+ */
+class CloudTranslator(private val serverUrl: String, private val licence: String, private val device: String)
+{
+	enum class Problem { NONE, NO_LICENCE, LICENCE_INVALID, OTHER_DEVICE, EXPIRED, POOL_EMPTY, DAILY_LIMIT, OFFLINE }
+
+	@Volatile var problem = if(licence.isBlank()) Problem.NO_LICENCE else Problem.NONE
+		private set
+
+	/** False after a licence error (for the rest of the session) or while the network is failing. */
+	val usable get() = serverUrl.isNotBlank() && problem != Problem.NO_LICENCE &&
+		problem != Problem.LICENCE_INVALID && problem != Problem.OTHER_DEVICE && problem != Problem.EXPIRED &&
+		System.currentTimeMillis() >= pausedUntil
+
+	@Volatile private var pausedUntil = 0L
+	private var failStreak = 0
+
+	/** One result per line, null where the cloud had nothing (e.g. pool empty and line not cached). */
+	fun translate(lines: List<String>, context: List<String>, kind: TextKind = TextKind.DIALOGUE, hints: List<String?> = emptyList()): List<String?>?
+	{
+		if(!usable || lines.isEmpty()) return null
+		val body = JSONObject()
+			.put("code", licence).put("device", device)
+			.put("lines", JSONArray(lines)).put("context", JSONArray(context))
+			.put("kind", kind.name.lowercase())
+			.put("hints", JSONArray(hints.map { it ?: JSONObject.NULL }))
+		val res = post("/v1/translate", body) ?: return null
+		if(res.has("error")) { onError(res.optString("error")); return null }
+		problem = when(res.optString("note")) { "pool_empty" -> Problem.POOL_EMPTY; "daily_limit" -> Problem.DAILY_LIMIT; else -> Problem.NONE }
+		val arr = res.optJSONArray("th") ?: return null
+		return List(lines.size) { i -> if(i < arr.length() && !arr.isNull(i)) arr.optString(i).trim().ifEmpty { null } else null }
+	}
+
+	/** For the test screen: licence OK and money left in the pool? */
+	fun check(): Problem
+	{
+		if(serverUrl.isBlank()) return Problem.OFFLINE
+		if(licence.isBlank()) return Problem.NO_LICENCE
+		val res = post("/v1/check", JSONObject().put("code", licence).put("device", device)) ?: return Problem.OFFLINE
+		if(!res.optBoolean("ok")) { onError(res.optString("error")); return problem }
+		problem = if(res.optBoolean("pool_ok")) Problem.NONE else Problem.POOL_EMPTY
+		return problem
+	}
+
+	private fun onError(e: String)
+	{
+		problem = when(e)
+		{
+			"licence_invalid", "licence_missing" -> Problem.LICENCE_INVALID
+			"licence_other_device" -> Problem.OTHER_DEVICE
+			"licence_expired" -> Problem.EXPIRED
+			"daily_limit" -> Problem.DAILY_LIMIT
+			else -> problem
+		}
+		if(problem == Problem.DAILY_LIMIT) pausedUntil = System.currentTimeMillis() + 10 * 60_000
+	}
+
+	private fun post(path: String, body: JSONObject): JSONObject?
+	{
+		var conn: HttpURLConnection? = null
+		return try
+		{
+			conn = (URL(serverUrl.trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
+				requestMethod = "POST"
+				connectTimeout = 2500
+				readTimeout = 6000
+				doOutput = true
+				setRequestProperty("Content-Type", "application/json")
+			}
+			conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+			val code = conn.responseCode
+			val stream = if(code in 200..299) conn.inputStream else conn.errorStream
+			val text = stream?.bufferedReader(Charsets.UTF_8)?.readText().orEmpty()
+			failStreak = 0
+			if(problem == Problem.OFFLINE) problem = Problem.NONE
+			if(text.isEmpty()) null else JSONObject(text)
+		}
+		catch(e: Exception)
+		{
+			Log.w(TAG, "cloud request failed", e)
+			// network trouble: stop asking for a while so the offline path isn't slowed down
+			if(++failStreak >= 2) { pausedUntil = System.currentTimeMillis() + 30_000; failStreak = 0; problem = Problem.OFFLINE }
+			null
+		}
+		finally { conn?.disconnect() }
+	}
+
+	companion object
+	{
+		private const val TAG = "CloudTranslator"
+
+		/** Stable per TV (and per app signing key); hashed so the raw Android id never leaves the TV. */
+		@SuppressLint("HardwareIds")
+		fun deviceId(context: Context): String
+		{
+			val raw = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+			val d = MessageDigest.getInstance("SHA-256").digest(("eyesmaxxing:" + raw).toByteArray())
+			return d.take(12).joinToString("") { "%02x".format(it) }
+		}
+
+		fun problemText(p: Problem) = when(p)
+		{
+			Problem.NONE -> "แปลด้วย Gemini พร้อมใช้"
+			Problem.NO_LICENCE -> "ยังไม่ได้ใส่รหัสไลเซนส์ (ตั้งค่า › รหัสไลเซนส์) — ใช้ตัวแปลออฟไลน์"
+			Problem.LICENCE_INVALID -> "รหัสไลเซนส์ไม่ถูกต้อง ตรวจรหัสอีกครั้ง — ใช้ตัวแปลออฟไลน์"
+			Problem.OTHER_DEVICE -> "รหัสนี้ใช้กับทีวีเครื่องอื่นไปแล้ว ติดต่อผู้ขาย — ใช้ตัวแปลออฟไลน์"
+			Problem.EXPIRED -> "รหัสหมดอายุแล้ว ต่ออายุกับผู้ขายเพื่อใช้ Gemini ต่อ — ตอนนี้ใช้ตัวแปลออฟไลน์"
+			Problem.POOL_EMPTY -> "โควตาแปล Gemini เต็มชั่วคราว ประโยคที่เคยแปลแล้วยังใช้ได้ ที่เหลือใช้ตัวแปลออฟไลน์"
+			Problem.DAILY_LIMIT -> "วันนี้แปลประโยคใหม่ครบโควตาแล้ว — ใช้ตัวแปลออฟไลน์ถึงพรุ่งนี้"
+			Problem.OFFLINE -> "ต่อเซิร์ฟเวอร์แปลไม่ได้ — ใช้ตัวแปลออฟไลน์"
+		}
+	}
+}

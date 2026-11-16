@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Google Play: apps may not install other APKs or update themselves -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <!-- Play restricts media permissions; the video test uses the system file picker instead -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <application>
+        <activity
+            android:name="com.metallic.chiaki.store.PurchaseActivity"
+            android:label="สมัครใช้งาน Eyesmaxxing"
+            android:theme="@style/AppTheme" />
+    </application>
+</manifest>

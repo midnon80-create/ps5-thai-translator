@@ -10,7 +10,10 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.PixelCopy
 import android.view.SurfaceView
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -32,6 +35,10 @@ class TranslatorController(
 		fun showSpeechText(thai: String, english: String)
 		fun clearSpeechText()
 		fun showStatus(message: String?)
+		/** Prompt / hint / document translation; [box] = where the English is, as fractions of the video (0..1). */
+		fun showLabel(id: Int, kind: TextKind, thai: String, box: android.graphics.RectF)
+		fun removeLabel(id: Int)
+		fun clearLabels()
 	}
 
 	private val prefs = TranslatorPrefs(context)
@@ -49,6 +56,16 @@ class TranslatorController(
 	private var speech: SpeechEngine? = null
 	private var translator: TextTranslator? = null
 	private val tracker = SubtitleTracker()
+	private val items = ItemTracker()
+	// how long one read of the screen takes on this TV (smoothed); sets the reading pace
+	@Volatile private var readMs = 150.0
+	private var cloud: CloudTranslator? = null
+	// network calls; idle threads end after 30 s so a closed stream leaves nothing running
+	private val cloudPool = java.util.concurrent.ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS,
+		java.util.concurrent.LinkedBlockingQueue(), lowPriority("translator-cloud")).apply { allowCoreThreadTimeOut(true) }
+	private val recentEnglish = ArrayDeque<String>()
+	private val screenSeq = AtomicInteger()
+	private val speechSeq = AtomicInteger()
 
 	private val running = AtomicBoolean(false)
 	private val busy = AtomicBoolean(false)
@@ -65,7 +82,18 @@ class TranslatorController(
 		val mode = prefs.mode
 		val tr = TextTranslator(prefs.geminiKey, prefs.geminiModel)
 		translator = tr
-		translateWorker.execute { PhraseBank.load(context); SlangRewriter.load(context) }
+		cloud = prefs.serverUrl.takeIf { it.isNotBlank() }?.let { CloudTranslator(it, prefs.licence, CloudTranslator.deviceId(context)) }
+		cloud?.let { c ->
+			cloudPool.execute {
+				val p = c.check()
+				if(p != CloudTranslator.Problem.NONE && running.get())
+				{
+					status(CloudTranslator.problemText(p))
+					main.postDelayed({ if(running.get()) ui.showStatus(null) }, 7000)
+				}
+			}
+		}
+		translateWorker.execute { PhraseBank.load(context); SlangRewriter.load(context); ThaiPhrases.load(context) }
 		translateWorker.execute {
 			if(!tr.offlineReady)
 			{
@@ -96,6 +124,9 @@ class TranslatorController(
 			return
 		main.removeCallbacks(grabRunnable)
 		main.removeCallbacks(speechClear)
+		cloud = null
+		screenSeq.incrementAndGet()
+		speechSeq.incrementAndGet()
 		speech?.stop()
 		speech = null
 		worker.execute {
@@ -109,6 +140,8 @@ class TranslatorController(
 		copyThread?.quitSafely()
 		copyThread = null
 		tracker.reset()
+		items.reset()
+		ui.clearLabels()
 		ui.clearScreenText()
 		ui.clearSpeechText()
 		ui.showStatus(null)
@@ -124,8 +157,10 @@ class TranslatorController(
 		override fun run()
 		{
 			if(!running.get()) return
-			// read less often while nothing new appears on screen (saves CPU on slow TVs)
-			main.postDelayed(this, if(quietFrames >= 4) FRAME_INTERVAL_IDLE_MS else FRAME_INTERVAL_MS)
+			// 4 reads a second like a live reader, but never faster than this TV can read (the game comes first),
+			// and slower while nothing new appears on screen
+			val pace = maxOf(FRAME_INTERVAL_MS, (readMs * 1.25).toLong()).coerceAtMost(1200L)
+			main.postDelayed(this, if(quietFrames >= 4) maxOf(pace, FRAME_INTERVAL_IDLE_MS) else pace)
 			if(!streamConnected || busy.get()) return
 			grabFrame()
 		}
@@ -160,29 +195,37 @@ class TranslatorController(
 		try
 		{
 			val reader = screenReader ?: return
-			val yOffset = if(prefs.region == TranslatorPrefs.Region.BOTTOM) (bmp.height * 0.55f).toInt() else 0
+			val full = prefs.region == TranslatorPrefs.Region.FULL
+			val yOffset = if(full) 0 else (bmp.height * 0.55f).toInt()
 			val region = if(yOffset > 0)
 				Bitmap.createBitmap(bmp, 0, yOffset, bmp.width, bmp.height - yOffset)
 			else bmp
-			// Cheap check first: if the subtitle area looks the same as last time, reuse the last result
+			// Cheap check first: if the picture looks the same as last time, reuse the last result
 			// instead of running text recognition again (most of the CPU cost).
 			val sig = signature(region)
 			val prev = lastSignature
-			val found = if(prev != null && sameImage(prev, sig) && skippedInARow < MAX_SKIPS)
+			val blocks = if(prev != null && sameImage(prev, sig) && skippedInARow < MAX_SKIPS)
 			{
 				skippedInARow++
-				lastFound
+				lastBlocks
 			}
 			else
 			{
 				skippedInARow = 0
-				reader.find(region).also { lastFound = it }
+				val t0 = SystemClock.elapsedRealtime()
+				val read = if(full) reader.readAll(region)
+					else reader.find(region)?.let { listOf(ScreenReader.Block(it.text, it.box, 1, TextKind.DIALOGUE)) } ?: emptyList()
+				readMs = readMs * 0.7 + (SystemClock.elapsedRealtime() - t0) * 0.3
+				read.also { lastBlocks = it }
 			}
 			lastSignature = sig
+			val rw = region.width
+			val rh = region.height
 			if(region !== bmp) region.recycle()
-			val english = found?.text ?: ""
+			val dialogue = blocks.firstOrNull { it.kind == TextKind.DIALOGUE }
+			val english = dialogue?.text ?: ""
 			val now = SystemClock.elapsedRealtime()
-			quietFrames = if(english.isEmpty()) quietFrames + 1 else 0
+			quietFrames = if(blocks.isEmpty()) quietFrames + 1 else 0
 			if(english.isNotEmpty()) lastScreenTextAt = now
 			speech?.paused = prefs.mode == TranslatorPrefs.Mode.BOTH && now - lastScreenTextAt < SPEECH_SUPPRESS_MS
 			when(val action = tracker.update(english, now))
@@ -190,16 +233,34 @@ class TranslatorController(
 				is SubtitleTracker.Action.Show ->
 				{
 					lastScreenTextAt = now
-					val top = found?.let { (it.box.top + yOffset).toFloat() / bmp.height }
+					val top = dialogue?.let { (it.box.top + yOffset).toFloat() / bmp.height }
 					val prepared = GameText.fromScreen(action.text)
+					val seq = screenSeq.incrementAndGet()
 					translateWorker.execute {
-						val thai = translator?.translate(prepared.text) ?: return@execute
-						val line = prepared.withSpeaker(thai)
-						if(running.get()) main.post { ui.showScreenText(line, action.text, top) }
+						smartTranslate(listOf(prepared.text), TextKind.DIALOGUE, { seq == screenSeq.get() }) { thai ->
+							val line = prepared.withSpeaker(thai)
+							main.post { if(running.get() && seq == screenSeq.get()) ui.showScreenText(line, action.text, top) }
+						}
 					}
 				}
-				SubtitleTracker.Action.Clear -> main.post { ui.clearScreenText() }
-				SubtitleTracker.Action.None -> if(english.isNotEmpty()) lastScreenTextAt = now
+				SubtitleTracker.Action.Clear -> { screenSeq.incrementAndGet(); main.post { ui.clearScreenText() } }
+				SubtitleTracker.Action.None -> {}
+			}
+			// prompts, hints, documents
+			if(full) for(ev in items.update(blocks.filter { it.kind != TextKind.DIALOGUE }, rw, rh, now)) when(ev)
+			{
+				is ItemTracker.Event.Show ->
+				{
+					val item = ev.item
+					val text = GameText.fromScreen(item.text).text
+					val box = android.graphics.RectF(item.box)
+					translateWorker.execute {
+						smartTranslate(listOf(text), item.kind, { item.shown }) { thai ->
+							main.post { if(running.get() && item.shown) ui.showLabel(item.id, item.kind, thai, box) }
+						}
+					}
+				}
+				is ItemTracker.Event.Remove -> main.post { ui.removeLabel(ev.id) }
 			}
 		}
 		catch(e: Exception)
@@ -213,7 +274,7 @@ class TranslatorController(
 	}
 
 	private var lastSignature: IntArray? = null
-	private var lastFound: ScreenReader.Found? = null
+	private var lastBlocks: List<ScreenReader.Block> = emptyList()
 	private var skippedInARow = 0
 
 	/** 64x16 grayscale thumbnail of the area being read. */
@@ -295,15 +356,69 @@ class TranslatorController(
 			return
 		val prepared = sentences.map { GameText.fromSpeech(it).text }
 		val english = prepared.joinToString(" ")
+		val seq = speechSeq.incrementAndGet()
 		translateWorker.execute {
 			// each sentence separately (phrase bank first), then joined: reads far better than one run-on line
-			val thai = translator?.translateAll(prepared) ?: return@execute
-			if(!running.get()) return@execute
-			main.post {
-				ui.showSpeechText(thai, english)
-				main.removeCallbacks(speechClear)
-				main.postDelayed(speechClear, SPEECH_SHOW_MS)
+			smartTranslate(prepared, TextKind.DIALOGUE, { seq == speechSeq.get() }) { thai ->
+				main.post {
+					if(!running.get() || seq != speechSeq.get()) return@post
+					ui.showSpeechText(thai, english)
+					main.removeCallbacks(speechClear)
+					main.postDelayed(speechClear, SPEECH_SHOW_MS)
+				}
 			}
+		}
+	}
+
+	/**
+	 * Best translation without making the player wait:
+	 *  1. hand-written bank / earlier Gemini line -> shown at once, no server call;
+	 *  2. otherwise ask the shared server cache and run the offline translator at the same time;
+	 *     if the server answers within [CLOUD_WAIT_MS] its Gemini line is shown directly,
+	 *     else the offline line is shown first and quietly replaced when Gemini arrives
+	 *     (only while that subtitle is still the current one).
+	 * Runs on translateWorker; [show] is called with the Thai text (it posts to the UI itself).
+	 */
+	private fun smartTranslate(lines: List<String>, kind: TextKind, isCurrent: () -> Boolean, show: (String) -> Unit)
+	{
+		val tr = translator ?: return
+		if(lines.isEmpty()) return
+		val known = lines.map { tr.best(it, kind) }
+		val missing = lines.indices.filter { known[it] == null }
+		val ctx = if(kind != TextKind.DIALOGUE) emptyList() else synchronized(recentEnglish) {
+			val c = recentEnglish.toList()
+			lines.forEach { recentEnglish.addLast(it) }
+			while(recentEnglish.size > 3) recentEnglish.removeFirst()
+			c
+		}
+		if(missing.isEmpty()) { show(known.filterNotNull().joinToString(" ")); return }
+		val c = cloud
+		val future: CompletableFuture<List<String?>?>? = if(c != null && c.usable)
+			CompletableFuture.supplyAsync({
+				// plain-English "hint" for slangy lines helps Gemini get the meaning right
+				val src = missing.map { lines[it] }
+				c.translate(src, ctx, kind, src.map { l -> if(kind == TextKind.DIALOGUE) SlangRewriter.rewrite(l).takeIf { it != l } else null })
+			}, cloudPool)
+		else null
+		val started = SystemClock.elapsedRealtime()
+		val offline = tr.translateEach(lines, kind)
+		fun merge(fromCloud: List<String?>?): String?
+		{
+			val out = lines.indices.map { i ->
+				known[i] ?: fromCloud?.getOrNull(missing.indexOf(i))?.also { tr.remember(lines[i], it, kind) } ?: offline.getOrNull(i)
+			}.filterNotNull()
+			return if(out.isEmpty()) null else out.joinToString(" ")
+		}
+		if(future == null) { merge(null)?.let(show); return }
+		val wait = (CLOUD_WAIT_MS - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(0L)
+		val early = try { future.get(wait, TimeUnit.MILLISECONDS) } catch(e: Exception) { null }
+		if(future.isDone) { merge(early)?.let(show); return }
+		val first = merge(null)
+		first?.let(show)
+		future.thenAccept { fromCloud ->
+			if(fromCloud == null || fromCloud.all { it == null } || !running.get()) return@thenAccept
+			val better = merge(fromCloud)
+			if(better != null && better != first && isCurrent()) show(better)
 		}
 	}
 
@@ -312,8 +427,8 @@ class TranslatorController(
 	companion object
 	{
 		private const val TAG = "Translator"
-		private const val FRAME_INTERVAL_MS = 450L
-		private const val FRAME_INTERVAL_IDLE_MS = 900L
+		private const val FRAME_INTERVAL_MS = 250L // 4 reads a second
+		private const val FRAME_INTERVAL_IDLE_MS = 600L
 		private const val SIG_W = 64
 		private const val SIG_H = 16
 		private const val MAX_SKIPS = 6 // re-read at least every ~3 s anyway
@@ -321,5 +436,6 @@ class TranslatorController(
 		private const val FRAME_H = 540
 		private const val SPEECH_SUPPRESS_MS = 3000L
 		private const val SPEECH_SHOW_MS = 6000L
+		private const val CLOUD_WAIT_MS = 400L
 	}
 }
