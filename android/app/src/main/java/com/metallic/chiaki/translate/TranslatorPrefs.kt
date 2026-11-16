@@ -25,6 +25,9 @@ class TranslatorPrefs(context: Context)
 	}
 
 	/** FULL = whole screen sorted into dialogue / prompts / hints / documents; BOTTOM = subtitles only (lighter). */
+	/** Off (default) = only dialogue subtitles are translated; no boxes over buttons, tips or documents. */
+	val translateUi get() = sp.getBoolean("tr_ui_text", false)
+
 	val region get() = if(sp.getString("tr_read_area", "full") == "bottom") Region.BOTTOM else Region.FULL
 
 	val position get() = when(sp.getString("tr_position", "above")) {

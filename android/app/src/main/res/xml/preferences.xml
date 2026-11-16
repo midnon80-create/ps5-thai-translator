@@ -24,6 +24,11 @@
             app:entries="@array/tr_region_titles"
             app:entryValues="@array/tr_region_values"
             app:useSimpleSummaryProvider="true" />
+        <SwitchPreference
+            app:key="tr_ui_text"
+            app:defaultValue="false"
+            app:title="แปลปุ่มกด คำแนะนำ และเอกสารด้วย"
+            app:summary="ปิดไว้ = แปลเฉพาะซับบทพูด ไม่มีกล่องคำแปลบังจอ (แนะนำ)" />
         <ListPreference
             app:key="tr_position"
             app:defaultValue="above"

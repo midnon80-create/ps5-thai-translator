@@ -246,8 +246,8 @@ class TranslatorController(
 				SubtitleTracker.Action.Clear -> { screenSeq.incrementAndGet(); main.post { ui.clearScreenText() } }
 				SubtitleTracker.Action.None -> {}
 			}
-			// prompts, hints, documents
-			if(full) for(ev in items.update(blocks.filter { it.kind != TextKind.DIALOGUE }, rw, rh, now)) when(ev)
+			// prompts, hints, documents (only when the player turned it on: by default subtitles only)
+			if(full && prefs.translateUi) for(ev in items.update(blocks.filter { it.kind != TextKind.DIALOGUE }, rw, rh, now)) when(ev)
 			{
 				is ItemTracker.Event.Show ->
 				{
