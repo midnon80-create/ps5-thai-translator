@@ -10,8 +10,9 @@ object Store
 
 	fun onAppStart(activity: Activity)
 	{
-		try { com.metallic.chiaki.update.UpdateManager.checkAndPrompt(activity, manual = false) }
-		catch(e: Throwable) { Log.e("Eyesmaxxing", "update check failed", e) }
+		// newest version first, then (no code yet) the welcome box to type the code
+		try { com.metallic.chiaki.update.UpdateManager.checkAndPrompt(activity, manual = false) { com.metallic.chiaki.translate.LicencePrompt.maybeShow(activity) } }
+		catch(e: Throwable) { Log.e("Eyesmaxxing", "update check failed", e); com.metallic.chiaki.translate.LicencePrompt.maybeShow(activity) }
 	}
 
 	/** Not used in this build (the settings screen shows the licence-code field instead). */

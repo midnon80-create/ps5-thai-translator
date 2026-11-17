@@ -22,7 +22,7 @@ import java.net.URL
 object UpdateManager
 {
 	private const val PREF_LAST_CHECK = "update_last_check"
-	private const val AUTO_CHECK_INTERVAL_MS = 12L * 60 * 60 * 1000
+	private const val AUTO_CHECK_INTERVAL_MS = 10L * 60 * 1000 // every app start (not more than once per 10 min)
 
 	class Release(val version: String, val notes: String, val apkUrl: String)
 
