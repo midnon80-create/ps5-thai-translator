@@ -39,7 +39,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 	private var failStreak = 0
 
 	/** One result per line, null where the cloud had nothing (e.g. pool empty and line not cached). */
-	fun translate(lines: List<String>, context: List<String>, kind: TextKind = TextKind.DIALOGUE, hints: List<String?> = emptyList()): List<String?>?
+	fun translate(lines: List<String>, context: List<String>, kind: TextKind = TextKind.DIALOGUE, hints: List<String?> = emptyList(), fast: Boolean = false): List<String?>?
 	{
 		if(!usable || lines.isEmpty()) return null
 		val body = JSONObject()
@@ -47,7 +47,13 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			.put("lines", JSONArray(lines)).put("context", JSONArray(context))
 			.put("kind", kind.name.lowercase())
 			.put("hints", JSONArray(hints.map { it ?: JSONObject.NULL }))
+		if(fast) body.put("fast", true)
 		val res = post("/v1/translate", body) ?: return null
+		if(fast) // quick first text only: never changes the licence/pool state
+		{
+			val arr = res.optJSONArray("th") ?: return null
+			return List(lines.size) { i -> if(i < arr.length() && !arr.isNull(i)) arr.optString(i).trim().ifEmpty { null } else null }
+		}
 		if(res.has("error")) { onError(res.optString("error")); return null }
 		problem = when(res.optString("note")) { "pool_empty" -> Problem.POOL_EMPTY; "daily_limit" -> Problem.DAILY_LIMIT; else -> Problem.NONE }
 		val arr = res.optJSONArray("th") ?: return null

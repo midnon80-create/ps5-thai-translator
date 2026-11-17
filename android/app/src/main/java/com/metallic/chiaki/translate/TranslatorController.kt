@@ -61,7 +61,7 @@ class TranslatorController(
 	@Volatile private var readMs = 150.0
 	private var cloud: CloudTranslator? = null
 	// network calls; idle threads end after 30 s so a closed stream leaves nothing running
-	private val cloudPool = java.util.concurrent.ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS,
+	private val cloudPool = java.util.concurrent.ThreadPoolExecutor(4, 4, 30, TimeUnit.SECONDS,
 		java.util.concurrent.LinkedBlockingQueue(), lowPriority("translator-cloud")).apply { allowCoreThreadTimeOut(true) }
 	private val recentEnglish = ArrayDeque<String>()
 	private val screenSeq = AtomicInteger()
@@ -410,10 +410,27 @@ class TranslatorController(
 			return if(out.isEmpty()) null else out.joinToString(" ")
 		}
 		if(future == null) { merge(null)?.let(show); return }
+		// Fast lane (dialogue, launch week - the server decides): the small model answers in ~1.5 s and is shown
+		// first; the stronger model's line replaces it when it arrives. Fast text is never cached or remembered.
+		val mainDone = java.util.concurrent.atomic.AtomicBoolean(false)
+		val fastShown = java.util.concurrent.atomic.AtomicBoolean(false)
+		if(kind == TextKind.DIALOGUE && c != null)
+			CompletableFuture.supplyAsync({
+				val src = missing.map { lines[it] }
+				c.translate(src, ctx, kind, src.map { l -> SlangRewriter.rewrite(l).takeIf { it != l } }, fast = true)
+			}, cloudPool).whenComplete { fromFast, _ ->
+				if(mainDone.get() || !running.get() || !isCurrent() || fromFast == null || fromFast.all { it == null }) return@whenComplete
+				val text = lines.indices.mapNotNull { i -> known[i] ?: fromFast.getOrNull(missing.indexOf(i)) }
+				if(text.size == lines.size && !mainDone.get()) { fastShown.set(true); show(text.joinToString(" ")) }
+			}
 		// AI only: while the server is reachable the player sees Gemini text, never the stiff offline line.
-		// The offline translator is used only when the server fails for this line (network, quota, error).
+		// The offline translator is used only when the server fails for this line (network, quota, error)
+		// and no fast text is on screen already.
 		future.whenComplete { fromCloud, _ ->
+			mainDone.set(true)
 			if(!running.get() || !isCurrent()) return@whenComplete
+			val ok = fromCloud != null && !fromCloud.all { it == null }
+			if(!ok && fastShown.get()) return@whenComplete
 			merge(fromCloud)?.let(show)
 		}
 	}
