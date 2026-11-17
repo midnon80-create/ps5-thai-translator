@@ -60,11 +60,15 @@ class TranslatorOverlay(private val root: View, private val video: SurfaceView) 
 			v.maxWidth = (metrics.widthPixels * 0.78f).toInt()
 			v.maxLines = 3
 			v.outlineColor = Color.BLACK
-			v.background = null // floating text over the picture, no box
-			v.setShadowLayer(textPx * 0.12f, 0f, textPx * 0.04f, 0xCC000000.toInt())
+			// light dark band behind the Thai line (the game still shows through), like the GTA trailer sample
+			v.background = GradientDrawable().apply {
+				setColor(0x73000000) // 45 % black, measured from the trailer sample: the game still shows through
+				cornerRadius = 0f
+			}
+			v.setShadowLayer(textPx * 0.05f, 0f, textPx * 0.02f, 0x80000000.toInt())
 			v.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx)
-			val padH = (textPx * 0.6f).toInt()
-			val padV = (textPx * 0.32f).toInt()
+			val padH = (textPx * 0.35f).toInt()
+			val padV = (textPx * 0.28f).toInt()
 			v.setPadding(padH, padV, padH, padV)
 		}
 		status.typeface = font
@@ -80,7 +84,7 @@ class TranslatorOverlay(private val root: View, private val video: SurfaceView) 
 			else -> 1f
 		}
 		view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx * scale)
-		view.outlineWidthPx = textPx * scale * 0.16f
+		view.outlineWidthPx = 0f // like the sample: plain white letters on the band
 		view.text = if(showEnglish) thai + '\n' + english else thai
 		view.isVisible = true
 	}
@@ -343,8 +347,9 @@ class TranslatorOverlay(private val root: View, private val video: SurfaceView) 
 				val y = lastSubtitleY
 				lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
 				lp.bottomMargin = if(y != null && y > h * 0.55f)
-					// right on top of the English subtitle, never higher than the lower part of the screen
-					(h - y + gap / 2).coerceIn(gap, (h * 0.38f).toInt())
+					// band bottom ~2.5 % of the screen above the English subtitle (as in the sample), never higher
+					// than the lower part of the screen
+					(h - y + (h * 0.025f).toInt()).coerceIn(gap, (h * 0.38f).toInt())
 				else
 					// no subtitle seen yet: low, where subtitles usually are
 					(h * 0.07f).toInt()

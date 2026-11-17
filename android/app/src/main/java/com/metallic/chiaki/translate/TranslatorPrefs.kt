@@ -40,9 +40,9 @@ class TranslatorPrefs(context: Context)
 
 	/** Text height as a fraction of the screen height, so it looks the same on every TV size and resolution. */
 	val textHeightFraction get() = when(sp.getString("tr_text_size", "medium")) {
-		"small" -> 0.034f
-		"large" -> 0.048f
-		else -> 0.040f
+		"small" -> 0.040f
+		"large" -> 0.052f
+		else -> 0.046f // medium = the size in the trailer sample
 	}
 
 	/** Set by the translator test: this TV can't recognise speech in real time. */
