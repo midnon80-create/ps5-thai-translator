@@ -82,6 +82,15 @@ object LicencePrompt
 							.setPositiveButton("ตกลง", null)
 							.show()
 					}
+					CloudTranslator.Problem.NOT_STARTED -> {
+						PreferenceManager.getDefaultSharedPreferences(activity).edit().putString(TranslatorPrefs.KEY_LICENCE, code).apply()
+						AlertDialog.Builder(activity)
+							.setTitle("บันทึกรหัสแล้ว ✔")
+							.setMessage("แปลด้วย AI จะเปิดวันที่ GTA 6 ออก (${CloudTranslator.aiStartText()})\n" +
+								"เวลาของแพ็กเกจยังไม่เริ่มนับ จะเริ่มตอนเล่นครั้งแรกหลังเปิด\n\nระหว่างนี้จับคู่ PS5 ให้เรียบร้อยได้เลย (กดการ์ด PS5)")
+							.setPositiveButton("ตกลง", null)
+							.show()
+					}
 					CloudTranslator.Problem.OFFLINE -> show(activity, "ต่ออินเทอร์เน็ตไม่ได้ ตรวจเน็ตแล้วลองอีกครั้ง")
 					else -> show(activity, CloudTranslator.problemText(p, cloud.plan))
 				}

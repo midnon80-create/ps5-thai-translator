@@ -19,7 +19,7 @@ import java.security.MessageDigest
  */
 class CloudTranslator(private val serverUrl: String, private val licence: String, private val device: String)
 {
-	enum class Problem { NONE, NO_LICENCE, NEED_BUY, LICENCE_INVALID, OTHER_DEVICE, EXPIRED, TRIAL_OVER, POOL_EMPTY, DAILY_LIMIT, OFFLINE }
+	enum class Problem { NONE, NO_LICENCE, NEED_BUY, NOT_STARTED, LICENCE_INVALID, OTHER_DEVICE, EXPIRED, TRIAL_OVER, POOL_EMPTY, DAILY_LIMIT, OFFLINE }
 
 	@Volatile var problem = if(licence.isBlank()) Problem.NO_LICENCE else Problem.NONE
 		private set
@@ -27,7 +27,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 	/** False after a licence error (for the rest of the session) or while the network is failing. */
 	val usable get() = serverUrl.isNotBlank() && problem != Problem.NO_LICENCE &&
 		problem != Problem.LICENCE_INVALID && problem != Problem.OTHER_DEVICE && problem != Problem.EXPIRED &&
-		problem != Problem.TRIAL_OVER && problem != Problem.NEED_BUY &&
+		problem != Problem.TRIAL_OVER && problem != Problem.NEED_BUY && problem != Problem.NOT_STARTED &&
 		System.currentTimeMillis() >= pausedUntil
 
 	@Volatile private var pausedUntil = 0L
@@ -61,6 +61,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		if(licence.isBlank()) return Problem.NO_LICENCE
 		val res = post("/v1/check", JSONObject().put("code", licence).put("device", device)) ?: return Problem.OFFLINE
 		plan = res.optString("plan"); expires = res.optLong("expires", 0L)
+		res.optLong("start", 0L).takeIf { it > 0 }?.let { aiStart = it }
 		if(!res.optBoolean("ok")) { onError(res.optString("error")); return problem }
 		problem = if(res.optBoolean("pool_ok")) Problem.NONE else Problem.POOL_EMPTY
 		return problem
@@ -73,6 +74,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			"licence_invalid", "licence_missing" -> Problem.LICENCE_INVALID
 			"licence_other_device" -> Problem.OTHER_DEVICE
 			"licence_expired" -> Problem.EXPIRED
+			"ai_not_started" -> Problem.NOT_STARTED
 			// no expiry date = this TV never had a free trial (free trials are off): it needs a bought code
 			"trial_over" -> if(expires > 0L) Problem.TRIAL_OVER else Problem.NEED_BUY
 			"daily_limit" -> Problem.DAILY_LIMIT
@@ -127,8 +129,13 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		private val BUY = if(com.metallic.chiaki.store.Store.IS_PLAY) "กดสมัครในตั้งค่า" else "ซื้อรหัสจากผู้ขาย"
 		const val PRICES = "ทดลอง 1 วัน 29 บาท · รายปี 329 บาท · ตลอดชีพ 759 บาท"
 
+		/** When AI translation opens (server lock until the game is out), ms; 0 = unknown. */
+		@Volatile var aiStart = 0L
+		fun aiStartText() = if(aiStart > 0) java.text.SimpleDateFormat("d MMM yyyy HH:mm น.", java.util.Locale("th", "TH")).format(java.util.Date(aiStart)) else "วันที่เกมออก"
+
 		fun problemText(p: Problem, plan: String = "") = when(p)
 		{
+			Problem.NOT_STARTED -> "รหัสใช้ได้ ✔ แปลด้วย AI จะเปิดวันที่ GTA 6 ออก (${aiStartText()}) — ตอนนี้ใช้ตัวแปลออฟไลน์"
 			Problem.NONE -> "แปลด้วย Gemini พร้อมใช้"
 			Problem.NO_LICENCE, Problem.NEED_BUY -> "แปลด้วย AI ต้องใช้รหัส ($PRICES) $BUY — ตอนนี้ใช้ตัวแปลออฟไลน์ฟรี"
 			Problem.EXPIRED -> if(plan == "day") "ครบ 1 วันแล้ว ถ้าพอใจ อัปเกรดเป็นรายปี 329 บาท หรือตลอดชีพ 759 บาท ($BUY) — ตอนนี้ใช้ตัวแปลออฟไลน์"
