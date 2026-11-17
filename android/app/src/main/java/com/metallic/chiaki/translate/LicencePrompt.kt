@@ -37,7 +37,7 @@ object LicencePrompt
 		val col = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(pad, dp(activity, 8), pad, 0) }
 		col.addView(TextView(activity).apply {
 			text = "ใส่รหัสที่ได้รับจากผู้ขาย (เช่น EYE-AB12-CD34) เพื่อเปิดการแปลด้วย AI\n" +
-				"ยังไม่มีรหัส? ทดลอง 1 วัน 29 บาท · รายปี 329 บาท · ตลอดชีพ 759 บาท"
+				"ยังไม่มีรหัส? ทดลอง 1 วัน 29 บาท · รายเดือน 149 บาท · รายปี 329 บาท · ตลอดชีพ 759 บาท"
 			setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
 		})
 		val input = EditText(activity).apply {

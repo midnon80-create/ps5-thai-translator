@@ -24,6 +24,7 @@ import java.net.URL
 /**
  * Google Play build: Gemini access is bought with Google Play Billing.
  *  - eyes_day      one-time 29 ฿ pass, 24 hours (one per Google account)
+ *  - eyes_monthly  subscription 149 ฿ (base plan "monthly")
  *  - eyes_yearly   subscription (base plan "yearly")
  *  - eyes_lifetime one-time product
  * Every purchase is checked by the Eyesmaxxing server (Google Play Developer API), which turns it into a
@@ -33,6 +34,7 @@ object Store
 {
 	const val IS_PLAY = true
 	const val ONE_TIME_DAY = "eyes_day"
+	const val SUB_MONTHLY = "eyes_monthly"
 	const val SUB_YEARLY = "eyes_yearly"
 	const val ONE_TIME_LIFETIME = "eyes_lifetime"
 	private const val TAG = "EyesStore"
@@ -83,7 +85,7 @@ object Store
 		if(done.isEmpty())
 			return if(purchases.any { it.purchaseState == Purchase.PurchaseState.PENDING }) "รอการชำระเงินจาก Google Play" else "ยังไม่ได้สมัคร"
 		// lifetime first (never runs out), then yearly, then the 1-day pass
-		val best = done.sortedByDescending { if(it.products.contains(ONE_TIME_LIFETIME)) 2 else if(it.products.contains(SUB_YEARLY)) 1 else 0 }
+		val best = done.sortedByDescending { if(it.products.contains(ONE_TIME_LIFETIME)) 3 else if(it.products.contains(SUB_YEARLY)) 2 else if(it.products.contains(SUB_MONTHLY)) 1 else 0 }
 		var status = "ยืนยันการซื้อไม่สำเร็จ ลองใหม่อีกครั้ง"
 		for(p in best)
 		{
@@ -111,6 +113,7 @@ object Store
 		{
 			"life" -> "ใช้งานแบบตลอดชีพ ✔"
 			"trial" -> "ช่วงทดลองฟรี$until ✔"
+			"month" -> "สมาชิกรายเดือน$until ✔"
 			"day" -> "แพ็กทดลอง 1 วัน" + (if(expires > 0) " ถึง " + java.text.SimpleDateFormat("d MMM HH:mm น.", java.util.Locale("th", "TH")).format(java.util.Date(expires)) else "") + " ✔"
 			else -> "สมาชิกรายปี$until ✔"
 		}

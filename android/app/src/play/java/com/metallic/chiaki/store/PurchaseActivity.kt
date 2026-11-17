@@ -23,9 +23,11 @@ class PurchaseActivity : AppCompatActivity()
 	private lateinit var client: BillingClient
 	private lateinit var status: TextView
 	private lateinit var dayBtn: Button
+	private lateinit var monthlyBtn: Button
 	private lateinit var yearlyBtn: Button
 	private lateinit var lifetimeBtn: Button
 	private var day: ProductDetails? = null
+	private var monthly: ProductDetails? = null
 	private var yearly: ProductDetails? = null
 	private var lifetime: ProductDetails? = null
 
@@ -46,9 +48,11 @@ class PurchaseActivity : AppCompatActivity()
 		status = text("กำลังเชื่อมต่อ Google Play…", 18f, Color.rgb(253, 224, 130))
 		col.addView(status)
 		dayBtn = button("ทดลอง 1 วัน 29 บาท") { buy(day) }
+		monthlyBtn = button("รายเดือน 149 บาท") { buy(monthly) }
 		yearlyBtn = button("รายปี 329 บาท") { buy(yearly) }
 		lifetimeBtn = button("ตลอดชีพ 759 บาท จ่ายครั้งเดียว") { buy(lifetime) }
 		col.addView(dayBtn)
+		col.addView(monthlyBtn)
 		col.addView(yearlyBtn)
 		col.addView(lifetimeBtn)
 		col.addView(button("กู้คืนการซื้อ / ตรวจสถานะ") { status.text = "กำลังตรวจสอบ…"; Store.refresh(this) { status.text = it } })
@@ -80,6 +84,11 @@ class PurchaseActivity : AppCompatActivity()
 	private fun load()
 	{
 		fun q(id: String, type: String) = QueryProductDetailsParams.Product.newBuilder().setProductId(id).setProductType(type).build()
+		client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder()
+			.setProductList(listOf(q(Store.SUB_MONTHLY, BillingClient.ProductType.SUBS))).build()) { _, res ->
+			monthly = res.productDetailsList.firstOrNull()
+			runOnUiThread { monthly?.let { m -> bestOffer(m)?.pricingPhases?.pricingPhaseList?.lastOrNull()?.formattedPrice?.let { monthlyBtn.text = "รายเดือน $it/เดือน" } } }
+		}
 		client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder()
 			.setProductList(listOf(q(Store.SUB_YEARLY, BillingClient.ProductType.SUBS))).build()) { _, res ->
 			yearly = res.productDetailsList.firstOrNull()

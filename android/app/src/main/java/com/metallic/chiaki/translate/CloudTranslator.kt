@@ -141,7 +141,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		}
 
 		private val BUY = if(com.metallic.chiaki.store.Store.IS_PLAY) "กดสมัครในตั้งค่า" else "ซื้อรหัสจากผู้ขาย"
-		const val PRICES = "ทดลอง 1 วัน 29 บาท · รายปี 329 บาท · ตลอดชีพ 759 บาท"
+		const val PRICES = "ทดลอง 1 วัน 29 บาท · รายเดือน 149 บาท · รายปี 329 บาท · ตลอดชีพ 759 บาท"
 
 		/** When AI translation opens (server lock until the game is out), ms; 0 = unknown. */
 		@Volatile var aiStart = 0L
@@ -152,7 +152,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			Problem.NOT_STARTED -> "รหัสใช้ได้ ✔ แปลด้วย AI จะเปิดวันที่ GTA 6 ออก (${aiStartText()}) — ตอนนี้ใช้ตัวแปลออฟไลน์"
 			Problem.NONE -> "แปลด้วย Gemini พร้อมใช้"
 			Problem.NO_LICENCE, Problem.NEED_BUY -> "แปลด้วย AI ต้องใช้รหัส ($PRICES) $BUY — ตอนนี้ใช้ตัวแปลออฟไลน์ฟรี"
-			Problem.EXPIRED -> if(plan == "day") "ครบ 1 วันแล้ว ถ้าพอใจ อัปเกรดเป็นรายปี 329 บาท หรือตลอดชีพ 759 บาท ($BUY) — ตอนนี้ใช้ตัวแปลออฟไลน์"
+			Problem.EXPIRED -> if(plan == "day") "ครบ 1 วันแล้ว ถ้าพอใจ อัปเกรดเป็นรายเดือน 149 · รายปี 329 หรือตลอดชีพ 759 บาท ($BUY) — ตอนนี้ใช้ตัวแปลออฟไลน์"
 				else "รหัสหมดอายุแล้ว ต่ออายุ ($BUY) เพื่อใช้ AI ต่อ — ตอนนี้ใช้ตัวแปลออฟไลน์"
 			Problem.LICENCE_INVALID -> "รหัสไลเซนส์ไม่ถูกต้อง ตรวจรหัสอีกครั้ง — ใช้ตัวแปลออฟไลน์"
 			Problem.OTHER_DEVICE -> "รหัสนี้ใช้กับทีวีเครื่องอื่นไปแล้ว ติดต่อผู้ขาย — ใช้ตัวแปลออฟไลน์"
