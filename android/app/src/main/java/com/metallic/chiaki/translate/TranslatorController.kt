@@ -216,6 +216,7 @@ class TranslatorController(
 				val read = if(full) reader.readAll(region)
 					else reader.find(region)?.let { listOf(ScreenReader.Block(it.text, it.box, 1, TextKind.DIALOGUE)) } ?: emptyList()
 				readMs = readMs * 0.7 + (SystemClock.elapsedRealtime() - t0) * 0.3
+				maybeUnlockGame(reader.lastTexts)
 				read.also { lastBlocks = it }
 			}
 			lastSignature = sig
@@ -418,6 +419,23 @@ class TranslatorController(
 	}
 
 	private fun status(msg: String?) = main.post { ui.showStatus(msg) }
+
+	/**
+	 * GTA-only AI: when the screen shows GTA VI (Rockstar / "Grand Theft Auto" start screens, the game tile on the
+	 * PS5 home screen, GTA place or character names) tell the server, which then opens AI for this TV for hours.
+	 */
+	private val gtaSigns = Regex("""\b(rockstar|grand\s*theft\s*auto|gta\s*(vi|6)|vice\s*city|vice\s*beach|leonida|port\s*gellhorn|grassrivers|ambrosia|mount\s*kalaga|lucia)\b""", RegexOption.IGNORE_CASE)
+	@Volatile private var unlockAskedAt = 0L
+
+	private fun maybeUnlockGame(texts: List<String>)
+	{
+		val c = cloud ?: return
+		val now = System.currentTimeMillis()
+		if(c.gameOkUntil > now + 600_000L || now - unlockAskedAt < 20_000L) return
+		if(texts.none { gtaSigns.containsMatchIn(it) }) return
+		unlockAskedAt = now
+		cloudPool.execute { c.unlock(texts) }
+	}
 
 	companion object
 	{

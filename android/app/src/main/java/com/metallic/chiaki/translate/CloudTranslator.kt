@@ -54,6 +54,19 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		return List(lines.size) { i -> if(i < arr.length() && !arr.isNull(i)) arr.optString(i).trim().ifEmpty { null } else null }
 	}
 
+	/** AI is open for this TV (GTA-only lock): set by check() and by a successful unlock(). */
+	@Volatile var gameOkUntil = 0L
+
+	/** The screen showed GTA VI (Rockstar/title screens, GTA names): ask the server to open AI for this TV. */
+	fun unlock(texts: List<String>): Boolean
+	{
+		if(serverUrl.isBlank() || licence.isBlank()) return false
+		val res = post("/v1/unlock", JSONObject().put("code", licence).put("device", device).put("texts", JSONArray(texts))) ?: return false
+		if(!res.optBoolean("ok")) return false
+		gameOkUntil = res.optLong("until", System.currentTimeMillis() + 3_600_000L)
+		return true
+	}
+
 	/** For the test screen: licence OK and money left in the pool? */
 	fun check(): Problem
 	{
@@ -62,6 +75,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		val res = post("/v1/check", JSONObject().put("code", licence).put("device", device)) ?: return Problem.OFFLINE
 		plan = res.optString("plan"); expires = res.optLong("expires", 0L)
 		res.optLong("start", 0L).takeIf { it > 0 }?.let { aiStart = it }
+		if(res.optBoolean("game_ok", false)) gameOkUntil = System.currentTimeMillis() + 3_600_000L
 		if(!res.optBoolean("ok")) { onError(res.optString("error")); return problem }
 		problem = if(res.optBoolean("pool_ok")) Problem.NONE else Problem.POOL_EMPTY
 		return problem

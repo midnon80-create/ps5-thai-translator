@@ -26,6 +26,10 @@ class ScreenReader
 	/** Blocking; call off the main thread. Returns "" when no dialogue-like text is found. */
 	fun read(frame: Bitmap): String = find(frame)?.text ?: ""
 
+	/** Every text line of the last read, unfiltered (titles, logos, HUD): used to recognise the game. */
+	@Volatile var lastTexts: List<String> = emptyList()
+		private set
+
 	/** Blocking; call off the main thread. Null when no dialogue-like text is found. */
 	fun find(frame: Bitmap): Found?
 	{
@@ -34,6 +38,7 @@ class ScreenReader
 			Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS)
 		}
 		catch(e: Exception) { return null }
+		lastTexts = result.textBlocks.flatMap { b -> b.lines.map { it.text } }.take(40)
 		return pickDialogue(result, frame.width, frame.height)
 	}
 
@@ -53,6 +58,7 @@ class ScreenReader
 			Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS)
 		}
 		catch(e: Exception) { return emptyList() }
+		lastTexts = result.textBlocks.flatMap { b -> b.lines.map { it.text } }.take(40)
 		val w = frame.width
 		val h = frame.height
 		val lines = result.textBlocks.flatMap { it.lines }
