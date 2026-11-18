@@ -220,6 +220,7 @@ class TranslatorController(
 				read.also { lastBlocks = it }
 			}
 			lastSignature = sig
+			if(!full) maybePeekWholeScreen(reader, bmp)
 			val rw = region.width
 			val rh = region.height
 			if(region !== bmp) region.recycle()
@@ -443,6 +444,17 @@ class TranslatorController(
 	 */
 	private val gtaSigns = Regex("""\b(rockstar|grand\s*theft\s*auto|gta\s*(vi|6)|vice\s*city|vice\s*beach|leonida|port\s*gellhorn|grassrivers|ambrosia|mount\s*kalaga|lucia)\b""", RegexOption.IGNORE_CASE)
 	@Volatile private var unlockAskedAt = 0L
+	@Volatile private var lastPeekAt = 0L
+
+	private fun maybePeekWholeScreen(reader: ScreenReader, frame: Bitmap)
+	{
+		val c = cloud ?: return
+		val now = SystemClock.elapsedRealtime()
+		if(c.gameOkUntil > System.currentTimeMillis() + 600_000L || now - lastPeekAt < 3000L) return
+		lastPeekAt = now
+		reader.find(frame) // whole picture once: only to spot GTA VI title / loading screens
+		maybeUnlockGame(reader.lastTexts)
+	}
 
 	private fun maybeUnlockGame(texts: List<String>)
 	{

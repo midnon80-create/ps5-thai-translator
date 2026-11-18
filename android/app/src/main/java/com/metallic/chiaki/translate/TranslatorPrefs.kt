@@ -18,7 +18,8 @@ class TranslatorPrefs(context: Context)
 	// 32-bit-only TVs are usually slow: listening to speech on top of the stream makes them lag
 	private val slowDevice = android.os.Build.SUPPORTED_64_BIT_ABIS.isEmpty()
 
-	val mode get() = when(sp.getString("tr_mode", if(slowDevice) "screen" else "both")) {
+	// default: on-screen subtitles only - listening to speech costs the most CPU and games show subtitles anyway
+	val mode get() = when(sp.getString("tr_mode", "screen")) {
 		"screen" -> Mode.SCREEN
 		"speech" -> Mode.SPEECH
 		else -> Mode.BOTH
@@ -28,7 +29,8 @@ class TranslatorPrefs(context: Context)
 	/** Off (default) = only dialogue subtitles are translated; no boxes over buttons, tips or documents. */
 	val translateUi get() = sp.getBoolean("tr_ui_text", false)
 
-	val region get() = if(sp.getString("tr_read_area", "full") == "bottom") Region.BOTTOM else Region.FULL
+	// default: read only the lower part of the picture (where subtitles are) - about half the work, smoother play
+	val region get() = if(sp.getString("tr_read_area", "bottom") == "full") Region.FULL else Region.BOTTOM
 
 	val position get() = when(sp.getString("tr_position", "above")) {
 		"top" -> Position.TOP

@@ -12,14 +12,14 @@
             app:summary="แปลข้อความและเสียงพูดภาษาอังกฤษในเกมเป็นไทยขณะเล่น" />
         <ListPreference
             app:key="tr_mode"
-            app:defaultValue="both"
+            app:defaultValue="screen"
             app:title="แปลอะไร"
             app:entries="@array/tr_mode_titles"
             app:entryValues="@array/tr_mode_values"
             app:useSimpleSummaryProvider="true" />
         <ListPreference
             app:key="tr_read_area"
-            app:defaultValue="full"
+            app:defaultValue="bottom"
             app:title="แปลอะไรบนจอ"
             app:entries="@array/tr_region_titles"
             app:entryValues="@array/tr_region_values"
