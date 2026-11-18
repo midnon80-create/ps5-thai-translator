@@ -51,16 +51,48 @@ object LicencePrompt
 		if(error != null) col.addView(TextView(activity).apply {
 			text = error; setTextColor(Color.rgb(252, 211, 77)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
 		})
+		// keep what was typed if the box has to come back (wrong code, no internet)
+		draft?.let { input.setText(it); input.setSelection(it.length) }
 		showing = true
-		AlertDialog.Builder(activity)
+		val dialog = AlertDialog.Builder(activity)
 			.setTitle("ยินดีต้อนรับสู่ Eyesmaxxing")
 			.setView(col)
 			.setPositiveButton("ใช้รหัสนี้") { _, _ -> apply(activity, input.text.toString()) }
-			.setNegativeButton("ภายหลัง", null)
+			.setNegativeButton("ภายหลัง") { _, _ -> draft = null }
 			.setOnDismissListener { showing = false }
-			.show()
+			// on a TV remote, Back closes the keyboard and then the box: the box must survive Back
+			.setCancelable(false)
+			.create()
+		dialog.setCanceledOnTouchOutside(false)
+		// the keyboard's ✓ / Enter key sends the code right away
+		input.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+		input.setOnEditorActionListener { _, actionId, event ->
+			val enter = event?.keyCode == android.view.KeyEvent.KEYCODE_ENTER && event.action == android.view.KeyEvent.ACTION_UP
+			if(actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE || actionId == android.view.inputmethod.EditorInfo.IME_ACTION_NEXT ||
+				actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO || enter)
+			{
+				if(input.text.isNotBlank()) { dialog.dismiss(); apply(activity, input.text.toString()) }
+				true
+			}
+			else false
+		}
+		input.addTextChangedListener(object : android.text.TextWatcher {
+			override fun afterTextChanged(s: android.text.Editable?) { draft = s?.toString() }
+			override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+			override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+		})
+		dialog.show()
+		// big, bright buttons that are easy to reach with the remote
+		for(which in listOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE))
+			dialog.getButton(which)?.apply {
+				setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+				setTextColor(if(which == AlertDialog.BUTTON_POSITIVE) Color.rgb(216, 180, 254) else Color.rgb(200, 200, 210))
+				isAllCaps = false
+			}
 		input.requestFocus()
 	}
+
+	@Volatile private var draft: String? = null
 
 	private fun apply(activity: Activity, raw: String)
 	{
@@ -76,7 +108,7 @@ object LicencePrompt
 				when(p)
 				{
 					CloudTranslator.Problem.NONE, CloudTranslator.Problem.POOL_EMPTY, CloudTranslator.Problem.DAILY_LIMIT -> {
-						PreferenceManager.getDefaultSharedPreferences(activity).edit().putString(TranslatorPrefs.KEY_LICENCE, code).apply()
+						PreferenceManager.getDefaultSharedPreferences(activity).edit().putString(TranslatorPrefs.KEY_LICENCE, code).apply(); draft = null
 						val until = if(cloud.expires > 0) "\nใช้ได้ถึง " + java.text.SimpleDateFormat("d MMM yyyy HH:mm", java.util.Locale("th", "TH")).format(java.util.Date(cloud.expires)) else ""
 						AlertDialog.Builder(activity)
 							.setTitle("พร้อมใช้งาน ✔")
@@ -85,7 +117,7 @@ object LicencePrompt
 							.show()
 					}
 					CloudTranslator.Problem.NOT_STARTED -> {
-						PreferenceManager.getDefaultSharedPreferences(activity).edit().putString(TranslatorPrefs.KEY_LICENCE, code).apply()
+						PreferenceManager.getDefaultSharedPreferences(activity).edit().putString(TranslatorPrefs.KEY_LICENCE, code).apply(); draft = null
 						AlertDialog.Builder(activity)
 							.setTitle("บันทึกรหัสแล้ว ✔")
 							.setMessage("แปลด้วย AI จะเปิดวันที่ GTA 6 ออก (${CloudTranslator.aiStartText()})\n" +
