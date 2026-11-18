@@ -20,14 +20,13 @@ import androidx.preference.PreferenceManager
  */
 object LicencePrompt
 {
-	private var shownThisRun = false
+	@Volatile private var showing = false
 
 	fun maybeShow(activity: Activity)
 	{
-		if(com.metallic.chiaki.store.Store.IS_PLAY || shownThisRun || activity.isFinishing) return
+		if(com.metallic.chiaki.store.Store.IS_PLAY || showing || activity.isFinishing) return
 		val prefs = TranslatorPrefs(activity)
 		if(prefs.licence.isNotBlank() || prefs.serverUrl.isBlank()) return
-		shownThisRun = true
 		show(activity, null)
 	}
 
@@ -41,7 +40,8 @@ object LicencePrompt
 			setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
 		})
 		val input = EditText(activity).apply {
-			hint = "EYE-XXXX-XXXX"
+			hint = "พิมพ์รหัส เช่น EYE-AB12-CD34"
+			setHintTextColor(Color.argb(110, 255, 255, 255))
 			inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
 			filters = arrayOf(InputFilter.AllCaps(), InputFilter.LengthFilter(40))
 			setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
@@ -51,11 +51,13 @@ object LicencePrompt
 		if(error != null) col.addView(TextView(activity).apply {
 			text = error; setTextColor(Color.rgb(252, 211, 77)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
 		})
+		showing = true
 		AlertDialog.Builder(activity)
 			.setTitle("ยินดีต้อนรับสู่ Eyesmaxxing")
 			.setView(col)
 			.setPositiveButton("ใช้รหัสนี้") { _, _ -> apply(activity, input.text.toString()) }
 			.setNegativeButton("ภายหลัง", null)
+			.setOnDismissListener { showing = false }
 			.show()
 		input.requestFocus()
 	}

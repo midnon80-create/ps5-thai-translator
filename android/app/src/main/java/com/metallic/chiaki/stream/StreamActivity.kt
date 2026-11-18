@@ -56,6 +56,8 @@ class StreamActivity : AppCompatActivity()
 	{
 		const val EXTRA_CONNECT_INFO = "connect_info"
 		private const val HIDE_UI_TIMEOUT_MS = 2000L
+		private const val MAX_AUTO_RETRIES = 4
+		private const val AUTO_RETRY_DELAY_MS = 6000L
 	}
 
 	private lateinit var viewModel: StreamViewModel
@@ -194,6 +196,35 @@ class StreamActivity : AppCompatActivity()
 		controlsJob?.cancel()
 	}
 
+	private val retryHandler = android.os.Handler(android.os.Looper.getMainLooper())
+	private var autoRetries = 0
+
+	/** Session-start errors that usually clear up by themselves within seconds. */
+	private fun isRetryable(reason: String) =
+		reason.contains("already in use", true) || reason.contains("Unknown Session Request", true) ||
+			reason.contains("Connection Refused in Session Request", true) || reason.contains("Ctrl failed to connect", true)
+
+	/** What went wrong and what to do, in plain Thai (the PS5's own reasons are English and technical). */
+	private fun thaiQuitHelp(reason: String): String = when
+	{
+		reason.contains("already in use", true) ->
+			"PS5 กำลังเชื่อมต่อกับอุปกรณ์อื่นอยู่ หรือยังไม่ปิดการเชื่อมต่อครั้งก่อน\n" +
+			"• ปิด Remote Play ที่มือถือ คอม หรือ PS Portal\n• รอ 20 วินาที แล้วกด \"เชื่อมต่อใหม่\""
+		reason.contains("Session Request", true) || reason.contains("Ctrl", true) ->
+			"PS5 ไม่ยอมเริ่มการเชื่อมต่อ\n" +
+			"• เปิด PS5 ให้อยู่หน้าหลัก (ไม่ใช่โหมดพัก) และเลือกผู้ใช้บัญชีเดียวกับที่จับคู่\n" +
+			"• ปิด Remote Play ที่อุปกรณ์อื่น\n" +
+			"• ยังไม่ได้: ปิด PS5 ให้สนิท ถอดปลั๊กเราเตอร์ 10 วินาที แล้วลองใหม่"
+		reason.contains("crash", true) || reason.contains("Version", true) ->
+			"PS5 มีปัญหาที่ระบบ Remote Play\n• ปิด-เปิด PS5 ใหม่ และอัปเดตซอฟต์แวร์ PS5 ให้ล่าสุด"
+		reason.contains("Stream Connection", true) ->
+			"การเชื่อมต่อกับ PS5 หลุด (เน็ตบ้านไม่เสถียร หรือ PS5 ปิดไป)\n" +
+			"• ใช้สาย LAN หรือ Wi-Fi 5GHz ทั้งทีวีและ PS5\n• กด \"เชื่อมต่อใหม่\""
+		reason.contains("Registration", true) ->
+			"การจับคู่กับ PS5 ใช้ไม่ได้แล้ว\n• ลบ PS5 ในตั้งค่าแอป แล้วจับคู่ใหม่ (ล็อกอิน PSN + รหัส 8 หลัก)"
+		else -> "การเชื่อมต่อกับ PS5 หยุดลง\n• ตรวจว่า PS5 เปิดอยู่ และทีวีกับ PS5 ใช้เน็ตบ้านเดียวกัน แล้วกด \"เชื่อมต่อใหม่\""
+	}
+
 	private fun reconnect()
 	{
 		viewModel.session.shutdown()
@@ -256,6 +287,7 @@ class StreamActivity : AppCompatActivity()
 	{
 		binding.progressBar.visibility = if(state == StreamStateConnecting) View.VISIBLE else View.GONE
 		translator?.setStreamConnected(state == StreamStateConnected)
+		if(state == StreamStateConnected) autoRetries = 0
 
 		when(state)
 		{
@@ -267,9 +299,24 @@ class StreamActivity : AppCompatActivity()
 					{
 						dialog?.dismiss()
 						val reasonStr = state.reasonString
+						val reasonText = state.reason.toString()
+						// The PS5 keeps the last session for a few seconds after a drop (or is still waking up):
+						// wait and reconnect by itself a few times before bothering the player.
+						if(isRetryable(reasonText) && autoRetries < MAX_AUTO_RETRIES)
+						{
+							autoRetries++
+							android.widget.Toast.makeText(this,
+								"PS5 ยังไม่พร้อม กำลังเชื่อมต่อใหม่ให้อัตโนมัติ… ($autoRetries/$MAX_AUTO_RETRIES)",
+								android.widget.Toast.LENGTH_LONG).show()
+							binding.progressBar.visibility = View.VISIBLE
+							retryHandler.postDelayed({ if(!isFinishing) reconnect() }, AUTO_RETRY_DELAY_MS)
+							return
+						}
+						autoRetries = 0
 						val dialog = MaterialAlertDialogBuilder(this)
-							.setMessage(getString(R.string.alert_message_session_quit, state.reason.toString())
-									+ (if(reasonStr != null) "\n$reasonStr" else ""))
+							.setTitle("เชื่อมต่อ PS5 ไม่สำเร็จ")
+							.setMessage(thaiQuitHelp(reasonText)
+									+ "\n\n(รายละเอียด: " + reasonText + (if(reasonStr != null) " · $reasonStr" else "") + ")")
 							.setPositiveButton(R.string.action_reconnect) { _, _ ->
 								dialog = null
 								reconnect()

@@ -114,6 +114,17 @@ class MainActivity : AppCompatActivity()
 		viewModel.discoveryManager.pause()
 	}
 
+	private var firstResume = true
+
+	override fun onResume()
+	{
+		super.onResume()
+		// no licence code yet: ask again whenever the player comes back to the main screen
+		// (the first start asks after the update check instead)
+		if(!firstResume) com.metallic.chiaki.translate.LicencePrompt.maybeShow(this)
+		firstResume = false
+	}
+
 	private fun setupBackNavigation()
 	{
 		onBackPressedDispatcher.addCallback(this) {

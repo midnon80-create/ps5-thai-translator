@@ -157,7 +157,8 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		{
 			Problem.NOT_STARTED -> "รหัสใช้ได้ ✔ แปลด้วย AI จะเปิดวันที่ GTA 6 ออก (${aiStartText()}) — ตอนนี้ใช้ตัวแปลออฟไลน์"
 			Problem.NONE -> "แปลด้วย Gemini พร้อมใช้"
-			Problem.NO_LICENCE, Problem.NEED_BUY -> "แปลด้วย AI ต้องใช้รหัส ($PRICES) $BUY — ตอนนี้ใช้ตัวแปลออฟไลน์ฟรี"
+			Problem.NO_LICENCE, Problem.NEED_BUY -> if(com.metallic.chiaki.store.Store.IS_PLAY) "แปลด้วย AI ต้องใช้รหัส ($PRICES) $BUY — ตอนนี้ใช้ตัวแปลออฟไลน์ฟรี"
+				else "ยังไม่ได้ใส่รหัส: ออกจากเกม › ⚙️ ตั้งค่า › รหัสไลเซนส์ ($PRICES) — ตอนนี้ใช้ตัวแปลออฟไลน์ฟรี"
 			Problem.EXPIRED -> if(plan == "day") "ครบ 1 วันแล้ว ถ้าพอใจ อัปเกรดเป็นรายเดือน 149 · รายปี 329 หรือตลอดชีพ 759 บาท ($BUY) — ตอนนี้ใช้ตัวแปลออฟไลน์"
 				else "รหัสหมดอายุแล้ว ต่ออายุ ($BUY) เพื่อใช้ AI ต่อ — ตอนนี้ใช้ตัวแปลออฟไลน์"
 			Problem.LICENCE_INVALID -> "รหัสไลเซนส์ไม่ถูกต้อง ตรวจรหัสอีกครั้ง — ใช้ตัวแปลออฟไลน์"
