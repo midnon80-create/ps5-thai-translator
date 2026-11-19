@@ -160,7 +160,7 @@ class TranslatorTestActivity : AppCompatActivity()
 		log("\n2) อ่านซับบนจอ")
 		val sample = "Where are you going? We need to leave right now."
 		val frame = fakeFrame(sample)
-		val reader = ScreenReader()
+		val reader = ScreenReader(this)
 		val region = Bitmap.createBitmap(frame, 0, (frame.height * 0.55f).toInt(), frame.width, (frame.height * 0.45f).toInt())
 		t0 = SystemClock.elapsedRealtime()
 		val english = reader.read(region)

@@ -102,3 +102,6 @@
 
 # ScreenReader switches ML Kit to the Play services OCR module through this field (found by type)
 -keepclassmembers class com.google.mlkit.vision.text.latin.TextRecognizerOptions { *; }
+
+# Tesseract JNI classes (called from native code)
+-keep class com.googlecode.tesseract.android.** { *; }

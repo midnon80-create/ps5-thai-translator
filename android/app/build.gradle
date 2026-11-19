@@ -28,8 +28,8 @@ android {
         applicationId "com.ps5translate.tv"
         minSdk 24
         targetSdk 35
-        versionCode 163
-        versionName "1.6.3"
+        versionCode 164
+        versionName "1.6.4"
         buildConfigField "String", "UPDATE_REPO", "\"midnon80-create/ps5-thai-translator\""
         ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
         externalNativeBuild {
@@ -162,6 +162,7 @@ dependencies {
     // Live translator
     implementation 'androidx.media3:media3-exoplayer:1.4.1'
     implementation 'com.google.mlkit:text-recognition:16.0.1'
+    implementation 'cz.adaptech.tesseract4android:tesseract4android:4.9.0'
     implementation 'com.google.mlkit:translate:17.0.3'
     // offline speech: Silero VAD + Moonshine Tiny via sherpa-onnx (Apache-2.0; model MIT)
     implementation files('libs/sherpa-onnx-2.0.1.aar')

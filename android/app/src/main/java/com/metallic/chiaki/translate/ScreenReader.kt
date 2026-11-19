@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.TimeUnit
@@ -16,47 +15,47 @@ import kotlin.math.min
  * Reads English text (subtitles, dialogue boxes) from a video frame with ML Kit, on-device.
  * Picks the block of lines that looks most like dialogue and ignores HUD numbers and stray words.
  */
-class ScreenReader
+class ScreenReader(context: android.content.Context)
 {
 	/**
-	 * Some 32-bit TV chips crash inside the OCR code bundled in the app (illegal instruction, Toshiba/Hisense
-	 * "songshan"). After that happened once, this TV uses the OCR module of Google Play services instead
-	 * (a different build of the reader).
+	 * Some 32-bit TV chips crash inside ML Kit's text reader (illegal instruction, Toshiba/Hisense "songshan"),
+	 * and Google Play services on TVs has no text-recognition module to fall back to. After such a crash
+	 * (or on a TV model known to crash) the app reads with Tesseract instead: portable code, any CPU.
 	 */
-	val usePlayServices = com.metallic.chiaki.crash.CrashReport.disabled(MARK_BUNDLED) ||
+	val useTesseract = com.metallic.chiaki.crash.CrashReport.disabled(MARK_BUNDLED) ||
 		android.os.Build.DEVICE in KNOWN_BAD_BUNDLED // seen crashing: switch at once, no crash needed first
-	private val mark = if(usePlayServices) MARK_PLAY else MARK_BUNDLED
+	val engineName get() = if(useTesseract) (if(tess != null) "tess" else "tess-failed") else "mlkit"
+	private val mark = if(useTesseract) MARK_TESS else MARK_BUNDLED
 
-	private val recognizer = TextRecognition.getClient(options(usePlayServices))
+	private val recognizer = if(useTesseract) null else TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+	private val tess: TessReader? = if(useTesseract) TessReader.open(context) else null
+
+	/** Why the last read failed (shown in the play summary). */
+	@Volatile var lastError: String? = null
+		private set
 
 	companion object
 	{
 		const val MARK_BUNDLED = "ocr"
-		const val MARK_PLAY = "ocr_gms"
+		const val MARK_TESS = "ocr_tess"
 		private val KNOWN_BAD_BUNDLED = setOf("songshan")
-
-		/** The options carry ML Kit's "use the bundled reader" flag; false makes it use Play services' module. */
-		private fun options(playServices: Boolean): TextRecognizerOptions
-		{
-			val o = TextRecognizerOptions.Builder().build()
-			if(playServices) try
-			{
-				// the field name is obfuscated: find it by type
-				o.javaClass.declaredFields.firstOrNull { java.util.concurrent.atomic.AtomicReference::class.java.isAssignableFrom(it.type) }?.let {
-					it.isAccessible = true
-					@Suppress("UNCHECKED_CAST")
-					(it.get(o) as java.util.concurrent.atomic.AtomicReference<Any?>).set(false)
-				}
-			}
-			catch(_: Throwable) { }
-			return o
-		}
 	}
 
-	private fun process(frame: Bitmap): Text
+	/** Every text line on the frame with its box (raw text). Throws when the reader fails. */
+	private fun readLines(frame: Bitmap): List<Line>
 	{
 		com.metallic.chiaki.crash.CrashReport.enter(mark)
-		try { return Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS).also { timedOut = false } }
+		try
+		{
+			if(useTesseract)
+			{
+				val t = tess ?: throw IllegalStateException("tesseract not ready")
+				return t.lines(frame).map { Line(it.text, it.box) }.also { timedOut = false }
+			}
+			val result = Tasks.await(recognizer!!.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS)
+			timedOut = false
+			return result.textBlocks.flatMap { it.lines }.mapNotNull { l -> l.boundingBox?.let { Line(l.text, it) } }
+		}
 		finally { com.metallic.chiaki.crash.CrashReport.leave(mark) }
 	}
 
@@ -76,16 +75,16 @@ class ScreenReader
 	/** Blocking; call off the main thread. Null when no dialogue-like text is found. */
 	fun find(frame: Bitmap): Found?
 	{
-		val result = try
+		val raw = try
 		{
-			process(frame)
+			readLines(frame)
 		}
-		catch(e: Exception) { if(e is java.util.concurrent.TimeoutException) timedOut = true; return null }
-		lastTexts = result.textBlocks.flatMap { b -> b.lines.map { it.text } }.take(40)
-		return pickDialogue(result, frame.width, frame.height)
+		catch(e: Exception) { if(e is java.util.concurrent.TimeoutException) timedOut = true; lastError = e.toString().take(160); return null }
+		lastTexts = raw.map { it.text }.take(40)
+		return pickDialogue(raw, frame.width, frame.height)
 	}
 
-	fun close() = recognizer.close()
+	fun close() { recognizer?.close(); tess?.close() }
 
 	/** One group of English lines on screen, sorted into a [TextKind] (null = ignore: HUD, signs, labels). */
 	class Block(val text: String, val box: Rect, val lines: Int, val kind: TextKind)
@@ -96,16 +95,15 @@ class ScreenReader
 	 */
 	fun readAll(frame: Bitmap): List<Block>
 	{
-		val result = try
+		val raw = try
 		{
-			process(frame)
+			readLines(frame)
 		}
-		catch(e: Exception) { if(e is java.util.concurrent.TimeoutException) timedOut = true; return emptyList() }
-		lastTexts = result.textBlocks.flatMap { b -> b.lines.map { it.text } }.take(40)
+		catch(e: Exception) { if(e is java.util.concurrent.TimeoutException) timedOut = true; lastError = e.toString().take(160); return emptyList() }
+		lastTexts = raw.map { it.text }.take(40)
 		val w = frame.width
 		val h = frame.height
-		val lines = result.textBlocks.flatMap { it.lines }
-			.mapNotNull { l -> l.boundingBox?.let { Line(cleanLine(l.text), it) } }
+		val lines = raw.map { Line(cleanLine(it.text), it.box) }
 			.filter { looksLikeWords(it.text) || UiText.looksLikePrompt(it.text) }
 			.filter { it.box.height() >= h / 70 }
 			.sortedBy { it.box.top }
@@ -164,10 +162,9 @@ class ScreenReader
 
 	private class Line(val text: String, val box: Rect)
 
-	private fun pickDialogue(result: Text, width: Int, height: Int): Found?
+	private fun pickDialogue(raw: List<Line>, width: Int, height: Int): Found?
 	{
-		val lines = result.textBlocks.flatMap { it.lines }
-			.mapNotNull { l -> l.boundingBox?.let { Line(cleanLine(l.text), it) } }
+		val lines = raw.map { Line(cleanLine(it.text), it.box) }
 			.filter { looksLikeWords(it.text) }
 			.filter { it.box.height() >= height / 70 } // ignore tiny print
 			.sortedBy { it.box.top }

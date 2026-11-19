@@ -11,6 +11,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Tesseract text reader (fallback for TVs where ML Kit's reader crashes); only this group comes from JitPack
+        maven {
+            url 'https://jitpack.io'
+            content { includeGroup 'cz.adaptech.tesseract4android' }
+        }
     }
 }
 

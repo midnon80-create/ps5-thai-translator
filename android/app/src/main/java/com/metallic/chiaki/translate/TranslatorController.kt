@@ -109,7 +109,7 @@ class TranslatorController(
 			}
 			status(null)
 		}
-		if(mode != TranslatorPrefs.Mode.SPEECH && com.metallic.chiaki.crash.CrashReport.disabled(ScreenReader.MARK_PLAY))
+		if(mode != TranslatorPrefs.Mode.SPEECH && com.metallic.chiaki.crash.CrashReport.disabled(ScreenReader.MARK_TESS))
 		{
 			// both text readers crashed this TV: keep the game playable, without reading subtitles
 			status("ทีวีรุ่นนี้อ่านซับบนจอไม่ได้ (ชิปไม่รองรับตัวอ่านข้อความ) · เล่นเกมได้ปกติ")
@@ -117,7 +117,7 @@ class TranslatorController(
 		}
 		else if(mode != TranslatorPrefs.Mode.SPEECH)
 		{
-			screenReader = ScreenReader()
+			screenReader = ScreenReader(context)
 			copyThread = HandlerThread("translator-copy").also { it.start() }
 			main.postDelayed(grabRunnable, FRAME_INTERVAL_MS)
 		}
@@ -176,11 +176,11 @@ class TranslatorController(
 			saw == 0 -> "อ่านภาพได้ แต่ไม่เจอตัวหนังสือเลย"
 			else -> "เจอตัวหนังสือ แต่ไม่ใช่ซับบทพูด"
 		}
-		val code = "G$grabs F$fail B$black O$ocr T$saw R${if(prefs.region == TranslatorPrefs.Region.FULL) "full" else "bottom"}${if(screenReader?.usePlayServices == true) " gms" else ""}"
+		val code = "G$grabs F$fail B$black O$ocr T$saw R${if(prefs.region == TranslatorPrefs.Region.FULL) "full" else "bottom"} ${screenReader?.engineName ?: ""}"
 		val nl = System.lineSeparator()
 		val seen = screenReader?.lastTexts?.take(8)?.joinToString(" | ") ?: ""
 		com.metallic.chiaki.crash.CrashReport.upload(context,
-			"ประเภท: สรุปการเล่น (ยังไม่มีซับไทยใน 90 วิ)" + nl + why + nl + code + nl + "ตัวอย่างข้อความที่อ่านได้: " + seen)
+			"ประเภท: สรุปการเล่น (ยังไม่มีซับไทยใน 90 วิ)" + nl + why + nl + code + nl + "ตัวอย่างข้อความที่อ่านได้: " + seen + nl + "ข้อผิดพลาดล่าสุด: " + (screenReader?.lastError ?: "-"))
 		status("ยังไม่เห็นซับอังกฤษ: " + why + nl + "เปิดซับในเกม (Subtitles: On) · ถ้ายังไม่ขึ้น ถ่ายรูปนี้ส่งผู้ขาย [" + code + "]")
 		main.postDelayed({ if(running.get()) ui.showStatus(null) }, 15000)
 	}
