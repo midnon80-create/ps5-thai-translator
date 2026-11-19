@@ -46,7 +46,7 @@ class TranslatorOverlay(private val root: View, private val video: SurfaceView) 
 	private val promptViews = ArrayList<SubtitleTextView>()
 	private var screenShownAt = 0L
 	private var screenHoldMs = 0L
-	private val clearScreenNow = Runnable { screenText.isGone = true }
+	private val clearScreenNow = Runnable { screenText.isGone = true; curEnglish = ""; curThai = ""; prevThai = null }
 
 	init
 	{
@@ -75,7 +75,7 @@ class TranslatorOverlay(private val root: View, private val video: SurfaceView) 
 		place(null)
 	}
 
-	private fun setText(view: SubtitleTextView, thai: String, english: String)
+	private fun setText(view: SubtitleTextView, thai: String, english: String, previous: String? = null)
 	{
 		// very long lines get a little smaller so they stay within two or three lines
 		val scale = when {
@@ -85,18 +85,46 @@ class TranslatorOverlay(private val root: View, private val video: SurfaceView) 
 		}
 		view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx * scale)
 		view.outlineWidthPx = 0f // like the sample: plain white letters on the band
-		view.text = if(showEnglish) thai + '\n' + english else thai
+		val main = if(showEnglish) thai + '\n' + english else thai
+		view.text = if(previous == null) main else android.text.SpannableStringBuilder().apply {
+			// the line before stays a moment, smaller and dimmer, so a fast cutscene can still be read
+			append(previous)
+			setSpan(android.text.style.ForegroundColorSpan(0xB3FFFFFF.toInt()), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			setSpan(android.text.style.RelativeSizeSpan(0.8f), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			append('\n')
+			append(main)
+		}
 		view.isVisible = true
+	}
+
+	// the subtitle on screen now, and the one before it (kept briefly above it)
+	private var curEnglish = ""
+	private var curThai = ""
+	private var prevThai: String? = null
+	private val dropPrevious = Runnable {
+		prevThai = null
+		if(screenText.isVisible && curThai.isNotEmpty()) setText(screenText, curThai, curEnglish)
 	}
 
 	override fun showScreenText(thai: String, english: String, subtitleTop: Float?)
 	{
 		screenText.removeCallbacks(clearScreenNow)
+		val now = SystemClock.elapsedRealtime()
+		if(english != curEnglish)
+		{
+			// a new line: the previous Thai line moves up (dimmer) for PREVIOUS_KEEP_MS if it was shown only briefly
+			prevThai = if(screenText.isVisible && curThai.isNotEmpty() && now - screenShownAt < PREVIOUS_IF_SHOWN_UNDER_MS) curThai else null
+			curEnglish = english
+			screenShownAt = now
+			screenText.removeCallbacks(dropPrevious)
+			if(prevThai != null) screenText.postDelayed(dropPrevious, PREVIOUS_KEEP_MS)
+		}
+		// same English line again = the better (AI) version of it replaces the quick one in place
+		curThai = thai
 		place(subtitleTop)
-		setText(screenText, thai, english)
-		screenShownAt = SystemClock.elapsedRealtime()
-		// long enough to read even if the game's subtitle vanishes quickly: 1.2-2.8 s by length
-		screenHoldMs = (900L + thai.length * 30L).coerceIn(1200L, 2800L)
+		setText(screenText, thai, english, prevThai)
+		// long enough to read even if the game's subtitle vanishes quickly: 1.8-3.5 s by length
+		screenHoldMs = (1300L + thai.length * 35L).coerceIn(1800L, 3500L)
 	}
 
 	override fun clearScreenText()
@@ -356,5 +384,11 @@ class TranslatorOverlay(private val root: View, private val video: SurfaceView) 
 			}
 		}
 		overlay.layoutParams = lp
+	}
+
+	private companion object
+	{
+		const val PREVIOUS_IF_SHOWN_UNDER_MS = 3000L
+		const val PREVIOUS_KEEP_MS = 2500L
 	}
 }
