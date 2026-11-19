@@ -199,6 +199,21 @@ class StreamActivity : AppCompatActivity()
 	private val retryHandler = android.os.Handler(android.os.Looper.getMainLooper())
 	private var autoRetries = 0
 	private var padWarned = false
+	private var connectedAt = 0L
+	private var shutdownRetries = 0
+
+	/** Sends the end of this session's log to the server, so connection problems on customers' TVs can be seen. */
+	private val NL = System.lineSeparator()
+
+	private fun reportSession(what: String)
+	{
+		try
+		{
+			val tail = viewModel.session.logFile?.takeIf { it.exists() }?.readLines()?.takeLast(80)?.joinToString(NL) ?: ""
+			com.metallic.chiaki.crash.CrashReport.upload(this, "ประเภท: การเชื่อมต่อ" + NL + what + NL + NL + tail)
+		}
+		catch(_: Throwable) { }
+	}
 
 	/** Session-start errors that usually clear up by themselves within seconds. */
 	private fun isRetryable(reason: String) =
@@ -291,6 +306,7 @@ class StreamActivity : AppCompatActivity()
 		if(state == StreamStateConnected)
 		{
 			autoRetries = 0
+			connectedAt = System.currentTimeMillis()
 			if(!padWarned && com.metallic.chiaki.translate.Diag.gamepads().isEmpty())
 			{
 				padWarned = true
@@ -320,6 +336,7 @@ class StreamActivity : AppCompatActivity()
 						val reasonText = state.reason.toString()
 						// The PS5 keeps the last session for a few seconds after a drop (or is still waking up):
 						// wait and reconnect by itself a few times before bothering the player.
+						if(autoRetries == 0) reportSession("หลุด: $reasonText · ${reasonStr ?: ""}")
 						if(isRetryable(reasonText) && autoRetries < MAX_AUTO_RETRIES)
 						{
 							autoRetries++
@@ -350,6 +367,40 @@ class StreamActivity : AppCompatActivity()
 							.create()
 						dialogContents = StreamQuitDialog
 						dialog.show()
+					}
+					else if(!isFinishing && state.reason.toString().contains("shut down", true))
+					{
+						// The PS5 itself ended the stream (e.g. right after waking from rest, or after picking a
+						// user profile): it accepts a new connection a few seconds later - reconnect instead of
+						// dropping the player back to the PS5 list.
+						if(System.currentTimeMillis() - connectedAt > 120_000L) shutdownRetries = 0
+						if(shutdownRetries == 0) reportSession("PS5 ตัดการเชื่อมต่อ: ${state.reason} · ${state.reasonString ?: ""}")
+						if(shutdownRetries < 3)
+						{
+							shutdownRetries++
+							dialog?.dismiss()
+							android.widget.Toast.makeText(this,
+								"PS5 รีเซ็ตการเชื่อมต่อ กำลังเชื่อมต่อใหม่ให้อัตโนมัติ… ($shutdownRetries/3)",
+								android.widget.Toast.LENGTH_LONG).show()
+							binding.progressBar.visibility = View.VISIBLE
+							retryHandler.postDelayed({ if(!isFinishing) reconnect() }, AUTO_RETRY_DELAY_MS)
+						}
+						else
+						{
+							shutdownRetries = 0
+							val d = MaterialAlertDialogBuilder(this)
+								.setTitle("PS5 ตัดการเชื่อมต่อซ้ำหลายครั้ง")
+								.setMessage("• ที่ PS5 เลือกผู้ใช้ (บัญชีเดียวกับที่จับคู่) ให้อยู่หน้าหลักก่อน\n" +
+									"• ปิด Remote Play ที่มือถือ คอม หรือ PS Portal\n" +
+									"• ห้ามกดปุ่ม PS ที่จอยที่ต่อกับ PS5\n" +
+									"แล้วกด \"เชื่อมต่อใหม่\"")
+								.setPositiveButton(R.string.action_reconnect) { _, _ -> dialog = null; reconnect() }
+								.setNegativeButton(R.string.action_quit_session) { _, _ -> dialog = null; finish() }
+								.setOnCancelListener { dialog = null; finish() }
+								.create()
+							dialogContents = StreamQuitDialog
+							d.show()
+						}
 					}
 					else
 						finish()

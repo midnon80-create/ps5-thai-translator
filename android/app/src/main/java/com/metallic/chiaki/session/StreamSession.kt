@@ -38,8 +38,14 @@ class StreamSession(val connectInfo: ConnectInfo, val logManager: LogManager, va
 		}
 	}
 
+	@Volatile private var generation = 0
+	/** Log file of the current/last session, for problem reports. */
+	var logFile: java.io.File? = null
+		private set
+
 	fun shutdown()
 	{
+		generation++
 		session?.stop()
 		session?.dispose()
 		session = null
@@ -58,9 +64,12 @@ class StreamSession(val connectInfo: ConnectInfo, val logManager: LogManager, va
 			return
 		try
 		{
-			val session = Session(connectInfo, logManager.createNewFile().file.absolutePath, logVerbose)
+			val gen = ++generation
+			val log = logManager.createNewFile().file
+			logFile = log
+			val session = Session(connectInfo, log.absolutePath, logVerbose)
 			_state.value = StreamStateConnecting
-			session.eventCallback = this::eventCallback
+			session.eventCallback = { if(gen == generation) eventCallback(it) }
 			session.start()
 			val surface = surface
 			if(surface != null)
