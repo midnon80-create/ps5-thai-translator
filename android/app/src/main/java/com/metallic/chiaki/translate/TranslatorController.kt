@@ -224,7 +224,9 @@ class TranslatorController(
 			if(!full) maybePeekWholeScreen(reader, bmp)
 			val rw = region.width
 			val rh = region.height
-			if(region !== bmp) region.recycle()
+			// do not recycle the cropped copy: on slow TVs ML Kit may still be reading it after a time-out
+			// (recycling it crashed 32-bit TVs); the garbage collector frees it safely
+			if(reader.timedOut) { frame = null; slowReads++ } // the shared frame may still be in use too: take a fresh one next time
 			val dialogue = blocks.firstOrNull { it.kind == TextKind.DIALOGUE }
 			val english = dialogue?.text ?: ""
 			val now = SystemClock.elapsedRealtime()
@@ -453,12 +455,15 @@ class TranslatorController(
 	private val gtaSigns = Regex("""\b(rockstar|grand\s*theft\s*auto|gta\s*(vi|6)|vice\s*city|vice\s*beach|leonida|port\s*gellhorn|grassrivers|ambrosia|mount\s*kalaga|lucia)\b""", RegexOption.IGNORE_CASE)
 	@Volatile private var unlockAskedAt = 0L
 	@Volatile private var lastPeekAt = 0L
+	@Volatile private var slowReads = 0
 
 	private fun maybePeekWholeScreen(reader: ScreenReader, frame: Bitmap)
 	{
 		val c = cloud ?: return
 		val now = SystemClock.elapsedRealtime()
 		if(c.gameOkUntil > System.currentTimeMillis() + 600_000L || now - lastPeekAt < 3000L) return
+		// slow TV (reads take long, or timed out): skip the extra whole-screen read, the game comes first
+		if(readMs > 700.0 || slowReads > 0 || android.os.Build.SUPPORTED_64_BIT_ABIS.isEmpty() && readMs > 400.0) return
 		lastPeekAt = now
 		reader.find(frame) // whole picture once: only to spot GTA VI title / loading screens
 		maybeUnlockGame(reader.lastTexts)

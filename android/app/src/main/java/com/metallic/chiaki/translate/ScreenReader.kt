@@ -30,14 +30,17 @@ class ScreenReader
 	@Volatile var lastTexts: List<String> = emptyList()
 		private set
 
+	/** The last read took too long and ML Kit may still be using that bitmap: never recycle or reuse it. */
+	@Volatile var timedOut = false
+
 	/** Blocking; call off the main thread. Null when no dialogue-like text is found. */
 	fun find(frame: Bitmap): Found?
 	{
 		val result = try
 		{
-			Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS)
+			Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS).also { timedOut = false }
 		}
-		catch(e: Exception) { return null }
+		catch(e: Exception) { if(e is java.util.concurrent.TimeoutException) timedOut = true; return null }
 		lastTexts = result.textBlocks.flatMap { b -> b.lines.map { it.text } }.take(40)
 		return pickDialogue(result, frame.width, frame.height)
 	}
@@ -55,9 +58,9 @@ class ScreenReader
 	{
 		val result = try
 		{
-			Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS)
+			Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS).also { timedOut = false }
 		}
-		catch(e: Exception) { return emptyList() }
+		catch(e: Exception) { if(e is java.util.concurrent.TimeoutException) timedOut = true; return emptyList() }
 		lastTexts = result.textBlocks.flatMap { b -> b.lines.map { it.text } }.take(40)
 		val w = frame.width
 		val h = frame.height
