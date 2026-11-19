@@ -317,6 +317,8 @@ class TranslatorController(
 
 	private fun startSpeech(@Suppress("UNUSED_PARAMETER") fast: Boolean)
 	{
+		// this TV crashed while listening before: keep speech off here, subtitles still translate
+		if(com.metallic.chiaki.crash.CrashReport.disabled("speech")) { status("ทีวีนี้ปิดการฟังเสียงไว้ (เคยทำให้แอปเด้ง) · แปลซับตามปกติ"); return }
 		if(SpeechModel.isReady(context))
 		{
 			speech = SpeechEngine(context, ::onSpeech, { msg -> status(msg) }, ::onSpeechTooSlow).also { it.start() }

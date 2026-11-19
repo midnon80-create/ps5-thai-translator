@@ -156,8 +156,12 @@ class TextTranslator(private val geminiKey: String, private val geminiModel: Str
 	private fun machine(text: String): String?
 	{
 		if(!offlineReady || text.isBlank()) return null
+		// this TV crashed inside the offline translator before: skip it (AI still works)
+		if(com.metallic.chiaki.crash.CrashReport.disabled("offline")) return null
+		com.metallic.chiaki.crash.CrashReport.enter("offline")
 		return try { Tasks.await(mlkit.translate(text), 5, TimeUnit.SECONDS) }
 		catch(e: Exception) { Log.w(TAG, "ML Kit translate failed", e); null }
+		finally { com.metallic.chiaki.crash.CrashReport.leave("offline") }
 	}
 
 	/** Sentence ends, plus ", they/we/you..." where a comma starts a new clause (reads better in Thai). */

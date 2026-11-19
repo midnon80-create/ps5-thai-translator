@@ -36,6 +36,12 @@ class PS5TranslateApp : Application()
 		// installed this early so crashes in library start-up code (content providers) are caught too
 		CrashReport.install(base)
 	}
+
+	override fun onCreate()
+	{
+		super.onCreate()
+		CrashReport.startLog(this)
+	}
 }
 
 object CrashReport
@@ -44,8 +50,68 @@ object CrashReport
 	private const val PREF = "crash_report"
 	private const val KEY_SEEN_EXIT = "seen_exit_ts"
 
+	private const val LOG_DIR = "applog"
+	private const val KEY_LAST_INFLIGHT = "last_inflight"
+
+	@Volatile private var appContext: Context? = null
+
+	/**
+	 * Marks that an optional native part ("offline" translation, "speech") is running. If the app dies in a
+	 * native crash while it is marked, that part is switched off on this TV from then on (see [disabled]).
+	 */
+	fun enter(what: String) { try { File(appContext!!.filesDir, "inflight_$what").writeText("1") } catch(_: Throwable) { } }
+	fun leave(what: String) { try { File(appContext!!.filesDir, "inflight_$what").delete() } catch(_: Throwable) { } }
+	fun disabled(what: String) =
+		appContext?.getSharedPreferences(PREF, Context.MODE_PRIVATE)?.getBoolean("off_$what", false) == true
+
+	/**
+	 * Keeps this app's own log in a small file while it runs (an app may read its own log lines).
+	 * After a native crash, the previous run's file holds "Fatal signal ... (thread name)" and the
+	 * backtrace, which tell which part crashed. Android 11 records nothing else for native crashes.
+	 */
+	fun startLog(context: Context)
+	{
+		try
+		{
+			// parts that were running when the last run ended (checked against the exit reason later)
+			val inflight = context.filesDir.listFiles()?.filter { it.name.startsWith("inflight_") } ?: emptyList()
+			context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
+				.putString(KEY_LAST_INFLIGHT, inflight.joinToString(",") { it.name.removePrefix("inflight_") }).commit()
+			inflight.forEach { it.delete() }
+		}
+		catch(_: Throwable) { }
+		try
+		{
+			val dir = File(context.filesDir, LOG_DIR).apply { mkdirs() }
+			val prev = File(dir, "prev.log")
+			val cur = listOf(File(dir, "run.log.1"), File(dir, "run.log")).filter { it.exists() }
+			if(cur.isNotEmpty())
+			{
+				prev.writeText(cur.joinToString("") { it.readText() })
+				cur.forEach { it.delete() }
+			}
+			Runtime.getRuntime().exec(arrayOf("logcat", "-b", "main,crash", "-v", "threadtime",
+				"-f", File(dir, "run.log").absolutePath, "-r", "400", "-n", "1"))
+		}
+		catch(_: Throwable) { }
+	}
+
+	/** The crash lines from the previous run's log, or "" if none were recorded. */
+	private fun previousCrashLog(context: Context): String
+	{
+		return try
+		{
+			val lines = File(File(context.filesDir, LOG_DIR), "prev.log").takeIf { it.exists() }?.readLines() ?: return ""
+			val i = lines.indexOfLast { it.contains("Fatal signal") }
+			if(i < 0) return "(ไม่พบบรรทัด Fatal signal ใน log)\n" + lines.takeLast(40).joinToString("\n")
+			lines.subList(maxOf(0, i - 30), minOf(lines.size, i + 70)).joinToString("\n")
+		}
+		catch(_: Throwable) { "" }
+	}
+
 	fun install(context: Context)
 	{
+		appContext = context
 		val previous = Thread.getDefaultUncaughtExceptionHandler()
 		Thread.setDefaultUncaughtExceptionHandler { thread, error ->
 			try
@@ -92,6 +158,19 @@ object CrashReport
 					val full = exit.traceInputStream?.bufferedReader()?.readText()?.take(400_000) ?: ""
 					val i = full.indexOf("\"main\"")
 					trace = if(i >= 0) full.substring(i).take(6000) else full.take(6000)
+				}
+				else if(exit.reason == ApplicationExitInfo.REASON_CRASH_NATIVE)
+				{
+					val inflight = prefs.getString(KEY_LAST_INFLIGHT, "") ?: ""
+					if(inflight.isNotEmpty())
+					{
+						// that part crashed this TV: keep it off here from now on
+						val e = prefs.edit()
+						inflight.split(",").filter { it.isNotBlank() }.forEach { e.putBoolean("off_$it", true) }
+						e.apply()
+						trace = "ทำงานอยู่ตอนแครช (ปิดส่วนนี้ในทีวีนี้แล้ว): $inflight\n\n"
+					}
+					trace += previousCrashLog(context).take(7000)
 				}
 				return header() + "ประเภท: $kind\nรายละเอียด: ${exit.description}\nสถานะ: ${exit.status}\n\n$trace"
 			}

@@ -38,6 +38,7 @@ class SpeechEngine(
 	{
 		if(running) return
 		running = true
+		com.metallic.chiaki.crash.CrashReport.enter("speech")
 		thread = Thread({ loop() }, "translator-speech").also { it.start() }
 	}
 
@@ -47,6 +48,7 @@ class SpeechEngine(
 		AudioTap.nativeSetEnabled(false)
 		thread?.join(1500)
 		thread = null
+		com.metallic.chiaki.crash.CrashReport.leave("speech")
 	}
 
 	private fun loop()
