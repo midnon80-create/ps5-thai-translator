@@ -10,6 +10,7 @@ import android.os.SystemClock
 import android.util.TypedValue
 import android.widget.ScrollView
 import android.widget.TextView
+import kotlinx.coroutines.flow.first
 import androidx.appcompat.app.AppCompatActivity
 import org.json.JSONObject
 
@@ -46,11 +47,106 @@ class TranslatorTestActivity : AppCompatActivity()
 	private val amber = Color.rgb(255, 184, 77)
 	private val red = Color.rgb(255, 107, 107)
 
+	/** Step-by-step status of everything a player needs, each with the fix in plain Thai. */
+	private fun checklist(prefs: TranslatorPrefs)
+	{
+		log("ตรวจความพร้อม ทีละขั้น\n", Color.rgb(196, 181, 253))
+		val problems = ArrayList<String>()
+		fun item(ok: Boolean?, title: String, fix: String?)
+		{
+			val mark = when(ok) { true -> "✔"; false -> "✘"; null -> "•" }
+			log("$mark $title", when(ok) { true -> green; false -> red; null -> amber })
+			if(ok != true && fix != null) log("   วิธีแก้: $fix", amber)
+			if(ok == false) problems += title
+		}
+
+		// 1. code + AI
+		val cloud = if(prefs.serverUrl.isBlank()) null else CloudTranslator(prefs.serverUrl, prefs.cloudCode, CloudTranslator.deviceId(this))
+		val p = cloud?.check() ?: CloudTranslator.Problem.OFFLINE
+		when(p)
+		{
+			CloudTranslator.Problem.NONE, CloudTranslator.Problem.DAILY_LIMIT, CloudTranslator.Problem.POOL_EMPTY ->
+				item(true, "รหัสใช้ได้ · แปลด้วย AI เปิดแล้ว", null)
+			CloudTranslator.Problem.NOT_STARTED -> item(null, "รหัสใช้ได้ · AI ยังไม่ถึงเวลาเปิด (${CloudTranslator.aiStartText()})", "รอถึงเวลา แล้วออกจากเกมเข้าใหม่ 1 ครั้ง")
+			CloudTranslator.Problem.OFFLINE -> item(false, "ต่อเซิร์ฟเวอร์แปลไม่ได้", "ตรวจว่าทีวีต่ออินเทอร์เน็ตได้ (ลองเปิด YouTube) แล้วกดทดสอบใหม่")
+			CloudTranslator.Problem.NO_LICENCE, CloudTranslator.Problem.NEED_BUY ->
+				item(false, "ยังไม่ได้ใส่รหัส", "ตั้งค่า › รหัสไลเซนส์ › พิมพ์รหัสจาก LINE › ตกลง")
+			else -> item(false, CloudTranslator.problemText(p, cloud?.plan ?: ""), "ติดต่อผู้ขาย พร้อมถ่ายรูปหน้านี้")
+		}
+		if(p == CloudTranslator.Problem.NONE)
+		{
+			if(cloud != null && cloud.gameOkUntil > System.currentTimeMillis())
+				item(true, "ระบบจำได้แล้วว่าทีวีนี้เล่น GTA 6", null)
+			else
+				item(null, "AI จะเปิดเต็มที่เมื่อแอปเห็นหน้า Rockstar / GTA 6 หรือชื่อในเกม (ระหว่างนั้นได้ AI 60 ประโยคแรกของวัน)", "เปิด GTA 6 ผ่านแอป แล้วเล่นต่อได้เลย")
+		}
+
+		// 2. PS5 paired
+		val hosts = try { kotlinx.coroutines.runBlocking { com.metallic.chiaki.common.getDatabase(this@TranslatorTestActivity).registeredHostDao().count().first() } } catch(e: Throwable) { -1 }
+		when
+		{
+			hosts > 0 -> item(true, "จับคู่ PS5 แล้ว ($hosts เครื่อง)", null)
+			hosts == 0 -> item(false, "ยังไม่ได้จับคู่ PS5", "หน้าแรก › กดการ์ด PS5 › ล็อกอิน PSN › ใส่รหัส 8 หลักจาก PS5 (ตั้งค่า › ระบบ › การเล่นระยะไกล › เชื่อมโยงอุปกรณ์)")
+		}
+
+		// 3. controller on the TV
+		val pads = Diag.gamepads()
+		if(pads.isNotEmpty()) item(true, "จอยต่อกับทีวีแล้ว (${pads.joinToString()})", null)
+		else item(false, "ยังไม่มีจอยต่อกับทีวี (จอยที่ต่อกับ PS5 ใช้ในแอปไม่ได้)",
+			"เสียบสาย USB จากจอยเข้าทีวี หรือ ตั้งค่าทีวี › รีโมทและอุปกรณ์เสริม › เพิ่มอุปกรณ์เสริม › ที่จอยกด Create + PS ค้าง › เลือก Wireless Controller")
+
+		// 4. translator settings
+		if(prefs.enabled) item(true, "ตัวแปลเปิดอยู่ · อ่าน${if(prefs.region == TranslatorPrefs.Region.BOTTOM) "ซับล่างจอ" else "ทั้งจอ"} · ${if(prefs.mode == TranslatorPrefs.Mode.SCREEN) "ไม่ฟังเสียง (ลื่น)" else "ฟังเสียงด้วย (หนักเครื่อง)"}", null)
+		else item(false, "ตัวแปลถูกปิดอยู่", "ตั้งค่า › เปิดตัวแปลภาษา")
+
+		// 5. last play session
+		fun ago(t: Long): String
+		{
+			if(t <= 0) return "ยังไม่เคย"
+			val m = (System.currentTimeMillis() - t) / 60000
+			return when { m < 1 -> "เมื่อสักครู่"; m < 60 -> "$m นาทีที่แล้ว"; m < 1440 -> "${m / 60} ชม.ที่แล้ว"; else -> "${m / 1440} วันที่แล้ว" }
+		}
+		val streamAt = Diag.at(this, Diag.STREAM_AT)
+		val subAt = Diag.at(this, Diag.SUBTITLE_AT)
+		val aiAt = Diag.at(this, Diag.AI_AT)
+		val offAt = Diag.at(this, Diag.OFFLINE_AT)
+		log("\nครั้งล่าสุดที่เล่น:")
+		if(streamAt <= 0) item(null, "ยังไม่เคยเข้าเล่นผ่านแอป", "หน้าแรก › กดการ์ด PS5 ที่มีคำว่า (registered)")
+		else
+		{
+			item(true, "เชื่อมต่อ PS5: ${ago(streamAt)}", null)
+			if(subAt < streamAt - 60_000) item(false, "แอปยังไม่เห็นซับอังกฤษในเกมเลย",
+				"เปิดซับไตเติลในเกม (Subtitles: On) · ไปฉากที่ตัวละครพูด · ถ้าซับในเกมอยู่กลาง/บนจอ: ตั้งค่า › แปลอะไรบนจอ › ทั้งจอ")
+			else item(true, "เห็นซับอังกฤษในเกม: ${ago(subAt)}", null)
+			if(aiAt > 0 && aiAt >= offAt) item(true, "แปลด้วย AI ล่าสุด: ${ago(aiAt)}", null)
+			else if(offAt > 0)
+			{
+				val why = when(Diag.text(this, Diag.OFFLINE_WHY)) {
+					"NO_LICENCE", "NEED_BUY" -> "ยังไม่ได้ใส่รหัส"
+					"NOT_STARTED" -> "ยังไม่ถึงเวลาเปิด AI"
+					"EXPIRED", "TRIAL_OVER" -> "รหัสหมดอายุ"
+					"DAILY_LIMIT" -> "แปลครบโควตาของวันนี้"
+					"OFFLINE", "NO_SERVER", "SERVER_FAILED" -> "เน็ตหลุด หรือเซิร์ฟเวอร์ตอบไม่ทัน"
+					"OTHER_DEVICE" -> "รหัสใช้กับทีวีเครื่องอื่น"
+					else -> "ยังไม่ได้เปิด AI ให้เกมนี้ (ไม่ใช่ GTA 6) หรือเน็ตช้า"
+				}
+				item(null, "ครั้งล่าสุดใช้คำแปลออฟไลน์ (${ago(offAt)}): $why", "แก้ตามรายการด้านบน แล้วออกจากเกมเข้าใหม่")
+			}
+		}
+		if(Diag.at(this, Diag.NO_PAD_AT) > streamAt - 1 && streamAt > 0 && pads.isEmpty())
+			log("   ตอนเล่นไม่พบจอยที่ต่อกับทีวี", amber)
+
+		log(if(problems.isEmpty()) "\nสรุป: ✔ พร้อมเล่น" else "\nสรุป: ✘ ยังติด ${problems.size} ข้อ — แก้ตามวิธีด้านบน", if(problems.isEmpty()) green else red)
+		log("\n— ทดสอบตัวแปลละเอียด —\n")
+	}
+
 	private fun runTests()
 	{
 		val prefs = TranslatorPrefs(this)
 		PhraseBank.load(this)
 		SlangRewriter.load(this)
+
+		checklist(prefs)
 
 		// 1. Thai dictionary
 		log("1) เตรียมคลังคำแปลไทย (ครั้งแรกต้องต่อเน็ต)…")

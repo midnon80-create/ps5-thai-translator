@@ -73,8 +73,8 @@
         </Preference>
         <Preference
             app:key="tr_test"
-            app:title="ทดสอบตัวแปล"
-            app:summary="เช็กว่าอ่านซับ แปลไทย และฟังเสียงได้ครบ (ไม่ต้องเปิด PS5)">
+            app:title="ตรวจปัญหา / ทดสอบตัวแปล"
+            app:summary="เช็กทีละขั้นว่าพร้อมเล่นไหม ติดตรงไหน พร้อมวิธีแก้">
             <intent
                 android:targetPackage="com.ps5translate.tv"
                 android:targetClass="com.metallic.chiaki.translate.TranslatorTestActivity" />

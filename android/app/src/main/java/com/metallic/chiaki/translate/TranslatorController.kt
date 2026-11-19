@@ -150,6 +150,7 @@ class TranslatorController(
 	fun setStreamConnected(connected: Boolean)
 	{
 		streamConnected = connected
+		if(connected) Diag.mark(context, Diag.STREAM_AT)
 	}
 
 	private val grabRunnable = object : Runnable
@@ -235,6 +236,7 @@ class TranslatorController(
 				is SubtitleTracker.Action.Show ->
 				{
 					lastScreenTextAt = now
+					Diag.mark(context, Diag.SUBTITLE_AT)
 					val top = dialogue?.let { (it.box.top + yOffset).toFloat() / bmp.height }
 					val prepared = GameText.fromScreen(action.text)
 					val seq = screenSeq.incrementAndGet()
@@ -410,7 +412,11 @@ class TranslatorController(
 			}.filterNotNull()
 			return if(out.isEmpty()) null else out.joinToString(" ")
 		}
-		if(future == null) { merge(null)?.let(show); return }
+		if(future == null)
+		{
+			Diag.mark(context, Diag.OFFLINE_AT, Diag.OFFLINE_WHY to (c?.problem?.name ?: "NO_SERVER"))
+			merge(null)?.let(show); return
+		}
 		// Fast lane (dialogue, launch week - the server decides): the small model answers in ~1.5 s and is shown
 		// first; the stronger model's line replaces it when it arrives. Fast text is never cached or remembered.
 		val mainDone = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -431,6 +437,8 @@ class TranslatorController(
 			mainDone.set(true)
 			if(!running.get() || !isCurrent()) return@whenComplete
 			val ok = fromCloud != null && !fromCloud.all { it == null }
+			if(ok) Diag.mark(context, Diag.AI_AT)
+			else Diag.mark(context, Diag.OFFLINE_AT, Diag.OFFLINE_WHY to (c?.problem?.name ?: "SERVER_FAILED"))
 			if(!ok && fastShown.get()) return@whenComplete
 			merge(fromCloud)?.let(show)
 		}

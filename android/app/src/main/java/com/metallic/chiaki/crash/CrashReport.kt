@@ -88,12 +88,40 @@ object CrashReport
 				}
 				var trace = ""
 				if(exit.reason == ApplicationExitInfo.REASON_ANR)
-					trace = exit.traceInputStream?.bufferedReader()?.readText()?.take(4000) ?: ""
+				{
+					val full = exit.traceInputStream?.bufferedReader()?.readText()?.take(400_000) ?: ""
+					val i = full.indexOf("\"main\"")
+					trace = if(i >= 0) full.substring(i).take(6000) else full.take(6000)
+				}
 				return header() + "ประเภท: $kind\nรายละเอียด: ${exit.description}\nสถานะ: ${exit.status}\n\n$trace"
 			}
 			catch(_: Throwable) { }
 		}
 		return null
+	}
+
+	/** Sends the report to the Eyesmaxxing server (background, best effort). */
+	fun upload(context: Context, report: String)
+	{
+		Thread {
+			try
+			{
+				val url = com.metallic.chiaki.translate.TranslatorPrefs(context).serverUrl
+				if(url.isBlank()) return@Thread
+				val conn = java.net.URL(url.trimEnd('/') + "/v1/crash").openConnection() as java.net.HttpURLConnection
+				conn.requestMethod = "POST"; conn.connectTimeout = 5000; conn.readTimeout = 8000; conn.doOutput = true
+				conn.setRequestProperty("Content-Type", "application/json")
+				val body = org.json.JSONObject()
+					.put("version", BuildConfig.VERSION_NAME)
+					.put("device", Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.DEVICE + ")")
+					.put("android", Build.VERSION.SDK_INT)
+					.put("report", report.take(12000))
+				conn.outputStream.use { it.write(body.toString().toByteArray()) }
+				conn.responseCode
+				conn.disconnect()
+			}
+			catch(_: Throwable) { }
+		}.start()
 	}
 
 	fun clear(context: Context)
@@ -133,12 +161,13 @@ class StartActivity : Activity()
 			setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
 			typeface = android.graphics.Typeface.MONOSPACE
 			this.text = report
-			setTextIsSelectable(true)
+			isFocusable = false
 		}
+		CrashReport.upload(this, report)
 		val title = TextView(this).apply {
 			setTextColor(Color.rgb(255, 184, 77))
 			setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-			this.text = "แอปปิดไปเองเมื่อครั้งที่แล้ว\nกรุณาถ่ายรูปหน้านี้ส่งให้ผู้ขาย แล้วกด \"เปิดแอปต่อ\""
+			this.text = "แอปปิดไปเองเมื่อครั้งที่แล้ว (ส่งรายงานให้ผู้ขายอัตโนมัติแล้ว)\nกด \"เปิดแอปต่อ\" หรือรอ 15 วินาที แอปจะเปิดเอง"
 		}
 		val open = Button(this).apply {
 			text = "เปิดแอปต่อ"
@@ -155,7 +184,22 @@ class StartActivity : Activity()
 		}
 		root.fitsSystemWindows = true
 		setContentView(root)
+		open.isFocusable = true
+		open.isFocusableInTouchMode = true
 		open.requestFocus()
+		root.postDelayed({ if(!isFinishing) { CrashReport.clear(this); openMain() } }, 15_000)
+	}
+
+	// any remote key opens the app (some TVs never move focus onto the button)
+	override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent?): Boolean
+	{
+		if(keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+			keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A || keyCode == android.view.KeyEvent.KEYCODE_BACK)
+		{
+			if(!isFinishing) { CrashReport.clear(this); openMain() }
+			return true
+		}
+		return super.onKeyUp(keyCode, event)
 	}
 
 	private fun openMain()

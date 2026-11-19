@@ -198,6 +198,7 @@ class StreamActivity : AppCompatActivity()
 
 	private val retryHandler = android.os.Handler(android.os.Looper.getMainLooper())
 	private var autoRetries = 0
+	private var padWarned = false
 
 	/** Session-start errors that usually clear up by themselves within seconds. */
 	private fun isRetryable(reason: String) =
@@ -287,7 +288,24 @@ class StreamActivity : AppCompatActivity()
 	{
 		binding.progressBar.visibility = if(state == StreamStateConnecting) View.VISIBLE else View.GONE
 		translator?.setStreamConnected(state == StreamStateConnected)
-		if(state == StreamStateConnected) autoRetries = 0
+		if(state == StreamStateConnected)
+		{
+			autoRetries = 0
+			if(!padWarned && com.metallic.chiaki.translate.Diag.gamepads().isEmpty())
+			{
+				padWarned = true
+				com.metallic.chiaki.translate.Diag.mark(this, com.metallic.chiaki.translate.Diag.NO_PAD_AT)
+				MaterialAlertDialogBuilder(this)
+					.setTitle("ยังไม่มีจอยต่อกับทีวี")
+					.setMessage("จอยที่ต่อกับ PS5 ใช้ในแอปไม่ได้ (และถ้ากดปุ่ม PS ที่จอยนั้น PS5 จะตัดการเชื่อมต่อ)\n\n" +
+						"วิธีแก้ (เลือกอย่างใดอย่างหนึ่ง):\n" +
+						"• เสียบสาย USB จากจอยเข้าช่อง USB ของทีวี\n" +
+						"• หรือจับคู่บลูทูธ: ตั้งค่าทีวี › รีโมทและอุปกรณ์เสริม › เพิ่มอุปกรณ์เสริม › ที่จอยกดปุ่ม Create + ปุ่ม PS ค้างจนไฟกะพริบ › เลือก Wireless Controller\n\n" +
+						"ต่อแล้วจอยใช้ได้ทันที ไม่ต้องออกจากเกม")
+					.setPositiveButton("เข้าใจแล้ว", null)
+					.show()
+			}
+		}
 
 		when(state)
 		{
