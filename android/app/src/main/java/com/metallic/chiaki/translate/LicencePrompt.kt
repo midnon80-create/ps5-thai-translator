@@ -21,10 +21,11 @@ import androidx.preference.PreferenceManager
 object LicencePrompt
 {
 	@Volatile private var showing = false
+	@Volatile private var checking = false
 
 	fun maybeShow(activity: Activity)
 	{
-		if(com.metallic.chiaki.store.Store.IS_PLAY || showing || activity.isFinishing) return
+		if(com.metallic.chiaki.store.Store.IS_PLAY || showing || checking || activity.isFinishing) return
 		val prefs = TranslatorPrefs(activity)
 		if(prefs.licence.isNotBlank() || prefs.serverUrl.isBlank()) return
 		show(activity, null)
@@ -94,17 +95,28 @@ object LicencePrompt
 
 	@Volatile private var draft: String? = null
 
-	private fun apply(activity: Activity, raw: String)
+	/** Checks the code with the server and always tells the result (also used by Settings › รหัสไลเซนส์). */
+	fun apply(activity: Activity, raw: String)
 	{
 		val code = raw.trim().uppercase().replace(" ", "")
 		if(code.length < 6) { show(activity, "พิมพ์รหัสให้ครบก่อนนะ"); return }
 		val prefs = TranslatorPrefs(activity)
 		val main = Handler(Looper.getMainLooper())
+		// visible feedback at once: on slow internet the check takes seconds and players thought nothing happened
+		val wait = try
+		{
+			AlertDialog.Builder(activity).setTitle("กำลังตรวจรหัส…").setMessage("รอสักครู่ (ต้องต่ออินเทอร์เน็ต)")
+				.setCancelable(false).show()
+		}
+		catch(_: Throwable) { null }
+		checking = true
 		Thread {
 			val cloud = CloudTranslator(prefs.serverUrl, code, CloudTranslator.deviceId(activity))
 			val p = cloud.check()
 			main.post {
-				if(activity.isFinishing) return@post
+				try { wait?.dismiss() } catch(_: Throwable) { }
+				checking = false
+				if(activity.isFinishing || activity.isDestroyed) return@post
 				when(p)
 				{
 					CloudTranslator.Problem.NONE, CloudTranslator.Problem.POOL_EMPTY, CloudTranslator.Problem.DAILY_LIMIT -> {

@@ -86,9 +86,11 @@ class TranslatorController(
 		cloud?.let { c ->
 			cloudPool.execute {
 				val p = c.check()
-				if(p != CloudTranslator.Problem.NONE && running.get())
+				if(running.get())
 				{
-					status(CloudTranslator.problemText(p))
+					// always say where things stand: players took "no message" for "not working"
+					status(if(p == CloudTranslator.Problem.NONE) "✔ พร้อมแปลด้วย AI · เปิดซับในเกม (Subtitles: On) แล้วซับไทยจะขึ้นเอง"
+						else CloudTranslator.problemText(p))
 					main.postDelayed({ if(running.get()) ui.showStatus(null) }, 7000)
 				}
 			}

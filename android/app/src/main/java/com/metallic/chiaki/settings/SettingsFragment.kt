@@ -147,6 +147,12 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 			sp.edit().putBoolean(com.metallic.chiaki.translate.TranslatorPrefs.KEY_MODE_AUTO, false).apply()
 			true
 		}
+		// a code typed here is checked right away and the result is shown (before, the box just closed silently)
+		preferenceScreen.findPreference<Preference>(com.metallic.chiaki.translate.TranslatorPrefs.KEY_LICENCE)?.setOnPreferenceChangeListener { _, value ->
+			val code = (value as? String)?.trim() ?: ""
+			if(code.isNotEmpty()) activity?.let { a -> view?.post { com.metallic.chiaki.translate.LicencePrompt.apply(a, code) } }
+			true
+		}
 		preferenceScreen.findPreference<Preference>(getString(R.string.preferences_export_settings_key))?.setOnPreferenceClickListener { exportSettings(); true }
 		// the screen links in preferences.xml name the direct build's package; point them at this build
 		fun fixIntents(g: androidx.preference.PreferenceGroup)
