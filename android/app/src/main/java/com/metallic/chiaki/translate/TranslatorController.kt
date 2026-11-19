@@ -15,6 +15,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicIntegerArray
 
 /**
  * Runs the live translator while a stream is on screen:
@@ -155,9 +156,39 @@ class TranslatorController(
 		ui.showStatus(null)
 	}
 
+	// ---- play summary: what the reader saw, so "no subtitles" on a customer's TV can be explained ----
+	private val st = AtomicIntegerArray(7) // grabs, copy failed, black frames, OCR runs, OCR saw text, subtitles shown, sent to AI
+	@Volatile private var lastCopyResult = 0
+	@Volatile private var connectedSince = 0L
+	@Volatile private var summarySent = false
+
+	private fun maybeSummary()
+	{
+		if(summarySent || connectedSince == 0L || st.get(5) > 0) return
+		if(SystemClock.elapsedRealtime() - connectedSince < 90_000L) return
+		summarySent = true
+		val grabs = st.get(0); val fail = st.get(1); val black = st.get(2); val ocr = st.get(3); val saw = st.get(4)
+		val why = when
+		{
+			grabs == 0 -> "แอปยังไม่ได้เริ่มอ่านภาพ"
+			fail * 2 > grabs -> "ทีวีไม่ให้แอปจับภาพเกม (รหัส $lastCopyResult)"
+			black * 2 > grabs - fail -> "ภาพที่แอปจับได้เป็นสีดำ"
+			saw == 0 -> "อ่านภาพได้ แต่ไม่เจอตัวหนังสือเลย"
+			else -> "เจอตัวหนังสือ แต่ไม่ใช่ซับบทพูด"
+		}
+		val code = "G$grabs F$fail B$black O$ocr T$saw R${if(prefs.region == TranslatorPrefs.Region.FULL) "full" else "bottom"}${if(screenReader?.usePlayServices == true) " gms" else ""}"
+		val nl = System.lineSeparator()
+		val seen = screenReader?.lastTexts?.take(8)?.joinToString(" | ") ?: ""
+		com.metallic.chiaki.crash.CrashReport.upload(context,
+			"ประเภท: สรุปการเล่น (ยังไม่มีซับไทยใน 90 วิ)" + nl + why + nl + code + nl + "ตัวอย่างข้อความที่อ่านได้: " + seen)
+		status("ยังไม่เห็นซับอังกฤษ: " + why + nl + "เปิดซับในเกม (Subtitles: On) · ถ้ายังไม่ขึ้น ถ่ายรูปนี้ส่งผู้ขาย [" + code + "]")
+		main.postDelayed({ if(running.get()) ui.showStatus(null) }, 15000)
+	}
+
 	fun setStreamConnected(connected: Boolean)
 	{
 		streamConnected = connected
+		if(connected && connectedSince == 0L) connectedSince = SystemClock.elapsedRealtime()
 		if(connected) Diag.mark(context, Diag.STREAM_AT)
 	}
 
@@ -171,6 +202,7 @@ class TranslatorController(
 			val pace = maxOf(FRAME_INTERVAL_MS, (readMs * 1.25).toLong()).coerceAtMost(1200L)
 			main.postDelayed(this, if(quietFrames >= 4) maxOf(pace, FRAME_INTERVAL_IDLE_MS) else pace)
 			if(!streamConnected || busy.get()) return
+			maybeSummary()
 			grabFrame()
 		}
 	}
@@ -183,13 +215,17 @@ class TranslatorController(
 			return
 		val bmp = frame ?: Bitmap.createBitmap(FRAME_W, FRAME_H, Bitmap.Config.ARGB_8888).also { frame = it }
 		busy.set(true)
+		st.incrementAndGet(0)
 		try
 		{
 			PixelCopy.request(surfaceView, bmp, { result ->
 				if(result == PixelCopy.SUCCESS && running.get())
 					worker.execute { processFrame(bmp) }
 				else
+				{
+					if(result != PixelCopy.SUCCESS) { st.incrementAndGet(1); lastCopyResult = result }
 					busy.set(false)
+				}
 			}, Handler(handlerThread.looper))
 		}
 		catch(e: Exception)
@@ -212,6 +248,7 @@ class TranslatorController(
 			// Cheap check first: if the picture looks the same as last time, reuse the last result
 			// instead of running text recognition again (most of the CPU cost).
 			val sig = signature(region)
+			if(sig.all { it < 12 }) st.incrementAndGet(2)
 			val prev = lastSignature
 			val blocks = if(prev != null && sameImage(prev, sig) && skippedInARow < MAX_SKIPS)
 			{
@@ -225,6 +262,8 @@ class TranslatorController(
 				val read = if(full) reader.readAll(region)
 					else reader.find(region)?.let { listOf(ScreenReader.Block(it.text, it.box, 1, TextKind.DIALOGUE)) } ?: emptyList()
 				readMs = readMs * 0.7 + (SystemClock.elapsedRealtime() - t0) * 0.3
+				st.incrementAndGet(3)
+				if(reader.lastTexts.isNotEmpty()) st.incrementAndGet(4)
 				maybeUnlockGame(reader.lastTexts)
 				read.also { lastBlocks = it }
 			}
@@ -246,6 +285,7 @@ class TranslatorController(
 				is SubtitleTracker.Action.Show ->
 				{
 					lastScreenTextAt = now
+					st.incrementAndGet(5)
 					Diag.mark(context, Diag.SUBTITLE_AT)
 					val top = dialogue?.let { (it.box.top + yOffset).toFloat() / bmp.height }
 					val prepared = GameText.fromScreen(action.text)
