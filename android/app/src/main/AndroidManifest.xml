@@ -40,6 +40,9 @@
                 />
         </provider>
 
+        <!-- TVs where the bundled text reader crashes use Play services' OCR module: let Play services fetch it early -->
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="ocr" />
+
         <activity android:name=".crash.StartActivity"
             android:exported="true"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize">

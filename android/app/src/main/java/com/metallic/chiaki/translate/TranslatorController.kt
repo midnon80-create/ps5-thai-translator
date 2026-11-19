@@ -108,7 +108,13 @@ class TranslatorController(
 			}
 			status(null)
 		}
-		if(mode != TranslatorPrefs.Mode.SPEECH)
+		if(mode != TranslatorPrefs.Mode.SPEECH && com.metallic.chiaki.crash.CrashReport.disabled(ScreenReader.MARK_PLAY))
+		{
+			// both text readers crashed this TV: keep the game playable, without reading subtitles
+			status("ทีวีรุ่นนี้อ่านซับบนจอไม่ได้ (ชิปไม่รองรับตัวอ่านข้อความ) · เล่นเกมได้ปกติ")
+			main.postDelayed({ if(running.get()) ui.showStatus(null) }, 10000)
+		}
+		else if(mode != TranslatorPrefs.Mode.SPEECH)
 		{
 			screenReader = ScreenReader()
 			copyThread = HandlerThread("translator-copy").also { it.start() }

@@ -18,7 +18,47 @@ import kotlin.math.min
  */
 class ScreenReader
 {
-	private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+	/**
+	 * Some 32-bit TV chips crash inside the OCR code bundled in the app (illegal instruction, Toshiba/Hisense
+	 * "songshan"). After that happened once, this TV uses the OCR module of Google Play services instead
+	 * (a different build of the reader).
+	 */
+	val usePlayServices = com.metallic.chiaki.crash.CrashReport.disabled(MARK_BUNDLED) ||
+		android.os.Build.DEVICE in KNOWN_BAD_BUNDLED // seen crashing: switch at once, no crash needed first
+	private val mark = if(usePlayServices) MARK_PLAY else MARK_BUNDLED
+
+	private val recognizer = TextRecognition.getClient(options(usePlayServices))
+
+	companion object
+	{
+		const val MARK_BUNDLED = "ocr"
+		const val MARK_PLAY = "ocr_gms"
+		private val KNOWN_BAD_BUNDLED = setOf("songshan")
+
+		/** The options carry ML Kit's "use the bundled reader" flag; false makes it use Play services' module. */
+		private fun options(playServices: Boolean): TextRecognizerOptions
+		{
+			val o = TextRecognizerOptions.Builder().build()
+			if(playServices) try
+			{
+				// the field name is obfuscated: find it by type
+				o.javaClass.declaredFields.firstOrNull { java.util.concurrent.atomic.AtomicReference::class.java.isAssignableFrom(it.type) }?.let {
+					it.isAccessible = true
+					@Suppress("UNCHECKED_CAST")
+					(it.get(o) as java.util.concurrent.atomic.AtomicReference<Any?>).set(false)
+				}
+			}
+			catch(_: Throwable) { }
+			return o
+		}
+	}
+
+	private fun process(frame: Bitmap): Text
+	{
+		com.metallic.chiaki.crash.CrashReport.enter(mark)
+		try { return Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS).also { timedOut = false } }
+		finally { com.metallic.chiaki.crash.CrashReport.leave(mark) }
+	}
 
 	/** Text found on screen and where it is, in the pixel coordinates of the bitmap that was read. */
 	class Found(val text: String, val box: Rect)
@@ -38,7 +78,7 @@ class ScreenReader
 	{
 		val result = try
 		{
-			Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS).also { timedOut = false }
+			process(frame)
 		}
 		catch(e: Exception) { if(e is java.util.concurrent.TimeoutException) timedOut = true; return null }
 		lastTexts = result.textBlocks.flatMap { b -> b.lines.map { it.text } }.take(40)
@@ -58,7 +98,7 @@ class ScreenReader
 	{
 		val result = try
 		{
-			Tasks.await(recognizer.process(InputImage.fromBitmap(frame, 0)), 3, TimeUnit.SECONDS).also { timedOut = false }
+			process(frame)
 		}
 		catch(e: Exception) { if(e is java.util.concurrent.TimeoutException) timedOut = true; return emptyList() }
 		lastTexts = result.textBlocks.flatMap { b -> b.lines.map { it.text } }.take(40)

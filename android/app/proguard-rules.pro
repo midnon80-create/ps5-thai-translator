@@ -99,3 +99,6 @@
 
 # sherpa-onnx: native code reads these classes and fields by name
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+
+# ScreenReader switches ML Kit to the Play services OCR module through this field (found by type)
+-keepclassmembers class com.google.mlkit.vision.text.latin.TextRecognizerOptions { *; }
