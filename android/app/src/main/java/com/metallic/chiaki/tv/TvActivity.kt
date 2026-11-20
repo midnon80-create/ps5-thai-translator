@@ -286,14 +286,14 @@ class TvActivity : AppCompatActivity()
 	// ------------------------------------------------------------------ packages
 
 	private class Pack(val name: String, val len: String, val old: String?, val price: String, val unit: String,
-		val per: String, val badge: String?, val free: Boolean = false, val recommended: Boolean = false)
+		val per: String, val badge: String?, val free: Boolean = false, val recommended: Boolean = false, val product: String? = null)
 
 	private val packs = listOf(
 		Pack("ทดลองฟรี", "ช่วงทดสอบ $trialDays วัน", null, "ฟรี", "", "ใช้ครบทุกฟีเจอร์\nไม่ผูกบัตร", "เริ่มที่นี่", free = true),
-		Pack("7 วัน", "เล่นต่อเนื่องทั้งสัปดาห์", "79 บาท", "49", "บาท", "ตกวันละ 7 บาท", null),
-		Pack("รายเดือน", "30 วัน", "299 บาท", "189", "บาท", "คุ้มสุดสำหรับเล่นจบเนื้อเรื่อง", "แนะนำ", recommended = true),
-		Pack("รายปี", "365 วัน", "999 บาท", "759", "บาท", "ตกเดือนละ 63 บาท", null),
-		Pack("ตลอดชีพ", "จ่ายครั้งเดียว", "1,299 บาท", "1,099", "บาท", "รวมเกมที่จะเพิ่มในอนาคต", null))
+		Pack("7 วัน", "เล่นต่อเนื่องทั้งสัปดาห์", "79 บาท", "49", "บาท", "ตกวันละ 7 บาท", null, product = Store.ONE_TIME_WEEK),
+		Pack("รายเดือน", "30 วัน", "299 บาท", "189", "บาท", "คุ้มสุดสำหรับเล่นจบเนื้อเรื่อง", "แนะนำ", recommended = true, product = Store.SUB_MONTHLY),
+		Pack("รายปี", "365 วัน", "999 บาท", "759", "บาท", "ตกเดือนละ 63 บาท", null, product = Store.SUB_YEARLY),
+		Pack("ตลอดชีพ", "จ่ายครั้งเดียว", "1,299 บาท", "1,099", "บาท", "รวมเกมที่จะเพิ่มในอนาคต", null, product = Store.ONE_TIME_LIFETIME))
 
 	private fun packagesView(onboarding: Boolean): Pair<FrameLayout, View>
 	{
@@ -375,7 +375,7 @@ class TvActivity : AppCompatActivity()
 			}.start()
 			return
 		}
-		if(Store.IS_PLAY) Store.openPurchase(this)
+		if(Store.IS_PLAY) Store.openPurchase(this, p.product)
 		else android.app.AlertDialog.Builder(this)
 			.setTitle("แพ็กเกจ ${p.name} · ${p.price} บาท")
 			.setMessage("ส่งชื่อแพ็กเกจนี้ให้ผู้ขายทาง LINE เพื่อรับรหัส แล้วกด \"ใส่รหัส\"")
@@ -900,6 +900,8 @@ class TvActivity : AppCompatActivity()
 			add(Triple("เพิ่ม PS5 ด้วยเลข IP", "ถ้าแอปหา PS5 ไม่เจอเอง") { startActivity(Intent(this@TvActivity, EditManualConsoleActivity::class.java)) })
 			if(!Store.IS_PLAY) add(Triple("ใส่รหัสไลเซนส์", TranslatorPrefs(this@TvActivity).licence.ifBlank { "ยังไม่ได้ใส่รหัส" }) {
 				LicencePrompt.ask(this@TvActivity) })
+			if(Store.IS_PLAY) add(Triple("กู้คืนการซื้อ", "ซื้อแล้วแต่ยังไม่ขึ้น หรือย้ายมาทีวีเครื่องใหม่") {
+				toast("กำลังตรวจการซื้อกับ Google Play…"); Store.refresh(this@TvActivity) { msg -> toast(msg) } })
 			add(Triple("ตั้งค่าขั้นสูง", "ภาพ เสียง และตัวเลือกทั้งหมด") { startActivity(Intent(this@TvActivity, SettingsActivity::class.java)) })
 			add(Triple("ดูหน้าแนะนำอีกครั้ง", "ฟีเจอร์ ทดลองฟรี และแพ็กเกจ") { showFeature(0, Trans.LEFT); tab = -1 })
 		}

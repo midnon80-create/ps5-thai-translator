@@ -17,51 +17,54 @@ import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.QueryProductDetailsParams
 
-/** Buy screen for the Google Play build. Works with a TV remote (big focusable buttons). */
+/**
+ * Google Play purchase. Opened from a package card with EXTRA_PRODUCT: Google Play's own payment sheet opens
+ * right away. Without it: a simple list (works with a remote or a controller) plus "restore purchases".
+ */
 class PurchaseActivity : AppCompatActivity()
 {
+	companion object { const val EXTRA_PRODUCT = "product" }
+
 	private lateinit var client: BillingClient
 	private lateinit var status: TextView
-	private lateinit var dayBtn: Button
-	private lateinit var monthlyBtn: Button
-	private lateinit var yearlyBtn: Button
-	private lateinit var lifetimeBtn: Button
-	private var day: ProductDetails? = null
-	private var monthly: ProductDetails? = null
-	private var yearly: ProductDetails? = null
-	private var lifetime: ProductDetails? = null
+	private val details = HashMap<String, ProductDetails>()
+	private val buttons = HashMap<String, Button>()
+	private var autoBuy: String? = null
+
+	private val products = listOf(
+		Triple(Store.ONE_TIME_WEEK, BillingClient.ProductType.INAPP, "7 วัน 49 บาท"),
+		Triple(Store.SUB_MONTHLY, BillingClient.ProductType.SUBS, "รายเดือน 189 บาท (แนะนำ)"),
+		Triple(Store.SUB_YEARLY, BillingClient.ProductType.SUBS, "รายปี 759 บาท"),
+		Triple(Store.ONE_TIME_LIFETIME, BillingClient.ProductType.INAPP, "ตลอดชีพ 1,099 บาท จ่ายครั้งเดียว"))
 
 	override fun onCreate(savedInstanceState: Bundle?)
 	{
 		super.onCreate(savedInstanceState)
+		autoBuy = intent.getStringExtra(EXTRA_PRODUCT)
 		val pad = dp(28)
 		val col = LinearLayout(this).apply {
 			orientation = LinearLayout.VERTICAL
 			setPadding(pad, pad, pad, pad)
-			setBackgroundColor(Color.rgb(13, 14, 18))
 		}
 		fun text(s: String, size: Float, color: Int = Color.WHITE) = TextView(this).apply {
 			text = s; setTextColor(color); setTextSize(TypedValue.COMPLEX_UNIT_SP, size); setPadding(0, dp(4), 0, dp(4))
 		}
-		col.addView(text("Eyesmaxxing แปลเกมเป็นไทยด้วย AI", 26f))
-		col.addView(text("แปลซับ ปุ่มกด คำแนะนำ และเอกสารในเกม ด้วย Gemini แบบได้อารมณ์ (ต้องต่อเน็ต) — ถ้าไม่สมัคร แอปยังแปลแบบออฟไลน์ได้ฟรี", 16f, Color.rgb(170, 176, 190)))
-		status = text("กำลังเชื่อมต่อ Google Play…", 18f, Color.rgb(253, 224, 130))
+		col.addView(text("Eyesmaxxing · ซับไทยด้วย AI", 26f))
+		status = text(if(autoBuy != null) "กำลังเปิดหน้าชำระเงินของ Google Play…" else "กำลังเชื่อมต่อ Google Play…", 18f, Color.rgb(196, 181, 253))
 		col.addView(status)
-		dayBtn = button("ทดลอง 1 วัน 29 บาท") { buy(day) }
-		monthlyBtn = button("รายเดือน 149 บาท") { buy(monthly) }
-		yearlyBtn = button("รายปี 329 บาท") { buy(yearly) }
-		lifetimeBtn = button("ตลอดชีพ 759 บาท จ่ายครั้งเดียว") { buy(lifetime) }
-		col.addView(dayBtn)
-		col.addView(monthlyBtn)
-		col.addView(yearlyBtn)
-		col.addView(lifetimeBtn)
+		for((id, _, label) in products)
+		{
+			val b = button(label) { buy(id) }
+			buttons[id] = b
+			col.addView(b)
+		}
 		col.addView(button("กู้คืนการซื้อ / ตรวจสถานะ") { status.text = "กำลังตรวจสอบ…"; Store.refresh(this) { status.text = it } })
-		col.addView(text("ยกเลิกการต่ออายุได้ทุกเมื่อใน Google Play › การชำระเงินและการสมัครใช้บริการ", 14f, Color.rgb(130, 136, 150)))
-		setContentView(ScrollView(this).apply { fitsSystemWindows = true; setBackgroundColor(Color.rgb(8, 6, 13)); addView(col) })
-		dayBtn.requestFocus()
+		col.addView(text("สมาชิกรายเดือน/รายปี ยกเลิกการต่ออายุได้ทุกเมื่อใน Google Play › การชำระเงินและการสมัครใช้บริการ", 14f, Color.rgb(130, 136, 150)))
+		setContentView(ScrollView(this).apply { fitsSystemWindows = true; setBackgroundColor(Color.rgb(7, 5, 12)); addView(col) })
+		buttons[autoBuy ?: Store.SUB_MONTHLY]?.requestFocus()
 
 		client = BillingClient.newBuilder(this)
-			.setListener(Store.listener(applicationContext, { status.text = it }) { client })
+			.setListener(Store.listener(applicationContext, { msg -> runOnUiThread { status.text = msg; if(autoBuy != null && msg.contains("✔")) finishSoon() } }) { client })
 			.enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
 			.build()
 		client.startConnection(object : BillingClientStateListener
@@ -70,66 +73,54 @@ class PurchaseActivity : AppCompatActivity()
 			{
 				if(result.responseCode != BillingClient.BillingResponseCode.OK)
 				{
-					runOnUiThread { status.text = "เชื่อมต่อ Google Play ไม่ได้ (${result.responseCode})" }
+					runOnUiThread { status.text = "เชื่อมต่อ Google Play ไม่ได้ (${result.responseCode}) · ตรวจว่าทีวีล็อกอินบัญชี Google แล้ว" }
 					return
 				}
 				load()
-				Store.refresh(applicationContext) { runOnUiThread { status.text = it } }
 			}
 
 			override fun onBillingServiceDisconnected() {}
 		})
 	}
 
+	private fun finishSoon() = status.postDelayed({ if(!isFinishing) finish() }, 2500)
+
 	private fun load()
 	{
-		fun q(id: String, type: String) = QueryProductDetailsParams.Product.newBuilder().setProductId(id).setProductType(type).build()
-		client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder()
-			.setProductList(listOf(q(Store.SUB_MONTHLY, BillingClient.ProductType.SUBS))).build()) { _, res ->
-			monthly = res.productDetailsList.firstOrNull()
-			runOnUiThread { monthly?.let { m -> bestOffer(m)?.pricingPhases?.pricingPhaseList?.lastOrNull()?.formattedPrice?.let { monthlyBtn.text = "รายเดือน $it/เดือน" } } }
-		}
-		client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder()
-			.setProductList(listOf(q(Store.SUB_YEARLY, BillingClient.ProductType.SUBS))).build()) { _, res ->
-			yearly = res.productDetailsList.firstOrNull()
-			runOnUiThread { yearly?.let { yearlyBtn.text = "รายปี " + yearlyPrice(it) } }
-		}
-		client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder()
-			.setProductList(listOf(q(Store.ONE_TIME_DAY, BillingClient.ProductType.INAPP))).build()) { _, res ->
-			day = res.productDetailsList.firstOrNull()
-			runOnUiThread { day?.oneTimePurchaseOfferDetails?.let { dayBtn.text = "ทดลอง 1 วัน " + it.formattedPrice } }
-		}
-		client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder()
-			.setProductList(listOf(q(Store.ONE_TIME_LIFETIME, BillingClient.ProductType.INAPP))).build()) { _, res ->
-			lifetime = res.productDetailsList.firstOrNull()
-			runOnUiThread { lifetime?.oneTimePurchaseOfferDetails?.let { lifetimeBtn.text = "ตลอดชีพ " + it.formattedPrice + " จ่ายครั้งเดียว" } }
+		for((id, type, _) in products)
+		{
+			val q = QueryProductDetailsParams.Product.newBuilder().setProductId(id).setProductType(type).build()
+			client.queryProductDetailsAsync(QueryProductDetailsParams.newBuilder().setProductList(listOf(q)).build()) { _, res ->
+				val d = res.productDetailsList.firstOrNull()
+				runOnUiThread {
+					if(d != null)
+					{
+						details[id] = d
+						price(d)?.let { p -> buttons[id]?.text = products.first { it.first == id }.third.substringBefore(" ") + " " + p }
+					}
+					if(id == autoBuy)
+					{
+						if(d != null) buy(id)
+						else status.text = "แพ็กเกจนี้ยังไม่เปิดขายบน Google Play (ช่วงทดสอบใช้ฟรีได้เลย)"
+					}
+				}
+			}
 		}
 	}
 
-	/** "ทดลองฟรี 7 วัน แล้ว ฿329/ปี" when a free-trial offer exists. */
-	private fun yearlyPrice(d: ProductDetails): String
-	{
-		val offer = bestOffer(d) ?: return ""
-		val phases = offer.pricingPhases.pricingPhaseList
-		val paid = phases.lastOrNull()?.formattedPrice ?: ""
-		val free = phases.firstOrNull { it.priceAmountMicros == 0L }
-		return if(free != null) "ทดลองฟรี ${days(free.billingPeriod)} วัน แล้ว $paid/ปี" else "$paid/ปี"
-	}
+	private fun price(d: ProductDetails): String? =
+		d.oneTimePurchaseOfferDetails?.formattedPrice
+			?: bestOffer(d)?.pricingPhases?.pricingPhaseList?.lastOrNull()?.formattedPrice?.let { p ->
+				if(d.productId == Store.SUB_MONTHLY) "$p/เดือน" else "$p/ปี" }
 
 	private fun bestOffer(d: ProductDetails) = d.subscriptionOfferDetails?.let { offers ->
 		offers.firstOrNull { o -> o.pricingPhases.pricingPhaseList.any { it.priceAmountMicros == 0L } } ?: offers.firstOrNull()
 	}
 
-	private fun days(period: String): Int
+	private fun buy(id: String)
 	{
-		val m = Regex("""P(\d+)([DWM])""").find(period) ?: return 7
-		val n = m.groupValues[1].toInt()
-		return when(m.groupValues[2]) { "W" -> n * 7; "M" -> n * 30; else -> n }
-	}
-
-	private fun buy(d: ProductDetails?)
-	{
-		if(d == null) { status.text = "ยังโหลดราคาไม่เสร็จ หรือสินค้ายังไม่เปิดขาย"; return }
+		val d = details[id]
+		if(d == null) { status.text = "ยังโหลดราคาไม่เสร็จ หรือแพ็กเกจนี้ยังไม่เปิดขาย"; return }
 		val pp = BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(d)
 		bestOffer(d)?.let { pp.setOfferToken(it.offerToken) }
 		client.launchBillingFlow(this, BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(pp.build())).build())
