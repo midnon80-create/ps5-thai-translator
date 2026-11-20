@@ -31,6 +31,13 @@ object LicencePrompt
 		show(activity, null)
 	}
 
+	/** Code box on request (help screen / packages), even when a code is already saved: the old one stays until a new one checks out. */
+	fun ask(activity: Activity)
+	{
+		if(com.metallic.chiaki.store.Store.IS_PLAY || showing || activity.isFinishing) return
+		show(activity, null)
+	}
+
 	private fun show(activity: Activity, error: String?)
 	{
 		val pad = dp(activity, 22)

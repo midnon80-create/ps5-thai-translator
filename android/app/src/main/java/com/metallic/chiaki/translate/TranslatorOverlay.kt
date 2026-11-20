@@ -33,8 +33,7 @@ class TranslatorOverlay(private val root: View, private val video: SurfaceView) 
 	private val showEnglish = prefs.showEnglish
 	private val textPx: Float
 	private var lastSubtitleY: Int? = null
-	private val font = ResourcesCompat.getFont(context,
-		if(prefs.font == TranslatorPrefs.Font.KANIT) R.font.kanit_medium else R.font.sarabun_semibold)
+	private val font = ResourcesCompat.getFont(context, prefs.font.res)
 	// prompts / hints / documents float in their own layer, placed next to or over the English they translate
 	private val labelLayer = FrameLayout(context).also {
 		it.isClickable = false

@@ -207,6 +207,35 @@ class TranslatorController(
 		}
 	}
 
+	// ---- subtitle band: where this game draws its subtitles, learned from the lines read so far ----
+	private val bandTops = ArrayDeque<Int>()
+	private val bandBottoms = ArrayDeque<Int>()
+	private var bandReads = 0
+
+	private fun learnBand(top: Int, bottom: Int, h: Int)
+	{
+		if(bottom - top < h / 60) return
+		synchronized(bandTops) {
+			bandTops.addLast(top); bandBottoms.addLast(bottom)
+			while(bandTops.size > 12) { bandTops.removeFirst(); bandBottoms.removeFirst() }
+		}
+	}
+
+	/** Rows [top, bottom) to read: the learned band (plus room for a second line), else the lower 45 %. */
+	private fun subtitleBand(h: Int): IntArray
+	{
+		val wide = intArrayOf((h * 0.55f).toInt(), h)
+		bandReads++
+		val tops: List<Int>; val bottoms: List<Int>
+		synchronized(bandTops) { tops = bandTops.sorted(); bottoms = bandBottoms.sorted() }
+		// every 12th read looks at the whole lower part again, so a moved or 3-line subtitle is found too
+		if(tops.size < 4 || bandReads % 12 == 0) return wide
+		val top = tops[tops.size / 2]
+		val bottom = bottoms[bottoms.size / 2]
+		val line = maxOf(h / 30, (bottom - top) / 2)
+		return intArrayOf(maxOf(wide[0], top - line * 2), minOf(h, bottom + line))
+	}
+
 	private fun grabFrame()
 	{
 		val handlerThread = copyThread ?: return
@@ -241,9 +270,10 @@ class TranslatorController(
 		{
 			val reader = screenReader ?: return
 			val full = prefs.region == TranslatorPrefs.Region.FULL
-			val yOffset = if(full) 0 else (bmp.height * 0.55f).toInt()
-			val region = if(yOffset > 0)
-				Bitmap.createBitmap(bmp, 0, yOffset, bmp.width, bmp.height - yOffset)
+			val band = if(full) intArrayOf(0, bmp.height) else subtitleBand(bmp.height)
+			val yOffset = band[0]
+			val region = if(band[0] > 0 || band[1] < bmp.height)
+				Bitmap.createBitmap(bmp, 0, band[0], bmp.width, band[1] - band[0])
 			else bmp
 			// Cheap check first: if the picture looks the same as last time, reuse the last result
 			// instead of running text recognition again (most of the CPU cost).
@@ -275,6 +305,7 @@ class TranslatorController(
 			// (recycling it crashed 32-bit TVs); the garbage collector frees it safely
 			if(reader.timedOut) { frame = null; slowReads++ } // the shared frame may still be in use too: take a fresh one next time
 			val dialogue = blocks.firstOrNull { it.kind == TextKind.DIALOGUE }
+			if(!full && dialogue != null) learnBand(dialogue.box.top + yOffset, dialogue.box.bottom + yOffset, bmp.height)
 			val english = dialogue?.text ?: ""
 			val now = SystemClock.elapsedRealtime()
 			quietFrames = if(blocks.isEmpty()) quietFrames + 1 else 0

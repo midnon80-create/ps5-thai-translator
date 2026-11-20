@@ -283,7 +283,7 @@ class StartActivity : Activity()
 
 	private fun openMain()
 	{
-		startActivity(Intent(this, MainActivity::class.java))
+		startActivity(Intent(this, com.metallic.chiaki.tv.TvActivity::class.java))
 		finish()
 	}
 }

@@ -38,7 +38,7 @@
             app:useSimpleSummaryProvider="true" />
         <ListPreference
             app:key="tr_font"
-            app:defaultValue="sarabun"
+            app:defaultValue="kanit"
             app:title="ฟอนต์"
             app:entries="@array/tr_font_titles"
             app:entryValues="@array/tr_font_values"

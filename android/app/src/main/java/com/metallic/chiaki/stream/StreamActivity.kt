@@ -186,6 +186,7 @@ class StreamActivity : AppCompatActivity()
 	override fun onPause()
 	{
 		super.onPause()
+		viewModel.input.releaseAll() // nothing stays held down ("จอยค้าง") when the app leaves the screen
 		translator?.stop()
 		viewModel.session.pause()
 	}

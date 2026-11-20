@@ -54,6 +54,16 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		}
 
 	private val swapCrossMoon = preferences.swapCrossMoon
+	private val pad = PadConfig(context)
+
+	/** Lets go of every button and stick (app paused, controller reconnected): nothing stays held down. */
+	fun releaseAll()
+	{
+		keyControllerState.buttons = 0U; keyControllerState.l2State = 0U; keyControllerState.r2State = 0U
+		motionControllerState.buttons = 0U; motionControllerState.l2State = 0U; motionControllerState.r2State = 0U
+		motionControllerState.leftX = 0; motionControllerState.leftY = 0; motionControllerState.rightX = 0; motionControllerState.rightY = 0
+		controllerStateUpdated()
+	}
 
 	private val sensorEventListener = object: SensorEventListener {
 		override fun onSensorChanged(event: SensorEvent)
@@ -126,7 +136,10 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		if(event.action != KeyEvent.ACTION_DOWN && event.action != KeyEvent.ACTION_UP)
 			return false
 
-		when(event.keyCode)
+		// fixes from the "จอย" screen: swapped buttons on boxes / adapters
+		val keyCode = if(PadConfig.fromPad(event)) pad.mapKey(event.keyCode) else event.keyCode
+
+		when(keyCode)
 		{
 			KeyEvent.KEYCODE_BUTTON_L2 -> {
 				keyControllerState.l2State = if(event.action == KeyEvent.ACTION_DOWN) UByte.MAX_VALUE else 0U
@@ -138,13 +151,13 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			}
 		}
 
-		val buttonMask: UInt = when(event.keyCode)
+		val buttonMask: UInt = when(keyCode)
 		{
-			// dpad handled by MotionEvents
-			//KeyEvent.KEYCODE_DPAD_LEFT -> ControllerState.BUTTON_DPAD_LEFT
-			//KeyEvent.KEYCODE_DPAD_RIGHT -> ControllerState.BUTTON_DPAD_RIGHT
-			//KeyEvent.KEYCODE_DPAD_UP -> ControllerState.BUTTON_DPAD_UP
-			//KeyEvent.KEYCODE_DPAD_DOWN -> ControllerState.BUTTON_DPAD_DOWN
+			// most pads send the d-pad as a hat axis (MotionEvents); some boxes / adapters send keys instead
+			KeyEvent.KEYCODE_DPAD_LEFT -> if(PadConfig.fromPad(event)) ControllerState.BUTTON_DPAD_LEFT else return false
+			KeyEvent.KEYCODE_DPAD_RIGHT -> if(PadConfig.fromPad(event)) ControllerState.BUTTON_DPAD_RIGHT else return false
+			KeyEvent.KEYCODE_DPAD_UP -> if(PadConfig.fromPad(event)) ControllerState.BUTTON_DPAD_UP else return false
+			KeyEvent.KEYCODE_DPAD_DOWN -> if(PadConfig.fromPad(event)) ControllerState.BUTTON_DPAD_DOWN else return false
 			KeyEvent.KEYCODE_BUTTON_A -> if(swapCrossMoon) ControllerState.BUTTON_MOON else ControllerState.BUTTON_CROSS
 			KeyEvent.KEYCODE_BUTTON_B -> if(swapCrossMoon) ControllerState.BUTTON_CROSS else ControllerState.BUTTON_MOON
 			KeyEvent.KEYCODE_BUTTON_X -> if(swapCrossMoon) ControllerState.BUTTON_PYRAMID else ControllerState.BUTTON_BOX
@@ -179,12 +192,25 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			return false
 		fun Float.signedAxis() = (this * Short.MAX_VALUE).toInt().toShort()
 		fun Float.unsignedAxis() = (this * UByte.MAX_VALUE.toFloat()).toUInt().toUByte()
-		motionControllerState.leftX = event.getAxisValue(MotionEvent.AXIS_X).signedAxis()
-		motionControllerState.leftY = event.getAxisValue(MotionEvent.AXIS_Y).signedAxis()
-		motionControllerState.rightX = event.getAxisValue(MotionEvent.AXIS_Z).signedAxis()
-		motionControllerState.rightY = event.getAxisValue(MotionEvent.AXIS_RZ).signedAxis()
-		motionControllerState.l2State = event.getAxisValue(MotionEvent.AXIS_LTRIGGER).unsignedAxis()
-		motionControllerState.r2State = event.getAxisValue(MotionEvent.AXIS_RTRIGGER).unsignedAxis()
+		// sticks with a dead zone (no drifting); the right stick / triggers come from other axes on some boxes
+		val rx = pad.rightStickOnRx(event.device)
+		motionControllerState.leftX = pad.stick(event.getAxisValue(MotionEvent.AXIS_X)).signedAxis()
+		motionControllerState.leftY = pad.stick(event.getAxisValue(MotionEvent.AXIS_Y)).signedAxis()
+		motionControllerState.rightX = pad.stick(event.getAxisValue(if(rx) MotionEvent.AXIS_RX else MotionEvent.AXIS_Z)).signedAxis()
+		motionControllerState.rightY = pad.stick(event.getAxisValue(if(rx) MotionEvent.AXIS_RY else MotionEvent.AXIS_RZ)).signedAxis()
+		fun trigger(main: Int, alt: Int, rxAxis: Int): Float
+		{
+			if(rx)
+			{
+				// some of those pads report the trigger as -1..1 (rest = -1), others as 0..1
+				val v = event.getAxisValue(rxAxis)
+				val range = event.device?.getMotionRange(rxAxis)
+				return (if(range != null && range.min < -0.5f) (v + 1f) / 2f else v).coerceIn(0f, 1f)
+			}
+			return maxOf(event.getAxisValue(main), event.getAxisValue(alt)).coerceIn(0f, 1f)
+		}
+		motionControllerState.l2State = trigger(MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_BRAKE, MotionEvent.AXIS_Z).unsignedAxis()
+		motionControllerState.r2State = trigger(MotionEvent.AXIS_RTRIGGER, MotionEvent.AXIS_GAS, MotionEvent.AXIS_RZ).unsignedAxis()
 		motionControllerState.buttons = motionControllerState.buttons.let {
 			val dpadX = event.getAxisValue(MotionEvent.AXIS_HAT_X)
 			val dpadY = event.getAxisValue(MotionEvent.AXIS_HAT_Y)

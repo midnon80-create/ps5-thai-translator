@@ -9,7 +9,16 @@ class TranslatorPrefs(context: Context)
 	enum class Mode { BOTH, SCREEN, SPEECH }
 	enum class Region { BOTTOM, FULL }
 	enum class Position { ABOVE_SUBTITLE, TOP, BOTTOM }
-	enum class Font { SARABUN, KANIT }
+	/** Subtitle fonts offered in the settings screen (value stored in "tr_font"). */
+	enum class Font(val value: String, val title: String, val res: Int)
+	{
+		KANIT("kanit", "Kanit", com.metallic.chiaki.R.font.kanit_medium),
+		PROMPT("prompt", "Prompt", com.metallic.chiaki.R.font.prompt_bold),
+		SARABUN("sarabun", "Sarabun", com.metallic.chiaki.R.font.sarabun_bold),
+		MITR("mitr", "Mitr", com.metallic.chiaki.R.font.mitr_medium),
+		NOTO("noto", "Noto Sans Thai", com.metallic.chiaki.R.font.notosansthai),
+		CHAKRA("chakra", "Chakra Petch", com.metallic.chiaki.R.font.chakrapetch_semibold),
+	}
 
 	private val sp = PreferenceManager.getDefaultSharedPreferences(context)
 
@@ -38,12 +47,13 @@ class TranslatorPrefs(context: Context)
 		else -> Position.ABOVE_SUBTITLE
 	}
 
-	val font get() = if(sp.getString("tr_font", "sarabun") == "kanit") Font.KANIT else Font.SARABUN
+	val font get() = sp.getString("tr_font", "kanit").let { v -> Font.values().firstOrNull { it.value == v } } ?: Font.KANIT
 
 	/** Text height as a fraction of the screen height, so it looks the same on every TV size and resolution. */
 	val textHeightFraction get() = when(sp.getString("tr_text_size", "medium")) {
 		"small" -> 0.040f
 		"large" -> 0.052f
+		"xlarge" -> 0.060f
 		else -> 0.046f // medium = the size in the trailer sample
 	}
 
@@ -70,7 +80,7 @@ class TranslatorPrefs(context: Context)
 	 * Code sent to the server: the typed licence, or "AUTO-TRIAL" (GitHub build only). Free trials are switched
 	 * off on the server now (paid 1-day code instead); trials that already started still run to their end date.
 	 */
-	val cloudCode get() = licence.ifBlank { if(com.metallic.chiaki.store.Store.IS_PLAY) "" else "AUTO-TRIAL" }
+	val cloudCode get() = licence.ifBlank { if(com.metallic.chiaki.store.Store.IS_PLAY) "PLAY-TRIAL" else "AUTO-TRIAL" }
 
 	/** Hidden override for testing; normally the built-in server. */
 	val serverUrl get() = sp.getString("tr_server_url", "")?.trim().orEmpty().ifEmpty { SERVER_URL }

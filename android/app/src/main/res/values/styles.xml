@@ -108,6 +108,15 @@
         <item name="android:textColor">?attr/colorOnSecondary</item>
     </style>
 
+    <!-- new TV interface: dark, full screen; page changes are animated by the app itself -->
+    <style name="TvTheme" parent="AppTheme">
+        <item name="android:windowBackground">@color/tv_background</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:statusBarColor">@color/tv_background</item>
+        <item name="android:navigationBarColor">@color/tv_background</item>
+    </style>
+
     <style name="StreamTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>

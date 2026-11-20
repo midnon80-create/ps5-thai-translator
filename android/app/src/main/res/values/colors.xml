@@ -17,4 +17,5 @@
     <color name="control_pressed">#88ffffff</color>
 
     <color name="item_delete_background">#B71C1C</color>
+    <color name="tv_background">#07050C</color>
 </resources>
