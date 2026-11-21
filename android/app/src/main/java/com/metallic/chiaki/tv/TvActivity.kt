@@ -896,7 +896,7 @@ class TvActivity : AppCompatActivity()
 		val grid = Ui.col(this)
 		val items = ArrayList<Triple<String, String, () -> Unit>>().apply {
 			add(Triple("ตรวจปัญหา", "บอกทีละขั้นว่าติดตรงไหน พร้อมวิธีแก้") { startActivity(Intent(this@TvActivity, TranslatorTestActivity::class.java)) })
-			add(Triple("จับคู่ PS5 ใหม่", "ล็อกอิน PSN แล้วใส่รหัส 8 หลักจาก PS5") { startActivity(Intent(this@TvActivity, RegistActivity::class.java)) })
+			add(Triple("จับคู่ PS5 ใหม่", "พิมพ์ชื่อ PSN แล้วใส่รหัส 8 หลักจาก PS5 (ไม่ต้องใช้รหัสผ่าน)") { startActivity(Intent(this@TvActivity, RegistActivity::class.java)) })
 			add(Triple("เพิ่ม PS5 ด้วยเลข IP", "ถ้าแอปหา PS5 ไม่เจอเอง") { startActivity(Intent(this@TvActivity, EditManualConsoleActivity::class.java)) })
 			if(!Store.IS_PLAY) add(Triple("ใส่รหัสไลเซนส์", TranslatorPrefs(this@TvActivity).licence.ifBlank { "ยังไม่ได้ใส่รหัส" }) {
 				LicencePrompt.ask(this@TvActivity) })

@@ -28,8 +28,8 @@ android {
         applicationId "com.ps5translate.tv"
         minSdk 24
         targetSdk 35
-        versionCode 171
-        versionName "1.7.1"
+        versionCode 173
+        versionName "1.7.3"
         buildConfigField "String", "UPDATE_REPO", "\"midnon80-create/ps5-thai-translator\""
         ndk { abiFilters "armeabi-v7a", "arm64-v8a" }
         externalNativeBuild {
@@ -72,7 +72,7 @@ android {
         play {
             dimension "store"
             // own package on Google Play (no "PS5" trademark in the id); permanent once published
-            applicationId "com.eyesmaxxing.tv"
+            applicationId "eyesmaxxing.translator.com"   // fixed by the app created in Play Console
             targetSdk 36   // Google Play: new apps must target Android 16 (API 36) since 31 Aug 2026
             buildConfigField "boolean", "PLAY", "true"
         }

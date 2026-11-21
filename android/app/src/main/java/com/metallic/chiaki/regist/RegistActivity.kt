@@ -17,6 +17,11 @@ import com.metallic.chiaki.lib.RegistInfo
 import com.metallic.chiaki.lib.Target
 import java.lang.IllegalArgumentException
 
+/**
+ * Pairing with a PS5: the player types only the public PSN name (Online ID) and the 8-digit PIN from the PS5.
+ * The app never asks for a PSN e-mail or password: the Eyesmaxxing server looks up the account ID that
+ * pairing needs from the public name.
+ */
 class RegistActivity: AppCompatActivity(), RevealActivity
 {
 	companion object
@@ -28,7 +33,8 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 		private const val PIN_LENGTH = 8
 
 		private const val REQUEST_REGIST = 1
-		private const val REQUEST_PSN_LOGIN = 2
+		private const val PREF_LAST_PSN_NAME = "psn_last_name"
+		private val PSN_NAME = Regex("^[A-Za-z][A-Za-z0-9_-]{2,15}$")
 	}
 
 	private lateinit var viewModel: RegistViewModel
@@ -37,6 +43,10 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 	override val revealWindow: Window get() = window
 	override val revealIntent: Intent get() = intent
 	override val revealRootLayout: View get() = binding.rootLayout
+
+	/** Account ID found for the PSN name the player typed. */
+	private var resolvedAccountId: String? = null
+	private var resolvedFor: String? = null
 
 	override fun onCreate(savedInstanceState: Bundle?)
 	{
@@ -52,11 +62,10 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 
 		binding.registButton.setOnClickListener { doRegist() }
 
-		binding.psnLoginButton.setOnClickListener { chooseLogin() }
-		// reuse the Account ID from an earlier login so a second PS5 needs no login at all
+		// the PSN name typed last time, so a second PS5 needs nothing new
 		if(savedInstanceState == null && binding.psnIdEditText.text.isNullOrEmpty())
 			androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-				.getString(PsnLoginActivity.PREF_LAST_ACCOUNT_ID, null)
+				.getString(PREF_LAST_PSN_NAME, null)
 				?.let { binding.psnIdEditText.setText(it) }
 
 		binding.ps4VersionRadioGroup.check(when(viewModel.ps4Version.value ?: RegistViewModel.ConsoleVersion.PS5) {
@@ -89,9 +98,52 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 		})
 	}
 
-	private fun chooseLogin()
+	/** Asks the Eyesmaxxing server for the account ID that belongs to a public PSN name, then pairs. */
+	private fun resolveThenRegist(name: String)
 	{
-		startActivityForResult(Intent(this, PsnLoginActivity::class.java), REQUEST_PSN_LOGIN)
+		val wait = android.app.AlertDialog.Builder(this).setTitle("กำลังค้นหาบัญชี PSN…").setMessage(name).setCancelable(false).show()
+		val ctx = applicationContext
+		Thread {
+			var id: String? = null
+			var err: String? = null
+			var shown: String = name
+			try
+			{
+				val url = com.metallic.chiaki.translate.TranslatorPrefs(ctx).serverUrl.trimEnd('/') + "/v1/psn/account"
+				val c = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+				c.requestMethod = "POST"; c.connectTimeout = 8000; c.readTimeout = 15000; c.doOutput = true
+				c.setRequestProperty("Content-Type", "application/json")
+				val body = org.json.JSONObject().put("online_id", name)
+					.put("device", com.metallic.chiaki.translate.CloudTranslator.deviceId(ctx))
+				c.outputStream.use { it.write(body.toString().toByteArray()) }
+				val txt = (if(c.responseCode in 200..299) c.inputStream else c.errorStream).bufferedReader().readText()
+				val j = org.json.JSONObject(txt)
+				if(j.optBoolean("ok")) { id = j.optString("account_id"); shown = j.optString("online_id", name) }
+				else err = j.optString("error")
+			}
+			catch(e: Exception) { err = "offline" }
+			runOnUiThread {
+				try { wait.dismiss() } catch(_: Throwable) {}
+				if(isFinishing) return@runOnUiThread
+				val found = id
+				if(found != null)
+				{
+					resolvedAccountId = found; resolvedFor = name
+					androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).edit().putString(PREF_LAST_PSN_NAME, name).apply()
+					android.widget.Toast.makeText(this, "พบบัญชี PSN: $shown ✔", android.widget.Toast.LENGTH_SHORT).show()
+					doRegist()
+					return@runOnUiThread
+				}
+				val title = when(err) { "not_found" -> "ไม่พบชื่อ PSN \"$name\""; "offline" -> "ต่ออินเทอร์เน็ตไม่ได้"; else -> "ค้นหาบัญชี PSN ไม่ได้ตอนนี้" }
+				val msg = when(err) {
+					"not_found" -> "ตรวจตัวสะกดชื่อ PSN (ดูได้ที่ PS5 › กดรูปโปรไฟล์มุมขวาบน) · ถ้าตั้งความเป็นส่วนตัวไว้ไม่ให้ใครค้นหา ให้ตั้ง \"ใครค้นหาคุณได้\" เป็น \"ทุกคน\" ชั่วคราว"
+					"offline" -> "ตรวจว่าทีวีต่ออินเทอร์เน็ตได้ แล้วลองอีกครั้ง"
+					"too_many" -> "ลองบ่อยเกินไป รอสักครู่แล้วลองใหม่"
+					else -> "ระบบค้นหาชื่อ PSN ขัดข้องชั่วคราว ลองใหม่ในอีกสักครู่ หรือแจ้งผู้ขาย"
+				}
+				android.app.AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("ตกลง", null).show()
+			}
+		}.start()
 	}
 
 	private fun doRegist()
@@ -104,17 +156,19 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 
 		val psnId = binding.psnIdEditText.text.toString().trim()
 		val psnOnlineId: String? = if(ps4Version == RegistViewModel.ConsoleVersion.PS4_LT_7) psnId else null
+		val nameLike = PSN_NAME.matches(psnId)
+		// a PSN name is looked up on the server; a raw account ID (advanced users) is still accepted as typed
+		val idText = if(nameLike) (if(resolvedFor == psnId) resolvedAccountId ?: "" else "") else psnId
 		val psnAccountId: ByteArray? =
 			if(ps4Version != RegistViewModel.ConsoleVersion.PS4_LT_7)
-				try { Base64.decode(psnId, Base64.DEFAULT) } catch(e: IllegalArgumentException) { null }
+				try { Base64.decode(idText, Base64.DEFAULT) } catch(e: IllegalArgumentException) { null }
 			else
 				null
 		val psnIdValid = when(ps4Version)
 		{
 			RegistViewModel.ConsoleVersion.PS4_LT_7 -> psnOnlineId?.isNotEmpty() ?: false
-			else -> psnAccountId != null && psnAccountId.size == RegistInfo.ACCOUNT_ID_SIZE
+			else -> nameLike || (psnAccountId != null && psnAccountId.size == RegistInfo.ACCOUNT_ID_SIZE)
 		}
-
 
 		val pin = binding.pinEditText.text.toString()
 		val pinValid = pin.length == PIN_LENGTH
@@ -131,30 +185,16 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 				null
 		binding.pinEditText.error = if(!pinValid) getString(R.string.regist_pin_invalid, PIN_LENGTH) else null
 
-		if(psnId.isEmpty() && ps4Version != RegistViewModel.ConsoleVersion.PS4_LT_7)
-		{
-			android.widget.Toast.makeText(this, "ล็อกอิน PSN ก่อน แอปจะใส่รหัสบัญชีให้", android.widget.Toast.LENGTH_LONG).show()
-			chooseLogin()
-			return
-		}
-
-		// People often type their PSN username here. Explain and offer the automatic login instead.
-		if(!psnIdValid && ps4Version != RegistViewModel.ConsoleVersion.PS4_LT_7 &&
-			Regex("^[A-Za-z][A-Za-z0-9_-]{2,15}$").matches(psnId))
-		{
-			android.app.AlertDialog.Builder(this)
-				.setTitle("\"$psnId\" คือชื่อผู้ใช้ PSN")
-				.setMessage("ช่องนี้ต้องใช้ \"รหัสบัญชี\" ซึ่งเป็นรหัสลับที่ Sony ใช้ข้างใน ไม่ใช่ชื่อผู้ใช้" + "\n\n" + "กด \"ล็อกอิน PSN\" แล้วล็อกอินด้วยอีเมลและรหัสผ่าน PSN แอปจะใส่รหัสบัญชีให้เอง")
-				.setPositiveButton("ล็อกอิน PSN") { _, _ ->
-					binding.psnIdEditText.setText("")
-					startActivityForResult(Intent(this, PsnLoginActivity::class.java), REQUEST_PSN_LOGIN)
-				}
-				.setNegativeButton("ยกเลิก", null)
-				.show()
-			return
-		}
-
 		if(!hostValid || !psnIdValid || !pinValid)
+			return
+
+		// PSN name typed: look the account ID up first, then this runs again with it
+		if(ps4Version != RegistViewModel.ConsoleVersion.PS4_LT_7 && nameLike && resolvedFor != psnId)
+		{
+			resolveThenRegist(psnId)
+			return
+		}
+		if(ps4Version != RegistViewModel.ConsoleVersion.PS4_LT_7 && (psnAccountId == null || psnAccountId.size != RegistInfo.ACCOUNT_ID_SIZE))
 			return
 
 		val target = when(ps4Version)
@@ -180,13 +220,5 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 		super.onActivityResult(requestCode, resultCode, data)
 		if(requestCode == REQUEST_REGIST && resultCode == RESULT_OK)
 			finish()
-		if(requestCode == REQUEST_PSN_LOGIN && resultCode == RESULT_OK)
-		{
-			data?.getStringExtra(PsnLoginActivity.EXTRA_ACCOUNT_ID)?.let {
-				binding.psnIdEditText.setText(it)
-				binding.psnIdEditText.error = null
-				binding.pinEditText.requestFocus()
-			}
-		}
 	}
 }

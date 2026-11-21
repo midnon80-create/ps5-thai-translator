@@ -104,11 +104,6 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity
-            android:name=".regist.PsnLoginActivity"
-            android:label="ล็อกอิน PSN"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />
-
-        <activity
             android:name=".regist.RegistExecuteActivity"
             android:theme="@style/MageTheme"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />

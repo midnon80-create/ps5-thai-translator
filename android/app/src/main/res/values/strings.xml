@@ -33,15 +33,16 @@
     <string name="regist_option_ps4_ge_7">PS4 ≥ 7.0, &lt; 8</string>
     <string name="regist_option_ps4_ge_8">PS4 ≥ 8.0</string>
     <string name="regist_option_ps5">PS5</string>
-    <string name="regist_psn_account_id_help">ขั้นที่ 1: รหัสบัญชี PSN (ไม่ใช่ชื่อผู้ใช้ PSN)\nไม่ต้องหาเอง — กดปุ่มด้านล่าง ล็อกอิน PSN แล้วแอปจะใส่ให้อัตโนมัติ</string>
+    <string name="regist_psn_account_id_help">ขั้นที่ 1: พิมพ์ชื่อ PSN ของคุณ (Online ID ที่เพื่อนเห็น เช่น Somchai_TH)
+ไม่ต้องใส่อีเมลหรือรหัสผ่าน — แอปไม่ขอรหัสผ่าน PSN</string>
     <string name="regist_psn_account_id_help_url"> </string>
     <string name="hint_regist_psn_online_id">PSN Online ID (username, case-sensitive)</string>
-    <string name="hint_regist_psn_account_id">รหัสบัญชี PSN (แอปเติมให้หลังล็อกอิน)</string>
+    <string name="hint_regist_psn_account_id">ชื่อ PSN (Online ID)</string>
     <string name="hint_regist_pin">PIN 8 หลักจาก PS5</string>
     <string name="action_regist">ลงทะเบียน (Register)</string>
     <string name="entered_host_invalid">Please enter a valid host name</string>
     <string name="regist_psn_online_id_invalid">Please enter a valid PSN ID</string>
-    <string name="regist_psn_account_id_invalid">ช่องนี้ไม่ใช่ชื่อผู้ใช้ PSN — กดปุ่ม "ล็อกอิน PSN" ด้านบนเพื่อให้แอปใส่รหัสให้</string>
+    <string name="regist_psn_account_id_invalid">พิมพ์ชื่อ PSN ให้ถูกต้อง (ตัวอักษรอังกฤษ ตัวเลข _ หรือ - ยาว 3–16 ตัว)</string>
     <string name="regist_pin_invalid">ใส่ PIN %d หลักจากหน้าจอ PS5</string>
     <string name="action_share_log">Share Log</string>
     <string name="action_export_settings">Export Settings</string>
