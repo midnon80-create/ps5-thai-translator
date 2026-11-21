@@ -231,6 +231,20 @@ open class Card(c: Context, private val radius: Float = 26f, private val fill: I
 		}
 	}
 
+	override fun onAttachedToWindow()
+	{
+		super.onAttachedToWindow()
+		// the focus ring, the glow and the grow-on-focus reach outside the card: no parent may cut them off
+		var p = parent
+		while(p is android.view.ViewGroup)
+		{
+			p.clipChildren = false
+			p.clipToPadding = false
+			if(p is Stage) break
+			p = p.parent
+		}
+	}
+
 	open fun refresh()
 	{
 		val sel = selected()

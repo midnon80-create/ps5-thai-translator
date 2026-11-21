@@ -840,6 +840,7 @@ class TvActivity : AppCompatActivity()
 				append(if(pads.isNotEmpty()) pads.joinToString(" · ").take(40) else "ยังไม่มีจอยต่อกับทีวี") }
 			st2.text = if(pads.isNotEmpty()) "ต่อกับทีวีแล้ว · กด ✕ ต้องสว่างตรงตำแหน่ง ✕" else "กด \"เชื่อมจอยใหม่\" หรือเสียบสาย USB เข้าทีวี"
 			main.postDelayed(this, 1500) } }
+		tick.run(); main.removeCallbacks(tick)   // fill the status card right away, not after the first refresh
 		startRefresh(tick)
 		return v
 	}

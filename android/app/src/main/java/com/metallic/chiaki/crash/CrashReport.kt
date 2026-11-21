@@ -78,6 +78,11 @@ object CrashReport
 			context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
 				.putString(KEY_LAST_INFLIGHT, inflight.joinToString(",") { it.name.removePrefix("inflight_") }).commit()
 			inflight.forEach { it.delete() }
+			// once in 1.8.0: older versions switched the good screen reader off after unrelated crashes,
+			// leaving those TVs on the weak backup reader (subtitles came and went). Give it one fresh try.
+			val p = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+			if(!p.getBoolean("ocr_retry_180", false))
+				p.edit().remove("off_ocr").putBoolean("ocr_retry_180", true).commit()
 		}
 		catch(_: Throwable) { }
 		try
@@ -162,15 +167,31 @@ object CrashReport
 				else if(exit.reason == ApplicationExitInfo.REASON_CRASH_NATIVE)
 				{
 					val inflight = prefs.getString(KEY_LAST_INFLIGHT, "") ?: ""
+					val log = previousCrashLog(context)
 					if(inflight.isNotEmpty())
 					{
-						// that part crashed this TV: keep it off here from now on
-						val e = prefs.edit()
-						inflight.split(",").filter { it.isNotBlank() }.forEach { e.putBoolean("off_$it", true) }
-						e.apply()
-						trace = "ทำงานอยู่ตอนแครช (ปิดส่วนนี้ในทีวีนี้แล้ว): $inflight\n\n"
+						// Screen reading runs all game long, so it is "in flight" during almost every crash.
+						// Switch a part off only when the crash itself points at it (its library in the backtrace);
+						// before, any crash (video, network, the TV's own driver) turned the good reader off for good.
+						val lower = log.lowercase()
+						val noEvidence = !log.contains("Fatal signal")   // log missing: stay on the safe side as before
+						val blamed = inflight.split(",").filter { it.isNotBlank() }.filter { part -> noEvidence ||
+							when(part)
+							{
+								"ocr" -> "mlkit" in lower || "ocr_pipeline" in lower || "text-recognition" in lower
+								"ocr_tess" -> "tess" in lower || "lept" in lower
+								else -> true
+							}
+						}
+						if(blamed.isNotEmpty())
+						{
+							val e = prefs.edit()
+							blamed.forEach { e.putBoolean("off_$it", true) }
+							e.apply()
+						}
+						trace = "ทำงานอยู่ตอนแครช: $inflight · ปิดในทีวีนี้: ${blamed.joinToString(",").ifEmpty { "-" }}\n\n"
 					}
-					trace += previousCrashLog(context).take(7000)
+					trace += log.take(7000)
 				}
 				return header() + "ประเภท: $kind\nรายละเอียด: ${exit.description}\nสถานะ: ${exit.status}\n\n$trace"
 			}
