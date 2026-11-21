@@ -144,7 +144,11 @@ object LicencePrompt
 							.setPositiveButton("ตกลง", null)
 							.show()
 					}
-					CloudTranslator.Problem.OFFLINE -> show(activity, "ต่ออินเทอร์เน็ตไม่ได้ ตรวจเน็ตแล้วลองอีกครั้ง")
+					CloudTranslator.Problem.OFFLINE -> show(activity, "ต่ออินเทอร์เน็ตไม่ได้\nวิธีแก้: 1. เช็กว่าทีวีต่อเน็ตอยู่ (เปิด YouTube ได้ไหม)  2. ปิด-เปิด Wi-Fi ทีวี  3. กด ใช้รหัสนี้ อีกครั้ง")
+					CloudTranslator.Problem.LICENCE_INVALID -> show(activity, "ไม่พบรหัสนี้\nวิธีแก้: 1. ตรวจทีละตัว รหัสขึ้นต้นด้วย EYE- เช่น EYE-AB12-CD34  2. ระวังเลข 0 กับตัว O, เลข 1 กับตัว I  3. คัดลอกรหัสจากแชต LINE อีกรอบ  4. ยังไม่ได้: ถ่ายรูปส่งให้ผู้ขาย")
+					CloudTranslator.Problem.OTHER_DEVICE -> show(activity, "รหัสนี้ผูกกับทีวีเครื่องอื่นแล้ว (1 รหัสใช้ได้ 1 ทีวี)\nวิธีแก้: ถ้าเปลี่ยนทีวีหรือล้างเครื่อง ส่งรหัสนี้ให้ผู้ขายทาง LINE ขอ \"ย้ายเครื่อง\" แล้วกลับมาใส่รหัสเดิมได้เลย")
+					CloudTranslator.Problem.EXPIRED, CloudTranslator.Problem.TRIAL_OVER -> show(activity, CloudTranslator.problemText(p, cloud.plan) +
+						"\nวิธีแก้: ทัก LINE ผู้ขายเพื่อต่ออายุ ใช้รหัสเดิมได้เลย ไม่ต้องใส่ใหม่")
 					else -> show(activity, CloudTranslator.problemText(p, cloud.plan))
 				}
 			}

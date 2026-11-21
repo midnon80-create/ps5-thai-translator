@@ -62,13 +62,20 @@ class RegistExecuteActivity: AppCompatActivity()
 				RegistExecuteViewModel.State.FAILED ->
 				{
 					binding.infoTextView.visibility = View.VISIBLE
-					binding.infoTextView.setText(R.string.regist_info_failed)
+					binding.infoTextView.text = "จับคู่ไม่สำเร็จ"
 					setResult(RESULT_FAILED)
+					if(dialog == null && !isFinishing)
+						dialog = MaterialAlertDialogBuilder(this)
+							.setMessage(R.string.regist_info_failed)
+							.setPositiveButton("ลองใหม่") { _, _ -> finish() }
+							.setOnDismissListener { dialog = null }
+							.create()
+							.also { it.show() }
 				}
 				RegistExecuteViewModel.State.SUCCESSFUL, RegistExecuteViewModel.State.SUCCESSFUL_DUPLICATE ->
 				{
 					binding.infoTextView.visibility = View.VISIBLE
-					binding.infoTextView.setText(R.string.regist_info_success)
+					binding.infoTextView.text = "จับคู่ PS5 สำเร็จ ✔"
 					setResult(RESULT_OK)
 					if(it == RegistExecuteViewModel.State.SUCCESSFUL_DUPLICATE)
 						showDuplicateDialog()
