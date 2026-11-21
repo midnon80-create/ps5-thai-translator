@@ -23,14 +23,16 @@ class PadConfig(context: Context)
 	val sticks: Sticks = sp.getString(KEY_STICKS, "auto").let { v -> Sticks.values().firstOrNull { it.value == v } } ?: Sticks.AUTO
 	val deadzone: Float = sp.getFloat(KEY_DEADZONE, DEFAULT_DEADZONE)
 
-	fun mapKey(code: Int) = remap[code] ?: code
+	/** The player's own fix first, then the built-in layout for PlayStation pads on TVs without a Sony driver. */
+	fun mapKey(code: Int, device: InputDevice? = null): Int =
+		remap[code] ?: (if(sonyGeneric(device)) SONY_GENERIC_KEYS[code] else null) ?: code
 
 	/** Right stick on RX/RY (and triggers on Z/RZ) for this controller? */
 	fun rightStickOnRx(device: InputDevice?): Boolean = when(sticks)
 	{
 		Sticks.Z_RZ -> false
 		Sticks.RX_RY -> true
-		Sticks.AUTO -> device != null &&
+		Sticks.AUTO -> !sonyGeneric(device) && device != null &&
 			device.getMotionRange(MotionEvent.AXIS_RX) != null && device.getMotionRange(MotionEvent.AXIS_RY) != null &&
 			device.getMotionRange(MotionEvent.AXIS_LTRIGGER) == null && device.getMotionRange(MotionEvent.AXIS_BRAKE) == null
 	}
@@ -50,6 +52,40 @@ class PadConfig(context: Context)
 		const val KEY_DEADZONE = "pad_deadzone"
 		const val DEFAULT_DEADZONE = 0.08f
 		const val STRONG_DEADZONE = 0.16f
+
+		/** A logical code meaning "touchpad click" (no Android keycode exists for it). */
+		const val KEY_TOUCHPAD = KeyEvent.KEYCODE_BUTTON_16
+
+		/**
+		 * DualShock 4 / DualSense on TVs whose kernel has no Sony driver (old Android TV, many boxes):
+		 * the generic HID driver sends the buttons in report order, so ○ arrives as BUTTON_C (= PS button!),
+		 * L1/R1 as Y/Z, Share/Options as L2/R2, and the right stick sits on Z/RZ with the triggers on RX/RY.
+		 */
+		private val SONY_GENERIC_KEYS = mapOf(
+			KeyEvent.KEYCODE_BUTTON_A to KeyEvent.KEYCODE_BUTTON_X,       // □
+			KeyEvent.KEYCODE_BUTTON_B to KeyEvent.KEYCODE_BUTTON_A,       // ✕
+			KeyEvent.KEYCODE_BUTTON_C to KeyEvent.KEYCODE_BUTTON_B,       // ○
+			KeyEvent.KEYCODE_BUTTON_X to KeyEvent.KEYCODE_BUTTON_Y,       // △
+			KeyEvent.KEYCODE_BUTTON_Y to KeyEvent.KEYCODE_BUTTON_L1,
+			KeyEvent.KEYCODE_BUTTON_Z to KeyEvent.KEYCODE_BUTTON_R1,
+			KeyEvent.KEYCODE_BUTTON_L1 to KeyEvent.KEYCODE_BUTTON_L2,
+			KeyEvent.KEYCODE_BUTTON_R1 to KeyEvent.KEYCODE_BUTTON_R2,
+			KeyEvent.KEYCODE_BUTTON_L2 to KeyEvent.KEYCODE_BUTTON_SELECT,  // Share / Create
+			KeyEvent.KEYCODE_BUTTON_R2 to KeyEvent.KEYCODE_BUTTON_START,   // Options
+			KeyEvent.KEYCODE_BUTTON_SELECT to KeyEvent.KEYCODE_BUTTON_THUMBL,
+			KeyEvent.KEYCODE_BUTTON_START to KeyEvent.KEYCODE_BUTTON_THUMBR,
+			KeyEvent.KEYCODE_BUTTON_MODE to KeyEvent.KEYCODE_BUTTON_MODE,  // PS
+			KeyEvent.KEYCODE_BUTTON_THUMBL to KEY_TOUCHPAD,
+		)
+
+		/** PlayStation pad running on the generic driver? (Sony driver pads have trigger axes and no BUTTON_C/Z) */
+		fun sonyGeneric(device: InputDevice?): Boolean
+		{
+			if(device == null || device.vendorId != 0x054C) return false
+			if(device.getMotionRange(MotionEvent.AXIS_LTRIGGER) != null || device.getMotionRange(MotionEvent.AXIS_BRAKE) != null) return false
+			val has = device.hasKeys(KeyEvent.KEYCODE_BUTTON_C, KeyEvent.KEYCODE_BUTTON_Z)
+			return has[0] || has[1]
+		}
 
 		/** The four face buttons the remap wizard asks for, in order: ✕ ○ □ △. */
 		val FACE = intArrayOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y)

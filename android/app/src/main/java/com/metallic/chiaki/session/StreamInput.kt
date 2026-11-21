@@ -137,7 +137,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			return false
 
 		// fixes from the "จอย" screen: swapped buttons on boxes / adapters
-		val keyCode = if(PadConfig.fromPad(event)) pad.mapKey(event.keyCode) else event.keyCode
+		val keyCode = if(PadConfig.fromPad(event)) pad.mapKey(event.keyCode, event.device) else event.keyCode
 
 		when(keyCode)
 		{
@@ -170,6 +170,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			KeyEvent.KEYCODE_BUTTON_START -> ControllerState.BUTTON_OPTIONS
 			KeyEvent.KEYCODE_BUTTON_C -> ControllerState.BUTTON_PS
 			KeyEvent.KEYCODE_BUTTON_MODE -> ControllerState.BUTTON_PS
+			PadConfig.KEY_TOUCHPAD -> ControllerState.BUTTON_TOUCHPAD
 			else -> return false
 		}
 
@@ -198,8 +199,15 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		motionControllerState.leftY = pad.stick(event.getAxisValue(MotionEvent.AXIS_Y)).signedAxis()
 		motionControllerState.rightX = pad.stick(event.getAxisValue(if(rx) MotionEvent.AXIS_RX else MotionEvent.AXIS_Z)).signedAxis()
 		motionControllerState.rightY = pad.stick(event.getAxisValue(if(rx) MotionEvent.AXIS_RY else MotionEvent.AXIS_RZ)).signedAxis()
+		val sonyGeneric = PadConfig.sonyGeneric(event.device)
 		fun trigger(main: Int, alt: Int, rxAxis: Int): Float
 		{
+			if(sonyGeneric && pad.sticks == PadConfig.Sticks.AUTO)
+			{
+				// PlayStation pad on the generic driver: triggers on RX (L2) / RY (R2), resting at -1
+				val v = event.getAxisValue(if(main == MotionEvent.AXIS_LTRIGGER) MotionEvent.AXIS_RX else MotionEvent.AXIS_RY)
+				return ((v + 1f) / 2f).coerceIn(0f, 1f)
+			}
 			if(rx)
 			{
 				// some of those pads report the trigger as -1..1 (rest = -1), others as 0..1

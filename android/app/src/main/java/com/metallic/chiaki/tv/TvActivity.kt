@@ -812,7 +812,7 @@ class TvActivity : AppCompatActivity()
 			card.setOnClickListener { action(s); s.text = sub() }
 			list.addView(card, llp(MATCH, 104, t = 14))
 		}
-		item("แก้ปุ่มสลับ", { if(sp.getString(PadConfig.KEY_REMAP, "").isNullOrEmpty()) "กดตามที่แอปบอก 4 ปุ่ม แอปจะจับคู่ใหม่" else "ตั้งค่าปุ่มเองแล้ว · กดเพื่อทำใหม่" }, "เริ่ม") { remapWizard() }
+		item("แก้ปุ่มสลับ", { if(sp.getString(PadConfig.KEY_REMAP, "").isNullOrEmpty()) "กดตามที่แอปบอกทีละปุ่ม (ปุ่มที่ถูกอยู่แล้วกด ▶ ข้าม)" else "ตั้งค่าปุ่มเองแล้ว · กดเพื่อทำใหม่" }, "เริ่ม") { remapWizard() }
 		item("แก้จอยค้าง / ขยับเอง", { "รีเซ็ตปุ่ม และไม่สนการขยับเล็ก ๆ ของอนาล็อก" }, "แก้เลย") {
 			PadConfig.resetStuck(this); toast("รีเซ็ตจอยแล้ว ✔ ถ้ายังค้าง ปิด-เปิดจอยหนึ่งครั้ง") }
 		item("เชื่อมจอยใหม่", { "DualSense · DualShock 4 · Xbox · จอยทั่วไป" }, "เชื่อม") { openBluetooth() }
@@ -845,43 +845,48 @@ class TvActivity : AppCompatActivity()
 	/** Asks for ✕ ○ □ △ in turn and remembers which physical buttons they are. */
 	private fun remapWizard()
 	{
-		val names = listOf("✕" to "กากบาท", "○" to "วงกลม", "□" to "สี่เหลี่ยม", "△" to "สามเหลี่ยม")
-		val got = ArrayList<Int>()
+		// every button a player can press; any that is already right (or missing) is skipped with D-pad ▶
+		val names = listOf("✕" to "กากบาท", "○" to "วงกลม", "□" to "สี่เหลี่ยม", "△" to "สามเหลี่ยม",
+			"L1" to "ไหล่ซ้าย", "R1" to "ไหล่ขวา", "L2" to "ไกซ้าย", "R2" to "ไกขวา",
+			"≡" to "Options (ขวาบน)", "⋯" to "Create / Share (ซ้ายบน)", "L3" to "กดอนาล็อกซ้ายลงไป", "R3" to "กดอนาล็อกขวาลงไป")
+		val logical = intArrayOf(*PadConfig.FACE, KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_BUTTON_R2,
+			KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_THUMBL, KeyEvent.KEYCODE_BUTTON_THUMBR)
+		val got = ArrayList<Int>()          // physical code per step, -1 = skipped
 		val panel = FrameLayout(this).apply { setBackgroundColor(0xE607050C.toInt()); isClickable = true }
 		val box = Ui.col(this).apply { gravity = Gravity.CENTER_HORIZONTAL; background = Ui.round(Ui.PANEL2, 36f, 3, Ui.VIOLET2); setPadding(80, 60, 80, 60) }
 		val step = text(this, "", 28f, Ui.VIOLET2, gravity = Gravity.CENTER)
 		val glyph = text(this, "", 150f, Ui.TEXT, W.BOLD, Gravity.CENTER)
 		val ask = text(this, "", 40f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER)
 		box.addView(step); box.addView(glyph, llp(WRAP, WRAP, t = 10)); box.addView(ask, llp(WRAP, WRAP, t = 10))
-		box.addView(text(this, "กดที่จอยที่ต่อกับทีวี · รีโมททีวีกดย้อนกลับเพื่อยกเลิก", 24f, Ui.MUTED, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 24))
+		box.addView(text(this, "กดที่จอยที่ต่อกับทีวี · ปุ่มไหนถูกอยู่แล้วหรือไม่มี กดลูกศร ▶ ที่จอยเพื่อข้าม\nรีโมททีวีกดย้อนกลับเพื่อยกเลิก", 24f, Ui.MUTED, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 24))
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
 		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
 		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(250).start()
-		fun show() { val (g, n) = names[got.size]; step.text = "ขั้นที่ ${got.size + 1}/4"; glyph.text = g; ask.text = "กดปุ่ม $g ($n)" }
+		val total = names.size
+		fun show() { val (g, n) = names[got.size]; step.text = "ขั้นที่ ${got.size + 1}/$total"; glyph.text = g; ask.text = "กดปุ่ม $g ($n)" }
 		fun close() { keyCatcher = null; panel.animate().alpha(0f).setDuration(200).withEndAction { root.removeView(panel) }.start() }
+		fun next()
+		{
+			glyph.animate().scaleX(1.15f).scaleY(1.15f).setDuration(90).withEndAction { glyph.animate().scaleX(1f).scaleY(1f).setDuration(120).start() }.start()
+			if(got.size < total) { show(); return }
+			val map = HashMap<Int, Int>()
+			got.forEachIndexed { k, phys -> if(phys >= 0) map[phys] = logical[k] }
+			PadConfig.saveRemap(this, map)
+			Preferences(this).swapCrossMoon = false
+			close(); toast("บันทึกปุ่มแล้ว ✔ ใช้ตอนเล่นเกมทันที · ลองกดในหน้านี้ ปุ่มบนจอต้องสว่างตรงกัน")
+			showTab(2, Trans.NONE)
+		}
 		show()
 		keyCatcher = { e ->
 			if(e.keyCode == KeyEvent.KEYCODE_BACK && !PadConfig.fromPad(e)) { if(e.action == KeyEvent.ACTION_UP) close(); true }
+			else if(PadConfig.fromPad(e) && e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0 && e.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)
+			{ got += -1; next(); true }          // skip: this button is fine / not on this pad
 			else if(PadConfig.fromPad(e) && e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0 && !KeyEvent.isModifierKey(e.keyCode) &&
 				e.keyCode !in listOf(KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT))
 			{
 				// some pads send BACK for ○ / ENTER for ✕: those count as buttons here
 				val code = e.keyCode
-				if(code !in got)
-				{
-					got += code
-					glyph.animate().scaleX(1.15f).scaleY(1.15f).setDuration(90).withEndAction { glyph.animate().scaleX(1f).scaleY(1f).setDuration(120).start() }.start()
-					if(got.size == 4)
-					{
-						val map = HashMap<Int, Int>()
-						got.forEachIndexed { k, phys -> map[phys] = PadConfig.FACE[k] }
-						PadConfig.saveRemap(this, map)
-						Preferences(this).swapCrossMoon = false
-						close(); toast("บันทึกปุ่มแล้ว ✔ ใช้ตอนเล่นเกมทันที")
-						showTab(2, Trans.NONE)
-					}
-					else show()
-				}
+				if(code !in got) { got += code; next() }
 				true
 			}
 			else true
@@ -933,13 +938,22 @@ class TvActivity : AppCompatActivity()
 		val pv = padView
 		if(pv != null && PadConfig.fromPad(event))
 		{
-			pv.key(event.keyCode, event.action == KeyEvent.ACTION_DOWN)
+			// light the button the game will get (after "แก้ปุ่มสลับ"), so the test shows the fix worked
+			pv.key(PadConfig(this).mapKey(event.keyCode, event.device), event.action == KeyEvent.ACTION_DOWN)
 			// while the controller picture is chosen, buttons only light up (except moving away from it)
 			if(padCard?.isFocused == true && event.keyCode != KeyEvent.KEYCODE_DPAD_RIGHT && event.keyCode != KeyEvent.KEYCODE_DPAD_DOWN)
 				return true
 		}
 		if(event.action == KeyEvent.ACTION_UP && (event.keyCode == KeyEvent.KEYCODE_BACK) && tab > 0)
 		{ showTab(0, Trans.RIGHT); return true }
+		// menus: give Android the corrected button (on generic-driver PlayStation pads ✕ arrives as B = "back")
+		if(PadConfig.fromPad(event))
+		{
+			val code = PadConfig(this).mapKey(event.keyCode, event.device)
+			if(code != event.keyCode)
+				return super.dispatchKeyEvent(KeyEvent(event.downTime, event.eventTime, event.action, code, event.repeatCount,
+					event.metaState, event.deviceId, event.scanCode, event.flags, event.source))
+		}
 		return super.dispatchKeyEvent(event)
 	}
 
