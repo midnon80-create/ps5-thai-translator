@@ -85,6 +85,8 @@ class TvActivity : AppCompatActivity()
 		vm.discoveryManager.active = true
 		// picture settings that suit this TV (unless the player picked them)
 		if(DeviceCaps.quality(this) == "auto") try { DeviceCaps.apply(this, "auto") } catch(_: Throwable) {}
+		// clear button fixes from older versions once: the controller layout is now detected automatically
+		if(PadConfig.migrateOnce(this)) toast("อัปเดตการตั้งค่าจอยใหม่แล้ว ✔ ปุ่มจอย PS4/PS5 ถูกต้องอัตโนมัติ")
 
 		if(!sp.getBoolean(KEY_ONBOARDED, false)) showSplash()
 		else showTab(0, Trans.FADE)

@@ -105,6 +105,20 @@ class PadConfig(context: Context)
 		fun setDeadzone(context: Context, d: Float) =
 			PreferenceManager.getDefaultSharedPreferences(context).edit().putFloat(KEY_DEADZONE, d).apply()
 
+		/**
+		 * Once after updating to 1.7.7: old button fixes were made before the app knew the PlayStation layout
+		 * (and the old wizard set only 4 buttons), so they now make things worse. Start clean; returns true if it cleared something.
+		 */
+		fun migrateOnce(context: Context): Boolean
+		{
+			val sp = PreferenceManager.getDefaultSharedPreferences(context)
+			if(sp.getBoolean("pad_clean_177", false)) return false
+			val had = !sp.getString(KEY_REMAP, "").isNullOrEmpty() || sp.contains(KEY_STICKS) || sp.contains(KEY_DEADZONE)
+			sp.edit().remove(KEY_REMAP).remove(KEY_STICKS).remove(KEY_DEADZONE).putBoolean("pad_clean_177", true).apply()
+			if(had) com.metallic.chiaki.common.Preferences(context).swapCrossMoon = false
+			return had
+		}
+
 		/** "แก้จอยค้าง": forget remaps and layouts, use a larger dead zone. */
 		fun resetStuck(context: Context) =
 			PreferenceManager.getDefaultSharedPreferences(context).edit()
