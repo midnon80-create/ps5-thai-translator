@@ -119,16 +119,43 @@ class StreamActivity : AppCompatActivity()
 			insets
 		}
 
+		var syncingSwitch = false
 		viewModel.onScreenControlsEnabled.observe(this, Observer {
+			// hidden because a controller connected: show it on the switch, but keep the player's own choice saved
+			syncingSwitch = true
 			if(binding.onScreenControlsSwitch.isChecked != it)
 				binding.onScreenControlsSwitch.isChecked = it
+			syncingSwitch = false
 			if(binding.onScreenControlsSwitch.isChecked)
 				binding.touchpadOnlySwitch.isChecked = false
 		})
 		binding.onScreenControlsSwitch.setOnCheckedChangeListener { _, isChecked ->
+			if(syncingSwitch) return@setOnCheckedChangeListener
 			viewModel.setOnScreenControlsEnabled(isChecked)
 			showOverlay()
 		}
+
+		// real controller connected -> no on-screen buttons; unplugged -> they come back
+		fun checkPads()
+		{
+			val has = android.view.InputDevice.getDeviceIds().any { id ->
+				val d = android.view.InputDevice.getDevice(id) ?: return@any false
+				!d.isVirtual && (d.sources and android.view.InputDevice.SOURCE_GAMEPAD) == android.view.InputDevice.SOURCE_GAMEPAD &&
+					d.hasKeys(android.view.KeyEvent.KEYCODE_BUTTON_A, android.view.KeyEvent.KEYCODE_BUTTON_B).any { it }
+			}
+			viewModel.setPadConnected(has)
+		}
+		checkPads()
+		val im = getSystemService(android.hardware.input.InputManager::class.java)
+		val padListener = object : android.hardware.input.InputManager.InputDeviceListener {
+			override fun onInputDeviceAdded(id: Int) = checkPads()
+			override fun onInputDeviceRemoved(id: Int) = checkPads()
+			override fun onInputDeviceChanged(id: Int) = checkPads()
+		}
+		im?.registerInputDeviceListener(padListener, null)
+		lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+			override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) { im?.unregisterInputDeviceListener(padListener) }
+		})
 
 		viewModel.touchpadOnlyEnabled.observe(this, Observer {
 			if(binding.touchpadOnlySwitch.isChecked != it)

@@ -99,7 +99,8 @@ class DeviceCaps(private val context: Context)
 			p.codec = if(hevc) Preferences.Codec.CODEC_H265 else Preferences.Codec.CODEC_H264
 			p.bitrate = when(level)
 			{
-				0 -> if(caps.wired || caps.wifiGhz == 5.0) 30000 else 22000   // big screens: fewer blocks
+				// big screens: more data = fewer blocks; the TV itself upscales 1080p to its 4K panel
+				0 -> if(caps.wired) 35000 else if(caps.wifiGhz == 5.0) 30000 else 22000
 				1 -> 15000
 				else -> if(hevc) 8000 else 10000
 			}

@@ -20,8 +20,17 @@ class StreamViewModel(val application: Application, val connectInfo: ConnectInfo
 	val input = StreamInput(application, preferences)
 	val session = StreamSession(connectInfo, logManager, preferences.logVerbose, input)
 
+	/** A real controller is connected: the faint on-screen buttons step aside (they come back when it disconnects). */
+	private var padConnected = false
 	private var _onScreenControlsEnabled = MutableLiveData<Boolean>(preferences.onScreenControlsEnabled)
 	val onScreenControlsEnabled: LiveData<Boolean> get() = _onScreenControlsEnabled
+
+	fun setPadConnected(connected: Boolean)
+	{
+		padConnected = connected
+		val show = preferences.onScreenControlsEnabled && !connected
+		if(_onScreenControlsEnabled.value != show) _onScreenControlsEnabled.value = show
+	}
 
 	private var _touchpadOnlyEnabled = MutableLiveData<Boolean>(preferences.touchpadOnlyEnabled)
 	val touchpadOnlyEnabled: LiveData<Boolean> get() = _touchpadOnlyEnabled
@@ -35,7 +44,7 @@ class StreamViewModel(val application: Application, val connectInfo: ConnectInfo
 	fun setOnScreenControlsEnabled(enabled: Boolean)
 	{
 		preferences.onScreenControlsEnabled = enabled
-		_onScreenControlsEnabled.value = enabled
+		_onScreenControlsEnabled.value = enabled && !padConnected
 	}
 
 	fun setTouchpadOnlyEnabled(enabled: Boolean)
