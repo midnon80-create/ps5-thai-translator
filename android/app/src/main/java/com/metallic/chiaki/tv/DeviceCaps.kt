@@ -53,30 +53,80 @@ class DeviceCaps(private val context: Context)
 	}
 	catch(_: Throwable) { 0.0 }
 
+	/** Hardware HEVC decoder at 720p 60 (weaker boxes / phones). Software HEVC is too slow and breaks the picture. */
+	val hevc720: Boolean = hevc1080 || try
+	{
+		MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
+			!info.isEncoder && info.supportedTypes.any { it.equals("video/hevc", true) } &&
+				!info.name.startsWith("OMX.google.") && !info.name.startsWith("c2.android.") &&
+				info.getCapabilitiesForType("video/hevc").videoCapabilities?.areSizeAndRateSupported(1280, 720, 60.0) != false
+		}
+	}
+	catch(_: Throwable) { false }
+
 	/** Strong enough for the sharpest picture? */
 	val strong get() = hevc1080 && ramGb >= 1.7 && sdk >= 26
 
-	fun autoTitle() = if(strong) "1080p 60 เฟรม" else "720p 60 เฟรม"
+	fun autoTitle(c: Context) = when(autoLevel(c, this)) { 0 -> "1080p 60 เฟรม · คมสุด"; 1 -> "1080p 60 เฟรม"; else -> "720p 60 เฟรม" }
 
 	companion object
 	{
 		const val KEY_QUALITY = "tv_quality" // auto | smooth | sharp
+		/** Auto mode only: 0 = sharpest, 1 = 1080p lighter, 2 = 720p. Learned from how the last games went. */
+		private const val KEY_AUTO_STEP = "tv_auto_step"
+		private const val KEY_CLEAN_RUNS = "tv_auto_clean"
 
 		fun quality(c: Context) = PreferenceManager.getDefaultSharedPreferences(c).getString(KEY_QUALITY, "auto") ?: "auto"
 
-		/** Writes the stream settings for the chosen quality (auto = what this TV handles well). */
+		private fun autoLevel(c: Context, caps: DeviceCaps): Int
+		{
+			val step = PreferenceManager.getDefaultSharedPreferences(c).getInt(KEY_AUTO_STEP, 0)
+			val base = if(!caps.strong) 2 else if(caps.wifiGhz == 2.4) 1 else 0
+			return (base + step).coerceIn(0, 2)
+		}
+
+		/** Writes the stream settings for the chosen quality (auto = what this device handles well). */
 		fun apply(c: Context, mode: String = quality(c))
 		{
 			PreferenceManager.getDefaultSharedPreferences(c).edit().putString(KEY_QUALITY, mode).apply()
 			val caps = DeviceCaps(c)
 			val p = Preferences(c)
-			val sharp = when(mode) { "sharp" -> true; "smooth" -> false; else -> caps.strong }
-			p.resolution = if(sharp) Preferences.Resolution.RES_1080P else Preferences.Resolution.RES_720P
+			// PS5 Remote Play tops out at 1080p 60 (no 4K); sharpness comes from the bit rate and H.265
+			val level = when(mode) { "sharp" -> 0; "smooth" -> 2; else -> autoLevel(c, caps) }
+			val hevc = if(level == 2) caps.hevc720 else caps.hevc1080
+			p.resolution = if(level < 2) Preferences.Resolution.RES_1080P else Preferences.Resolution.RES_720P
 			p.fps = Preferences.FPS.FPS_60
-			p.codec = if(caps.hevc1080 || !sharp) Preferences.Codec.CODEC_H265 else Preferences.Codec.CODEC_H264
-			// big TVs: more data per frame = less blocky picture (the stream presets are conservative)
-			// (not on 2.4 GHz Wi-Fi: that band can't carry it smoothly)
-			p.bitrate = if(sharp && caps.wifiGhz != 2.4) 25000 else null
+			p.codec = if(hevc) Preferences.Codec.CODEC_H265 else Preferences.Codec.CODEC_H264
+			p.bitrate = when(level)
+			{
+				0 -> if(caps.wired || caps.wifiGhz == 5.0) 30000 else 22000   // big screens: fewer blocks
+				1 -> 15000
+				else -> if(hevc) 8000 else 10000
+			}
+		}
+
+		/**
+		 * After a game (auto mode): count broken frames in the session log. A broken-up picture means the network or
+		 * the decoder could not keep up, so the next game uses one step lighter; three clean games step back up.
+		 */
+		fun learnFromSession(c: Context, log: java.io.File?, seconds: Long)
+		{
+			if(quality(c) != "auto" || log == null || !log.exists() || seconds < 60) return
+			val lines = try { log.readLines() } catch(_: Throwable) { return }
+			val bad = lines.count { it.contains("missing or corrupt frame", true) || it.contains("Failed to get input buffer", true) }
+			val perMin = bad * 60.0 / seconds
+			val sp = PreferenceManager.getDefaultSharedPreferences(c)
+			val step = sp.getInt(KEY_AUTO_STEP, 0)
+			when
+			{
+				perMin >= 3.0 -> sp.edit().putInt(KEY_AUTO_STEP, (step + 1).coerceAtMost(2)).putInt(KEY_CLEAN_RUNS, 0).apply()
+				perMin < 0.5 && step > 0 -> {
+					val clean = sp.getInt(KEY_CLEAN_RUNS, 0) + 1
+					if(clean >= 3) sp.edit().putInt(KEY_AUTO_STEP, step - 1).putInt(KEY_CLEAN_RUNS, 0).apply()
+					else sp.edit().putInt(KEY_CLEAN_RUNS, clean).apply()
+				}
+			}
+			apply(c, "auto")
 		}
 	}
 }

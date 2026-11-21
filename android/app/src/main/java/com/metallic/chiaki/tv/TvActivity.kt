@@ -416,7 +416,7 @@ class TvActivity : AppCompatActivity()
 			Triple(caps.sdk >= 26, "Android ${caps.android} · ชิป ${if(caps.is64) "64" else "32"} บิต",
 				if(caps.sdk >= 28 && caps.is64) "รองรับเต็มที่" else if(caps.sdk >= 24) "ใช้ได้ · ทีวีรุ่นนี้อาจช้ากว่ารุ่นใหม่" else "เก่าเกินไป"),
 			Triple(caps.hevc1080, if(caps.hevc1080) "ถอดรหัสภาพ HEVC ได้" else "ไม่มีตัวถอดรหัส HEVC",
-				"ตั้งภาพ ${caps.autoTitle()} ให้อัตโนมัติ"),
+				"ตั้งภาพ ${caps.autoTitle(this)} ให้อัตโนมัติ"),
 			Triple(caps.wired || caps.wifiGhz == 5.0, if(caps.wired) "ต่อสาย LAN" else if(caps.wifiGhz == 5.0) "Wi-Fi 5GHz" else if(caps.wifiGhz == 2.4) "Wi-Fi 2.4GHz" else "อินเทอร์เน็ต",
 				if(caps.wired || caps.wifiGhz == 5.0) "เหมาะกับภาพคมชัดสูง" else "แนะนำ Wi-Fi 5GHz หรือสาย LAN เพื่อภาพลื่น"),
 			Triple(pads.isNotEmpty(), if(pads.isNotEmpty()) "จอยต่อกับทีวีแล้ว" else "ยังไม่พบจอยที่ต่อกับทีวี",
@@ -770,7 +770,7 @@ class TvActivity : AppCompatActivity()
 		right.addView(head("ภาพ"), llp(WRAP, WRAP, t = 26))
 		val caps = DeviceCaps(this)
 		val q = Ui.row(this)
-		val qs = listOf(Triple("auto", "อัตโนมัติ", caps.autoTitle() + " (เครื่องนี้)"), Triple("smooth", "ลื่นสุด", "720p 60 เฟรม"), Triple("sharp", "คมสุด", "1080p 60 · จอใหญ่"))
+		val qs = listOf(Triple("auto", "อัตโนมัติ", caps.autoTitle(this) + " (เครื่องนี้)"), Triple("smooth", "ลื่นสุด", "720p 60 เฟรม"), Triple("sharp", "คมสุด", "1080p 60 · จอใหญ่"))
 		qs.forEachIndexed { k, (value, label, s) ->
 			q.addView(option(label, s, { DeviceCaps.quality(this) == value }, { DeviceCaps.apply(this, value) }, size = 26f), llp(0, 104, 1f, l = if(k == 0) 0 else 14))
 		}

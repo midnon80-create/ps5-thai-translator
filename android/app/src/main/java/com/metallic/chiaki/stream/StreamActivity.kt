@@ -93,6 +93,16 @@ class StreamActivity : AppCompatActivity()
 
 		viewModel.input.observe(this)
 
+		// phone volume keys change the game sound, and say so when the media volume is at zero ("ไม่มีเสียง")
+		volumeControlStream = android.media.AudioManager.STREAM_MUSIC
+		try
+		{
+			val am = getSystemService(android.media.AudioManager::class.java)
+			if(am != null && am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) == 0)
+				android.widget.Toast.makeText(this, "เสียงสื่อของเครื่องปิดอยู่ (0) · กดปุ่มเพิ่มเสียงเพื่อฟังเสียงเกม", android.widget.Toast.LENGTH_LONG).show()
+		}
+		catch(_: Throwable) { }
+
 		binding = ActivityStreamBinding.inflate(layoutInflater)
 		setContentView(binding.root)
 
@@ -175,9 +185,12 @@ class StreamActivity : AppCompatActivity()
 		}
 	}
 
+	private var resumedAt = 0L
+
 	override fun onResume()
 	{
 		super.onResume()
+		resumedAt = android.os.SystemClock.elapsedRealtime()
 		hideSystemUI()
 		viewModel.session.resume()
 		translator?.start()
@@ -188,7 +201,12 @@ class StreamActivity : AppCompatActivity()
 		super.onPause()
 		viewModel.input.releaseAll() // nothing stays held down ("จอยค้าง") when the app leaves the screen
 		translator?.stop()
+		// auto picture: a game whose picture kept breaking up plays one step lighter next time
+		val played = (android.os.SystemClock.elapsedRealtime() - resumedAt) / 1000
+		val log = viewModel.session.logFile
 		viewModel.session.pause()
+		val ctx = applicationContext
+		Thread { try { com.metallic.chiaki.tv.DeviceCaps.learnFromSession(ctx, log, played) } catch(_: Throwable) { } }.start()
 	}
 
 	override fun onDestroy()
