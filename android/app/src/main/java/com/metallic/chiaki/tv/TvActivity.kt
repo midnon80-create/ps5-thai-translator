@@ -677,15 +677,199 @@ class TvActivity : AppCompatActivity()
 			})
 			return
 		}
-		if(host is DiscoveredDisplayHost && host.discoveredHost.state == DiscoveryHost.State.STANDBY)
+		preflight(host, registeredHost)
+	}
+
+	/** Step-by-step help for one checklist line, with an optional button that does the fix. */
+	private fun guide(title: String, steps: List<String>, action: String?, doIt: () -> Unit)
+	{
+		val body = steps.mapIndexed { i, s -> "${i + 1}. $s" }.joinToString("\n\n")
+		val b = android.app.AlertDialog.Builder(this).setTitle("วิธีแก้: $title").setMessage(body)
+		if(action != null) b.setPositiveButton(action) { _, _ -> doIt() }
+		b.setNegativeButton("ปิด", null)
+		val d = b.show()
+		try
 		{
-			// wake the PS5 from rest mode, then connect once it is up
-			vm.discoveryManager.sendWakeup(host.host, registeredHost.rpRegistKey, registeredHost.target.isPS5)
-			toast("กำลังปลุก PS5… รอสักครู่แล้วจะเชื่อมต่อให้เอง")
-			main.postDelayed({ connect(host, registeredHost) }, 9000)
-			return
+			d.findViewById<TextView>(android.R.id.message)?.apply { textSize = 18f; setLineSpacing(0f, 1.25f) }
+			for(w in listOf(android.app.AlertDialog.BUTTON_POSITIVE, android.app.AlertDialog.BUTTON_NEGATIVE))
+				d.getButton(w)?.apply { textSize = 19f; isAllCaps = false }
+			d.getButton(if(action != null) android.app.AlertDialog.BUTTON_POSITIVE else android.app.AlertDialog.BUTTON_NEGATIVE)?.requestFocus()
 		}
-		connect(host, registeredHost)
+		catch(_: Throwable) { }
+	}
+
+	/** AI check result shared by the checklist (the server is asked at most every 30 s). */
+	@Volatile private var aiCheck: Pair<Long, CloudTranslator.Problem>? = null
+
+	/**
+	 * Checklist before every game: nothing starts until the controller, Thai subtitles, AI and the PS5 are all ready,
+	 * so nobody sits in a game wondering why there are no subtitles. Each line says what is wrong and fixes it on ✕.
+	 */
+	private fun preflight(host0: DisplayHost, registeredHost: RegisteredHost)
+	{
+		val panel = FrameLayout(this).apply { setBackgroundColor(0xEE07050C.toInt()); isClickable = true }
+		val box = Ui.col(this).apply { background = Ui.round(Ui.PANEL2, 36f, 3, Ui.VIOLET2); setPadding(64, 48, 64, 48) }
+		box.addView(text(this, "เช็กก่อนเข้าเกม", 46f, Ui.TEXT, W.BOLD))
+		box.addView(text(this, "ต้องผ่านครบ 4 ข้อ ซับไทยถึงจะขึ้น · ข้อไหนยังไม่ผ่าน กดที่ข้อนั้นเพื่อแก้", 24f, Ui.MUTED), llp(WRAP, WRAP, t = 6))
+		data class Row(val card: Card, val mark: TextView, val title: TextView, val sub: TextView)
+		val rows = HashMap<String, Row>()
+		var wakeSent = false
+		fun currentHost(): DisplayHost = vm.displayHosts.value?.firstOrNull { it.host == host0.host && it.registeredHost != null } ?: host0
+		val fixes = HashMap<String, () -> Unit>()
+		for(key in listOf("pad", "subs", "ai", "ps5"))
+		{
+			val card = Card(this, 22f); card.grow = 1.02f
+			val r = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(30, 0, 30, 0) }
+			val mark = text(this, "…", 40f, Ui.MUTED, W.BOLD, Gravity.CENTER)
+			val c = Ui.col(this)
+			val t1 = text(this, "", 30f, Ui.TEXT, W.SEMIBOLD); val t2 = text(this, "", 22f, Ui.MUTED)
+			c.addView(t1); c.addView(t2, llp(WRAP, WRAP, t = 2))
+			r.addView(mark, llp(70, WRAP)); r.addView(c, llp(0, WRAP, 1f, l = 10))
+			card.addView(r, FrameLayout.LayoutParams(MATCH, MATCH))
+			card.setOnClickListener { fixes[key]?.invoke() }
+			box.addView(card, llp(1100, 112, t = 18))
+			rows[key] = Row(card, mark, t1, t2)
+		}
+		val go = Card(this, 30f); go.grow = 1.04f
+		val goText = text(this, "", 32f, Ui.TEXT, W.BOLD, Gravity.CENTER)
+		go.addView(goText, FrameLayout.LayoutParams(MATCH, MATCH))
+		box.addView(go, llp(1100, 100, t = 26))
+		box.addView(text(this, "รีโมททีวีกดย้อนกลับเพื่อออก", 21f, Ui.DIM, gravity = Gravity.CENTER), llp(MATCH, WRAP, t = 14))
+		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
+		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
+		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(220).start()
+
+		var closed = false
+		lateinit var tick: Runnable
+		fun close() { if(closed) return; closed = true; main.removeCallbacks(tick); keyCatcher = null
+			panel.animate().alpha(0f).setDuration(180).withEndAction { root.removeView(panel) }.start() }
+		fun set(key: String, good: Boolean?, title: String, sub: String)
+		{
+			val r = rows[key] ?: return
+			r.mark.text = when(good) { true -> "✔"; false -> "✕"; null -> "…" }
+			r.mark.setTextColor(when(good) { true -> Ui.OK; false -> Ui.WARN; null -> Ui.MUTED })
+			r.title.text = title; r.sub.text = sub
+		}
+		var allOk = false
+		go.setOnClickListener {
+			if(allOk) { close(); connect(currentHost(), registeredHost) }
+			else toast("ยังไม่ครบ · กดที่ข้อที่มี ✕ เพื่อแก้ก่อน")
+		}
+		// every line that is not ready opens step-by-step help with a button that does the fix
+		fun ready(key: String) = rows[key]?.mark?.text == "✔"
+		fixes["pad"] = {
+			if(ready("pad")) toast("จอยพร้อมแล้ว ✔")
+			else guide("ต่อจอยกับทีวี", listOf(
+				"จอยต้องต่อกับทีวี ไม่ใช่กับ PS5 (จอยที่ต่อ PS5 ใช้ในแอปไม่ได้)",
+				"ทางที่ง่ายสุด: เสียบสาย USB จากจอยเข้าทีวีตรง ๆ (ต้องเป็นสายที่ส่งข้อมูลได้ ไม่ใช่สายชาร์จอย่างเดียว)",
+				"หรือจับคู่บลูทูธ: กดปุ่ม \"จับคู่บลูทูธ\" ด้านล่าง แล้วที่จอยกด Create + PS ค้างไว้จนไฟกะพริบถี่ ๆ",
+				"เลือกชื่อจอย (เช่น DualSense / Wireless Controller) ในรายการของทีวี",
+				"กลับมาหน้านี้ ข้อนี้จะขึ้น ✔ เอง",
+				"ปุ่มเพี้ยนหรือค้าง: ไปที่แท็บ จอย › แก้ปุ่มสลับ / แก้จอยค้าง"),
+				"จับคู่บลูทูธ") { openBluetooth() }
+		}
+		fixes["subs"] = {
+			if(ready("subs")) toast("ซับไทยเปิดอยู่แล้ว ✔")
+			else guide("เปิดซับไทย", listOf(
+				"กดปุ่ม \"เปิดซับไทยเลย\" ด้านล่าง",
+				"ในเกม GTA 6 ต้องเปิดซับไตเติลด้วย: ตั้งค่า › ภาษา/ซับไตเติล › ซับไตเติล › เปิด (แอปอ่านซับอังกฤษของเกมแล้วแปล)"),
+				"เปิดซับไทยเลย") { sp.edit().putBoolean("tr_enabled", true).apply(); tick.run() }
+		}
+		fixes["ai"] = {
+			val p = aiCheck?.second
+			when
+			{
+				ready("ai") -> toast("AI พร้อมแล้ว ✔")
+				p == CloudTranslator.Problem.OFFLINE -> guide("ทีวีไม่มีอินเทอร์เน็ต", listOf(
+					"เปิด YouTube ในทีวีดูว่าเล่นได้ไหม",
+					"ถ้าไม่ได้: ตั้งค่าทีวี › เครือข่าย › ต่อ Wi-Fi ใหม่ (แนะนำ 5GHz) หรือเสียบสาย LAN",
+					"ปิด-เปิดเราเตอร์ 1 ครั้งถ้ายังไม่ได้",
+					"กลับมาหน้านี้ รอประมาณ 30 วินาที ข้อนี้จะตรวจใหม่เอง"), "ตรวจใหม่") { aiCheck = null; tick.run() }
+				p == CloudTranslator.Problem.NOT_STARTED -> guide("AI ยังไม่เปิด", listOf(
+					"แปลด้วย AI จะเปิดวันที่ " + CloudTranslator.aiStartText(),
+					"ระหว่างนี้จับคู่ PS5 และต่อจอยให้เรียบร้อยไว้ก่อนได้"), null) { }
+				Store.IS_PLAY -> guide("ยังไม่มีแพ็กเกจที่ใช้ได้", listOf(
+					"กด \"ไปหน้าแพ็กเกจ\" ด้านล่าง",
+					"เลือกทดลองฟรี หรือแพ็กเกจที่ต้องการ แล้วจ่ายผ่าน Google Play (บัตร · ทรูมันนี่ · หักค่าโทรศัพท์)",
+					"จ่ายเสร็จแอปเปิดใช้ทันที กลับมาหน้าเล่นแล้วกด PS5 อีกครั้ง",
+					"เคยซื้อแล้วแต่ขึ้นหมดอายุ: แท็บ ช่วยเหลือ › กู้คืนการซื้อ"),
+					"ไปหน้าแพ็กเกจ") { close(); showTab(3, Trans.LEFT) }
+				else -> guide("ยังไม่ได้ใส่รหัส / รหัสหมดอายุ", listOf(
+					"กด \"ใส่รหัส\" ด้านล่าง แล้วพิมพ์รหัสที่ได้รับ (ขึ้นต้นด้วย EYE-)",
+					"รหัสหมดอายุ: ต่ออายุแล้วใช้รหัสเดิมได้เลย",
+					"ขึ้นว่าใช้กับทีวีเครื่องอื่นแล้ว: ติดต่อผู้ขายเพื่อย้ายเครื่อง"),
+					"ใส่รหัส") { close(); LicencePrompt.ask(this) }
+			}
+		}
+		fixes["ps5"] = {
+			val h = currentHost()
+			when
+			{
+				ready("ps5") -> toast("PS5 พร้อมแล้ว ✔")
+				h is DiscoveredDisplayHost && h.discoveredHost.state == DiscoveryHost.State.STANDBY -> guide("PS5 อยู่โหมดพัก", listOf(
+					"กด \"ปลุก PS5\" ด้านล่าง แล้วรอประมาณ 10 วินาที",
+					"ถ้าปลุกไม่ได้: ที่ PS5 ไปที่ ตั้งค่า › ระบบ › ประหยัดพลังงาน › ฟีเจอร์ในโหมดพัก › เปิด \"คงการเชื่อมต่ออินเทอร์เน็ต\" และ \"เปิด PS5 จากเครือข่าย\"",
+					"หรือกดปุ่มเปิดที่ตัว PS5 / ปุ่ม PS ที่จอยที่ต่อกับ PS5"),
+					"ปลุก PS5") { vm.discoveryManager.sendWakeup(h.host, registeredHost.rpRegistKey, registeredHost.target.isPS5); wakeSent = true; tick.run() }
+				else -> guide("ยังไม่เจอ PS5", listOf(
+					"เปิด PS5 ให้อยู่หน้าหลัก (ไม่ใช่ปิดเครื่องสนิท)",
+					"ทีวีกับ PS5 ต้องต่อเน็ตบ้านวงเดียวกัน (เราเตอร์ตัวเดียวกัน) · แนะนำ PS5 ต่อสาย LAN",
+					"ที่ PS5: ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"เปิดใช้การเล่นระยะไกล\"",
+					"ยังไม่เจอ: ปิด-เปิดเราเตอร์ แล้วรอ 1 นาที ข้อนี้จะเปลี่ยนเป็น ✔ เอง"), null) { }
+			}
+		}
+
+		tick = object : Runnable { override fun run() {
+			if(closed) return
+			// 1. controller on the TV
+			val pads = Diag.gamepads()
+			if(pads.isNotEmpty()) set("pad", true, "จอยต่อกับทีวีแล้ว", pads.first().take(40))
+			else set("pad", false, "ยังไม่ได้ต่อจอยกับทีวี", "จอยต้องต่อกับทีวี (ไม่ใช่ PS5) · เสียบสาย USB หรือกดที่นี่เพื่อจับคู่บลูทูธ (Create + PS ค้าง)")
+			// 2. Thai subtitles switched on
+			if(TranslatorPrefs(this@TvActivity).enabled) set("subs", true, "เปิดซับไทยแล้ว", "ซับไทยจะขึ้นเองเมื่อเข้าเกม")
+			else set("subs", false, "ซับไทยปิดอยู่", "กดที่นี่เพื่อเปิด")
+			// 3. internet + AI (asked from the server at most every 30 s)
+			val ai = aiCheck
+			if(ai == null || System.currentTimeMillis() - ai.first > 30_000)
+			{
+				if(ai == null) set("ai", null, "กำลังตรวจ AI แปลภาษา…", "ต้องต่ออินเทอร์เน็ต")
+				aiCheck = Pair(System.currentTimeMillis(), ai?.second ?: CloudTranslator.Problem.OFFLINE)
+				Thread {
+					val prefs = TranslatorPrefs(this@TvActivity)
+					val p = CloudTranslator(prefs.serverUrl, prefs.cloudCode, CloudTranslator.deviceId(this@TvActivity)).check()
+					aiCheck = Pair(System.currentTimeMillis(), p)
+					main.post { if(!closed) run() }
+				}.start()
+			}
+			else when(ai.second)
+			{
+				CloudTranslator.Problem.NONE, CloudTranslator.Problem.DAILY_LIMIT, CloudTranslator.Problem.POOL_EMPTY ->
+					set("ai", true, "AI แปลภาษาพร้อม", "ต่ออินเทอร์เน็ตแล้ว")
+				CloudTranslator.Problem.OFFLINE -> set("ai", false, "ทีวีไม่มีอินเทอร์เน็ต", "เช็ก Wi-Fi หรือสาย LAN ของทีวี (ลองเปิด YouTube) แล้วรอสักครู่")
+				CloudTranslator.Problem.NOT_STARTED -> set("ai", false, "AI ยังไม่เปิด", "เปิดวันที่ " + CloudTranslator.aiStartText())
+				else -> set("ai", false, if(Store.IS_PLAY) "ยังไม่มีแพ็กเกจ / หมดอายุ" else "ยังไม่ได้ใส่รหัส / หมดอายุ",
+					if(Store.IS_PLAY) "กดที่นี่เพื่อดูแพ็กเกจ (ทดลองฟรีได้)" else "กดที่นี่เพื่อใส่รหัส")
+			}
+			// 4. PS5 on the home network and awake
+			val h = currentHost()
+			when
+			{
+				h is DiscoveredDisplayHost && h.discoveredHost.state == DiscoveryHost.State.READY ->
+					set("ps5", true, "เจอ " + (h.name ?: "PS5") + " แล้ว", "เปิดอยู่ · อยู่เน็ตบ้านเดียวกับทีวี")
+				h is DiscoveredDisplayHost && h.discoveredHost.state == DiscoveryHost.State.STANDBY ->
+					set("ps5", false, if(wakeSent) "กำลังปลุก PS5…" else "PS5 อยู่โหมดพัก", if(wakeSent) "รอประมาณ 10 วินาที" else "กดที่นี่เพื่อปลุก PS5")
+				// added by IP address: discovery cannot see it (other subnet), so it cannot be checked here
+				h is ManualDisplayHost -> set("ps5", true, (h.name ?: "PS5") + " (เพิ่มด้วย IP)", "ตรวจสถานะล่วงหน้าไม่ได้ · ให้ PS5 เปิดอยู่หน้าหลัก")
+				else -> set("ps5", false, "ยังไม่เจอ PS5", "เปิด PS5 ให้อยู่หน้าหลัก · ทีวีกับ PS5 ต้องใช้เน็ตบ้านวงเดียวกัน")
+			}
+			allOk = rows.values.all { it.mark.text == "✔" }
+			goText.text = if(allOk) "เริ่มเล่น ▶" else "ยังไม่ครบ ${rows.values.count { it.mark.text != "✔" }} ข้อ"
+			go.alpha = if(allOk) 1f else 0.55f
+			main.postDelayed(this, 1500)
+		} }
+		keyCatcher = { e -> if(e.keyCode == KeyEvent.KEYCODE_BACK && !PadConfig.fromPad(e)) { if(e.action == KeyEvent.ACTION_UP) close(); true } else false }
+		tick.run()
+		main.post { (rows.values.firstOrNull { it.mark.text == "✕" }?.card ?: go).requestFocus() }
 	}
 
 	private fun connect(host: DisplayHost, registeredHost: RegisteredHost)
