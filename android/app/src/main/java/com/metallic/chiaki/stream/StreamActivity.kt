@@ -572,10 +572,8 @@ class StreamActivity : AppCompatActivity()
 	private fun showQuitMenu()
 	{
 		val d = MaterialAlertDialogBuilder(this)
-			.setTitle("เลิกเล่นไหม?")
-			.setMessage("เลิกเล่น = ตัดการเชื่อมต่อกับ PS5 แล้วกลับหน้าแรก (แอปจะไม่ต่อใหม่เอง)")
+			.setTitle("เลิกเล่น?")
 			.setPositiveButton("เลิกเล่น") { _, _ -> quitPlaying(false) }
-			.setNeutralButton("ออกจากแอป") { _, _ -> quitPlaying(true) }
 			.setNegativeButton("เล่นต่อ", null)
 			.create()
 		d.show()
@@ -591,6 +589,7 @@ class StreamActivity : AppCompatActivity()
 		dialog?.dismiss()
 		try { translator?.stop() } catch(_: Throwable) { }
 		try { viewModel.session.shutdown() } catch(_: Throwable) { }
+		android.widget.Toast.makeText(this, "เลิกเล่นแล้ว ✔ ปิดจอย: กดปุ่ม PS ค้างไว้ 10 วินาที", android.widget.Toast.LENGTH_LONG).show()
 		if(exitApp) finishAffinity() else finish()
 	}
 	override fun onGenericMotionEvent(event: MotionEvent) = viewModel.input.onGenericMotionEvent(event) || super.onGenericMotionEvent(event)

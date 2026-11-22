@@ -136,9 +136,10 @@ class HdmiModeService : Service()
 
 	private fun begin(info0: ConnectInfo)
 	{
-		// the hidden stream is only read, never watched: 720p 30 at a small bit rate keeps the TV light
+		// the hidden stream is only read, never watched, but it must be as sharp as app mode for the text reader:
+		// 1080p (30 frames is plenty for reading) at a good bit rate. 720p at 6 Mbit/s garbled small subtitles.
 		val p = info0.videoProfile
-		val profile = ConnectVideoProfile(1280, 720, 30, 6000, p.codec)
+		val profile = ConnectVideoProfile(1920, 1080, 30, 12000, p.codec)
 		val info = ConnectInfo(info0.ps5, info0.host, info0.registKey, info0.morning, profile)
 
 		// 1. transparent window over everything (the HDMI picture too)
@@ -148,11 +149,13 @@ class HdmiModeService : Service()
 			WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
 			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 			else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
-			WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-				WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+			// focusable: a controller connected to the TV plays the PS5 through this window (otherwise the TV takes it
+			// as a remote: L2/R2 = volume, touchpad = mouse arrow)
+			WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
 			PixelFormat.TRANSLUCENT)
 		wm.addView(root, lp)
 		overlay = root
+		setUpController(root)
 		val overlayUi = TranslatorOverlay(root, root.findViewById(R.id.hdmiVideo))
 		ui = overlayUi
 		overlayUi.showStatus("กำลังเชื่อมต่อ PS5 เพื่ออ่านซับ…")
@@ -166,6 +169,7 @@ class HdmiModeService : Service()
 
 		Session.setAudioMuted(true)
 		val s = Session(info, null, false)
+		input.controllerStateChangedCallback = { st -> try { session?.setControllerState(st) } catch(_: Throwable) { } }
 		s.eventCallback = { ev -> main.post { onEvent(ev) } }
 		s.start()
 		s.setSurface(ir.surface)
@@ -193,9 +197,40 @@ class HdmiModeService : Service()
 		}
 	}
 
+	// ---- controller: same handling as app mode (StreamInput: button fixes, triggers, sticks)
+	private val input by lazy { com.metallic.chiaki.session.StreamInput(this, com.metallic.chiaki.common.Preferences(this)) }
+	private var backAt = 0L
+
+	private fun setUpController(root: View)
+	{
+		root.isFocusable = true
+		root.isFocusableInTouchMode = true
+		if(Build.VERSION.SDK_INT >= 24) try { root.pointerIcon = android.view.PointerIcon.getSystemIcon(this, android.view.PointerIcon.TYPE_NULL) } catch(_: Throwable) { }
+		root.setOnKeyListener { _, _, e ->
+			val k = e.keyCode
+			// volume / mute stay with the TV
+			if(k == android.view.KeyEvent.KEYCODE_VOLUME_UP || k == android.view.KeyEvent.KEYCODE_VOLUME_DOWN || k == android.view.KeyEvent.KEYCODE_VOLUME_MUTE)
+				return@setOnKeyListener false
+			if(com.metallic.chiaki.session.PadConfig.fromPad(e)) return@setOnKeyListener input.dispatchKeyEvent(e) || true
+			// TV remote: "back" twice = เลิกเล่น
+			if(k == android.view.KeyEvent.KEYCODE_BACK && e.action == android.view.KeyEvent.ACTION_UP)
+			{
+				val now = SystemClock.elapsedRealtime()
+				if(now - backAt < 2500L) { lastProblem = null; shutDown() }
+				else { backAt = now; ui?.showStatus("กดย้อนกลับอีกครั้งเพื่อเลิกเล่น"); main.postDelayed({ ui?.showStatus(null) }, 2500) }
+			}
+			true
+		}
+		root.setOnGenericMotionListener { _, e -> input.onGenericMotionEvent(e) || true }
+		// mouse / touchpad pointer over the window: swallowed (no arrow, nothing clicked behind)
+		root.setOnHoverListener { _, _ -> true }
+		root.post { root.requestFocus() }
+	}
+
 	/** Ends 4K mode from inside the service (works in the background too). */
 	private fun shutDown()
 	{
+		try { input.releaseAll() } catch(_: Throwable) { }
 		main.removeCallbacks(idleCheck)
 		stopEverything()
 		stopSelf()
@@ -235,12 +270,17 @@ class HdmiModeService : Service()
 			val sw = img.width; val sh = img.height
 			val dw = 960; val dh = 540
 			val px = pixels ?: IntArray(dw * dh).also { pixels = it }
+			val lim = buf.limit()
 			for(y in 0 until dh)
 			{
-				val row = (y * sh / dh) * rs
+				val r0 = (y * sh / dh) * rs
+				val r1 = minOf(sh - 1, y * sh / dh + 1) * rs
 				for(x in 0 until dw)
 				{
-					val v = buf.get(row + (x * sw / dw) * ps).toInt() and 0xff
+					val c0 = (x * sw / dw) * ps
+					val c1 = minOf(sw - 1, x * sw / dw + 1) * ps
+					fun at(i: Int) = if(i < lim) buf.get(i).toInt() and 0xff else 0
+					val v = (at(r0 + c0) + at(r0 + c1) + at(r1 + c0) + at(r1 + c1)) shr 2
 					px[y * dw + x] = (0xff shl 24) or (v shl 16) or (v shl 8) or v
 				}
 			}

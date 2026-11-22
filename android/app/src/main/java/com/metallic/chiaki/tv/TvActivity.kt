@@ -68,6 +68,21 @@ class TvActivity : AppCompatActivity()
 	private var firstResume = true
 	private var refresher: Runnable? = null
 
+	// every full-screen page and pop-up panel on the stage. Animations do not run while the TV shows another app
+	// (4K mode switches to the HDMI input), so "remove when the fade ends" never happened and pages piled up.
+	private val pages = ArrayList<View>()
+	private val openPanels = LinkedHashMap<View, () -> Unit>()
+
+	private fun closePanels() { openPanels.values.toList().forEach { try { it() } catch(_: Throwable) { } }; openPanels.clear() }
+
+	/** Removes a panel now when nothing is drawn, else after a short fade. */
+	private fun dropPanel(panel: View, ms: Long)
+	{
+		openPanels.remove(panel)
+		if(!panel.isShown || !hasWindowFocus()) { panel.animate().cancel(); root.removeView(panel); return }
+		panel.animate().alpha(0f).setDuration(ms).withEndAction { root.removeView(panel) }.start()
+	}
+
 	override fun onCreate(savedInstanceState: Bundle?)
 	{
 		super.onCreate(savedInstanceState)
@@ -151,6 +166,9 @@ class TvActivity : AppCompatActivity()
 		page = v
 		stopRefresh()
 		root.addView(v, FrameLayout.LayoutParams(1920, 1080))
+		// anything older than the page being replaced goes now
+		pages.filter { it !== old && it !== v }.forEach { it.animate().cancel(); root.removeView(it) }
+		pages.clear(); if(old != null) pages.add(old); pages.add(v)
 		when(t)
 		{
 			Trans.FADE -> { v.alpha = 0f; v.scaleX = 0.97f; v.scaleY = 0.97f
@@ -162,9 +180,9 @@ class TvActivity : AppCompatActivity()
 		}
 		if(old != null)
 		{
-			if(t == Trans.NONE) root.removeView(old)
+			if(t == Trans.NONE || !root.isShown || !hasWindowFocus()) { old.animate().cancel(); root.removeView(old); pages.remove(old) }
 			else old.animate().alpha(0f).translationX(if(t == Trans.RIGHT) 110f else -110f).setDuration(300)
-				.setInterpolator(Ui.ease()).withEndAction { root.removeView(old) }.start()
+				.setInterpolator(Ui.ease()).withEndAction { root.removeView(old); pages.remove(old) }.start()
 		}
 		(focus ?: firstFocusable(v))?.let { f -> v.post { f.requestFocus() } }
 	}
@@ -460,6 +478,7 @@ class TvActivity : AppCompatActivity()
 
 	private fun showTab(i: Int, t: Trans)
 	{
+		closePanels()
 		keyCatcher = null
 		padView = null; padCard = null
 		val v = FrameLayout(this)
@@ -586,13 +605,7 @@ class TvActivity : AppCompatActivity()
 		col.addView(modeRow, llp(MATCH, WRAP, t = 22))
 		// "เลิกเล่น": disconnect from the PS5 (HDMI mode included) and close the app, no auto-reconnect
 		val quit = Card(this, 22f, Ui.PANEL); quit.grow = 1.03f
-		val qr = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(30, 0, 30, 0) }
-		qr.addView(text(this, "⏻", 40f, Ui.WARN, W.BOLD, Gravity.CENTER), llp(60, WRAP))
-		val qc = Ui.col(this)
-		qc.addView(text(this, "เลิกเล่น", 28f, Ui.TEXT, W.SEMIBOLD))
-		qc.addView(text(this, "ตัดการเชื่อมต่อ PS5 และออกจากแอป", 20f, Ui.MUTED), llp(WRAP, WRAP, t = 2))
-		qr.addView(qc, llp(0, WRAP, 1f, l = 14))
-		quit.addView(qr, FrameLayout.LayoutParams(MATCH, MATCH))
+		quit.addView(text(this, "เลิกเล่น", 34f, Ui.TEXT, W.BOLD, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
 		quit.setOnClickListener { quitApp() }
 		col.addView(quit, llp(MATCH, 104, t = 22))
 		v.addView(col, lp(751, WRAP, 1079, 150))
@@ -670,8 +683,9 @@ class TvActivity : AppCompatActivity()
 	{
 		try { if(com.metallic.chiaki.hdmi.HdmiModeService.running) com.metallic.chiaki.hdmi.HdmiModeService.stop(this) } catch(_: Throwable) { }
 		try { vm.discoveryManager.active = false } catch(_: Throwable) { }
-		toast("เลิกเล่นแล้ว · ตัดการเชื่อมต่อ PS5 เรียบร้อย")
-		main.postDelayed({ finishAffinity() }, 600)
+		// Android does not let apps switch a Bluetooth controller off: tell the player the one-button way
+		toast("เลิกเล่นแล้ว ✔ ปิดจอย: กดปุ่ม PS ค้างไว้ 10 วินาที")
+		main.postDelayed({ finishAffinity() }, 1800)
 	}
 
 	private fun hostCard(name: String, sub: String, badge: String, onClick: () -> Unit): View
@@ -780,8 +794,8 @@ class TvActivity : AppCompatActivity()
 			else "เลือกช่องที่เสียบสาย HDMI จาก PS5 · ไม่ใช่ช่อง eARC / ARC ที่ต่อลำโพงหรือซาวด์บาร์ · เลือกผิด กลับมาเลือกใหม่ได้ทุกครั้ง",
 			24f, Ui.MUTED).apply { setLineSpacing(0f, 1.25f) }, llp(1200, WRAP, t = 8))
 		var closed = false
-		fun close() { if(closed) return; closed = true; keyCatcher = null
-			panel.animate().alpha(0f).setDuration(160).withEndAction { root.removeView(panel) }.start() }
+		fun close() { if(closed) return; closed = true; keyCatcher = null; dropPanel(panel, 160) }
+		openPanels[panel] = { close() }
 		var focus: View? = null
 		var row: LinearLayout? = null
 		inputs.forEachIndexed { k, inp ->
@@ -921,8 +935,8 @@ class TvActivity : AppCompatActivity()
 
 		var closed = false
 		lateinit var tick: Runnable
-		fun close() { if(closed) return; closed = true; main.removeCallbacks(tick); keyCatcher = null
-			panel.animate().alpha(0f).setDuration(180).withEndAction { root.removeView(panel) }.start() }
+		fun close() { if(closed) return; closed = true; main.removeCallbacks(tick); keyCatcher = null; dropPanel(panel, 180) }
+		openPanels[panel] = { close() }
 		fun set(key: String, good: Boolean?, title: String, sub: String)
 		{
 			val r = rows[key] ?: return
@@ -1109,6 +1123,10 @@ class TvActivity : AppCompatActivity()
 		val left = Ui.col(this)
 		left.addView(text(this, "ตั้งค่าซับไทย", 44f, Ui.TEXT, W.BOLD))
 		left.addView(text(this, "เลือกแล้วดูผลได้ทันทีในภาพตัวอย่างด้านขวา", 22f, Ui.MUTED), llp(WRAP, WRAP, t = 2))
+		section(left, "แปลจาก", listOf(
+			option("อ่านซับบนจอ", "แนะนำ · ลื่นสุด", { prefs().mode == TranslatorPrefs.Mode.SCREEN }, { prefs().setMode(TranslatorPrefs.Mode.SCREEN); clearAutoMode() }, size = 22f),
+			option("ฟังเสียง + อ่านซับ", "ได้ทุกบทพูด", { prefs().mode == TranslatorPrefs.Mode.BOTH }, { prefs().setMode(TranslatorPrefs.Mode.BOTH); clearAutoMode() }, size = 22f),
+			option("ฟังเสียงอย่างเดียว", "ไม่ต้องเปิดซับในเกม", { prefs().mode == TranslatorPrefs.Mode.SPEECH }, { prefs().setMode(TranslatorPrefs.Mode.SPEECH); clearAutoMode() }, size = 22f)), 76)
 		section(left, "ขนาดตัวอักษร", listOf("english" to "เท่าซับอังกฤษ", "small" to "เล็ก", "medium" to "กลาง", "large" to "ใหญ่", "xlarge" to "ใหญ่มาก").map { (value, label) ->
 			option(label, null, { str("tr_text_size", "medium") == value }, { put("tr_text_size", value) }, size = 22f) }, 66)
 		section(left, "สีตัวอักษร (ขอบดำทุกสี)", listOf(Triple("white", "ขาว", 0xFFFFFFFF.toInt()), Triple("yellow", "เหลือง", 0xFFFFE14D.toInt()),
@@ -1261,7 +1279,8 @@ class TvActivity : AppCompatActivity()
 		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(250).start()
 		val total = names.size
 		fun show() { val (g, n) = names[got.size]; step.text = "ขั้นที่ ${got.size + 1}/$total"; glyph.text = g; ask.text = "กดปุ่ม $g ($n)" }
-		fun close() { keyCatcher = null; panel.animate().alpha(0f).setDuration(200).withEndAction { root.removeView(panel) }.start() }
+		fun close() { keyCatcher = null; dropPanel(panel, 200) }
+		openPanels[panel] = { close() }
 		fun next()
 		{
 			glyph.animate().scaleX(1.15f).scaleY(1.15f).setDuration(90).withEndAction { glyph.animate().scaleX(1f).scaleY(1f).setDuration(120).start() }.start()

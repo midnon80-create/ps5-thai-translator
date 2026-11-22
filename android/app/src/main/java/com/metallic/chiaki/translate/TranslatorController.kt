@@ -592,6 +592,12 @@ class TranslatorController(
 			if(ok) { Diag.mark(context, Diag.AI_AT); st.incrementAndGet(6) }
 			else Diag.mark(context, Diag.OFFLINE_AT, Diag.OFFLINE_WHY to (c?.problem?.name ?: "SERVER_FAILED"))
 			if(!ok && fastShown.get()) return@whenComplete
+			if(!ok && c != null && c.problem != CloudTranslator.Problem.OFFLINE)
+			{
+				// what is already known (shared library / phrase bank) is still shown
+				if(known.all { it != null }) show(known.filterNotNull().joinToString(" "))
+				return@whenComplete
+			}
 			merge(fromCloud)?.let(show)
 		}
 	}
