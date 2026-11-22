@@ -580,6 +580,31 @@ class TvActivity : AppCompatActivity()
 			status.addView(row, llp(MATCH, WRAP, t = 20))
 		}
 		col.addView(status, llp(MATCH, WRAP, t = 6))
+		// play mode: 4K over HDMI (TV with the PS5 plugged in) or through the app (any TV / box / dongle)
+		val hdmiAvailable = !Store.IS_PLAY
+		fun isHdmi() = hdmiAvailable && sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
+		val modeRow = Ui.row(this)
+		val modeCards = ArrayList<Card>()
+		fun modeCard(title: String, sub: String, hdmiCard: Boolean): Card
+		{
+			val card = Card(this, 22f, Ui.PANEL) { isHdmi() == hdmiCard }
+			card.grow = 1.03f
+			val c = Ui.col(this).apply { setPadding(24, 14, 24, 14); gravity = Gravity.CENTER_VERTICAL }
+			c.addView(text(this, title, 27f, Ui.TEXT, W.SEMIBOLD))
+			c.addView(text(this, sub, 20f, Ui.MUTED).apply { maxLines = 2 }, llp(WRAP, WRAP, t = 2))
+			card.addView(c, FrameLayout.LayoutParams(MATCH, MATCH))
+			card.setOnClickListener {
+				if(hdmiCard && !hdmiAvailable) { toast("โหมด 4K ผ่าน HDMI กำลังมาในเวอร์ชัน Google Play เร็ว ๆ นี้"); return@setOnClickListener }
+				sp.edit().putString(KEY_PLAY_MODE, if(hdmiCard) "hdmi" else "stream").apply()
+				modeCards.forEach { it.refresh() }
+				toast(if(hdmiCard) "โหมด 4K: เสียบ PS5 เข้าทีวีเครื่องนี้ แล้วกดการ์ด PS5" else "โหมดเล่นผ่านแอป: ต่อจอยกับทีวี แล้วกดการ์ด PS5")
+			}
+			modeCards.add(card)
+			return card
+		}
+		modeRow.addView(modeCard("โหมด 4K · HDMI", if(hdmiAvailable) "ภาพ 4K ไม่ดรอป · จอยต่อ PS5" else "เร็ว ๆ นี้", true), llp(0, 112, 1f))
+		modeRow.addView(modeCard("โหมดเล่นผ่านแอป", "ทีวีทุกรุ่น · กล่อง · ดองเกิล", false), llp(0, 112, 1f, l = 20))
+		col.addView(modeRow, llp(MATCH, WRAP, t = 22))
 		val noteCard = text(this, "", 24f, Ui.MUTED).apply {
 			background = Ui.round(Ui.PANEL, 26f, 2, Ui.LINE); setPadding(34, 26, 34, 26)
 			text = android.text.SpannableStringBuilder("แปลเฉพาะ ").apply {
@@ -642,8 +667,17 @@ class TvActivity : AppCompatActivity()
 		vm.displayHosts.value?.let { lastHosts = it; renderHosts(it) } ?: renderHosts(emptyList())
 		vm.displayHosts.observe(this) { list -> if(tab == 0 && list.map { it.host + it.registeredHost?.id } != lastHosts?.map { it.host + it.registeredHost?.id }) { lastHosts = list; renderHosts(list) } }
 		val tick = object : Runnable { override fun run() {
-			val pads = Diag.gamepads()
-			setTile("pad", pads.isNotEmpty(), if(pads.isNotEmpty()) "จอยพร้อม" else "ยังไม่มีจอย", if(pads.isNotEmpty()) pads.first().take(24) else "ไปที่แท็บ จอย เพื่อจับคู่")
+			if(isHdmi())
+			{
+				val okOv = com.metallic.chiaki.hdmi.HdmiModeService.canDrawOverlays(this@TvActivity)
+				setTile("pad", okOv, if(com.metallic.chiaki.hdmi.HdmiModeService.running) "โหมด 4K ทำงานอยู่" else if(okOv) "โหมด 4K พร้อม" else "ยังไม่อนุญาตแสดงทับ",
+					if(okOv) "จอยต่อ PS5 ตามปกติ" else "กดการ์ด PS5 แล้วทำตามข้อแรก")
+			}
+			else
+			{
+				val pads = Diag.gamepads()
+				setTile("pad", pads.isNotEmpty(), if(pads.isNotEmpty()) "จอยพร้อม" else "ยังไม่มีจอย", if(pads.isNotEmpty()) pads.first().take(24) else "ไปที่แท็บ จอย เพื่อจับคู่")
+			}
 			main.postDelayed(this, 1500) } }
 		startRefresh(tick)
 		return v
