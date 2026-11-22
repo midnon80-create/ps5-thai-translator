@@ -63,6 +63,18 @@ class HdmiModeService : Service()
 		}
 
 		@Volatile private var instance: HdmiModeService? = null
+		private const val WINDOW_FLAGS = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+		private const val PASS_THROUGH = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+
+		/** Our app's pages are on screen (true) or the TV shows the PS5 / anything else (false). */
+		@Volatile var appInFront = true
+			private set
+
+		fun setAppInFront(front: Boolean)
+		{
+			appInFront = front
+			instance?.let { s -> s.main.post { s.applyFocus() } }
+		}
 
 		/** Stops 4K mode: straight to the running service (asking Android to start it with "stop" can be refused). */
 		fun stop(c: Context)
@@ -91,7 +103,30 @@ class HdmiModeService : Service()
 
 	override fun onBind(intent: Intent?): IBinder? = null
 
-	override fun onCreate() { super.onCreate(); instance = this }
+	// any screen of this app in front = the 4K window lets keys through; none (the TV shows the PS5) = it takes them
+	private var resumedScreens = 1 // started from the app's home screen, which is in front
+	private val screens = object : android.app.Application.ActivityLifecycleCallbacks {
+		override fun onActivityResumed(a: android.app.Activity) { resumedScreens++; setAppInFront(true) }
+		override fun onActivityPaused(a: android.app.Activity)
+		{
+			resumedScreens = maxOf(0, resumedScreens - 1)
+			// switching between two of our screens resumes the next one right away
+			main.postDelayed({ if(resumedScreens == 0) setAppInFront(false) }, 600)
+		}
+		override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {}
+		override fun onActivityStarted(a: android.app.Activity) {}
+		override fun onActivityStopped(a: android.app.Activity) {}
+		override fun onActivitySaveInstanceState(a: android.app.Activity, b: android.os.Bundle) {}
+		override fun onActivityDestroyed(a: android.app.Activity) {}
+	}
+
+	override fun onCreate()
+	{
+		super.onCreate()
+		instance = this
+		appInFront = true
+		application.registerActivityLifecycleCallbacks(screens)
+	}
 
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int
 	{
@@ -149,12 +184,14 @@ class HdmiModeService : Service()
 			WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
 			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
 			else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
-			// focusable: a controller connected to the TV plays the PS5 through this window (otherwise the TV takes it
-			// as a remote: L2/R2 = volume, touchpad = mouse arrow)
-			WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+			// takes keys only while the TV shows the PS5 (see setAppInFront): then a controller connected to the TV plays
+			// the PS5 through this window (otherwise the TV takes it as a remote: L2/R2 = volume, touchpad = mouse arrow).
+			// While our own app is on screen it must let every key through, or the app's pages cannot be used.
+			WINDOW_FLAGS or (if(appInFront) PASS_THROUGH else 0),
 			PixelFormat.TRANSLUCENT)
 		wm.addView(root, lp)
 		overlay = root
+		overlayLp = lp
 		setUpController(root)
 		// a controller that disconnects never leaves a button held down on the PS5
 		val im = getSystemService(android.hardware.input.InputManager::class.java)
@@ -208,6 +245,17 @@ class HdmiModeService : Service()
 	// ---- controller: same handling as app mode (StreamInput: button fixes, triggers, sticks)
 	private val input by lazy { com.metallic.chiaki.session.StreamInput(this, com.metallic.chiaki.common.Preferences(this)) }
 	private var backAt = 0L
+	private var overlayLp: WindowManager.LayoutParams? = null
+
+	/** Lets keys through to the app while it is in front; takes them (controller -> PS5) otherwise. */
+	private fun applyFocus()
+	{
+		val v = overlay ?: return
+		val lp = overlayLp ?: return
+		lp.flags = WINDOW_FLAGS or (if(appInFront) PASS_THROUGH else 0)
+		try { getSystemService(WindowManager::class.java).updateViewLayout(v, lp) } catch(_: Throwable) { }
+		if(!appInFront) v.post { v.requestFocus() }
+	}
 	private var padListener: android.hardware.input.InputManager.InputDeviceListener? = null
 
 	private fun setUpController(root: View)
@@ -362,6 +410,7 @@ class HdmiModeService : Service()
 	override fun onDestroy()
 	{
 		if(instance === this) instance = null
+		try { application.unregisterActivityLifecycleCallbacks(screens) } catch(_: Throwable) { }
 		stopEverything()
 		super.onDestroy()
 	}
