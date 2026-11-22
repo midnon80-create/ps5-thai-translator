@@ -69,6 +69,7 @@ class HdmiModeService : Service()
 	private var overlay: View? = null
 	private var ui: TranslatorOverlay? = null
 	private var translator: TranslatorController? = null
+	private var startedAt = 0L
 
 	// newest picture from the hidden stream, as a small grey image for the text reader
 	private val frameLock = Any()
@@ -160,6 +161,7 @@ class HdmiModeService : Service()
 		val tr = TranslatorController(this, null, overlayUi) { latestFrame() }
 		translator = tr
 		tr.start()
+		startedAt = SystemClock.elapsedRealtime()
 	}
 
 	private fun onEvent(ev: Event)
@@ -225,6 +227,14 @@ class HdmiModeService : Service()
 	private fun stopEverything()
 	{
 		running = false
+		try
+		{
+			val stats = translator?.stats()
+			if(stats != null && startedAt > 0)
+				com.metallic.chiaki.translate.SessionReport.send(this, "hdmi", (SystemClock.elapsedRealtime() - startedAt) / 1000, stats, null, lastProblem)
+		}
+		catch(_: Throwable) { }
+		startedAt = 0
 		try { translator?.stop() } catch(_: Throwable) { }
 		translator = null
 		try { session?.stop(); session?.dispose() } catch(_: Throwable) { }

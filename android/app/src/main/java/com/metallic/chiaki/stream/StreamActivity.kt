@@ -213,6 +213,7 @@ class StreamActivity : AppCompatActivity()
 	}
 
 	private var resumedAt = 0L
+	private var lastQuit: String? = null
 
 	override fun onResume()
 	{
@@ -227,10 +228,14 @@ class StreamActivity : AppCompatActivity()
 	{
 		super.onPause()
 		viewModel.input.releaseAll() // nothing stays held down ("จอยค้าง") when the app leaves the screen
+		val stats = try { translator?.stats() } catch(_: Throwable) { null }
 		translator?.stop()
 		// auto picture: a game whose picture kept breaking up plays one step lighter next time
 		val played = (android.os.SystemClock.elapsedRealtime() - resumedAt) / 1000
 		val log = viewModel.session.logFile
+		// end-of-game report for the owner's Devices page (TV model, subtitle / picture counters, no personal data)
+		try { com.metallic.chiaki.translate.SessionReport.send(this, "stream", played, stats, log, lastQuit) } catch(_: Throwable) { }
+		lastQuit = null
 		viewModel.session.pause()
 		val ctx = applicationContext
 		Thread { try { com.metallic.chiaki.tv.DeviceCaps.learnFromSession(ctx, log, played) } catch(_: Throwable) { } }.start()
@@ -380,6 +385,7 @@ class StreamActivity : AppCompatActivity()
 						dialog?.dismiss()
 						val reasonStr = state.reasonString
 						val reasonText = state.reason.toString()
+						lastQuit = reasonText + (if(reasonStr != null) " · $reasonStr" else "")
 						// The PS5 keeps the last session for a few seconds after a drop (or is still waking up):
 						// wait and reconnect by itself a few times before bothering the player.
 						if(autoRetries == 0) reportSession("หลุด: $reasonText · ${reasonStr ?: ""}")

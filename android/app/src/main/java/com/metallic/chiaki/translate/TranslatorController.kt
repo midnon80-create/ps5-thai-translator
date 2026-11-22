@@ -119,7 +119,7 @@ class TranslatorController(
 		}
 		else if(mode != TranslatorPrefs.Mode.SPEECH)
 		{
-			screenReader = ScreenReader(context)
+			screenReader = ScreenReader(context).also { engineSeen = it.engineName }
 			copyThread = HandlerThread("translator-copy").also { it.start() }
 			main.postDelayed(grabRunnable, FRAME_INTERVAL_MS)
 		}
@@ -186,6 +186,18 @@ class TranslatorController(
 		status("ยังไม่เห็นซับอังกฤษ: " + why + nl + "เปิดซับในเกม (Subtitles: On) · ถ้ายังไม่ขึ้น ถ่ายรูปนี้ส่งผู้ขาย [" + code + "]")
 		main.postDelayed({ if(running.get()) ui.showStatus(null) }, 15000)
 	}
+
+	@Volatile private var engineSeen = ""
+
+	/** Counters for the end-of-game report since the last call (take it before [stop]). */
+	fun stats(): SessionReport.Stats
+	{
+		val s = SessionReport.Stats(
+			reads = st.getAndSet(3, 0), saw = st.getAndSet(4, 0), shown = st.get(5), ai = st.getAndSet(6, 0), copyFailed = st.getAndSet(1, 0),
+			readMs = readMs.toInt(), engine = screenReader?.engineName ?: engineSeen)
+		shownBase.let { b -> shownBase = s.shown; return s.copy(shown = s.shown - b) }
+	}
+	@Volatile private var shownBase = 0 // st[5] stays (it tells the 90-second check that subtitles already showed)
 
 	fun setStreamConnected(connected: Boolean)
 	{
@@ -541,7 +553,7 @@ class TranslatorController(
 			mainDone.set(true)
 			if(!running.get() || !isCurrent()) return@whenComplete
 			val ok = fromCloud != null && !fromCloud.all { it == null }
-			if(ok) Diag.mark(context, Diag.AI_AT)
+			if(ok) { Diag.mark(context, Diag.AI_AT); st.incrementAndGet(6) }
 			else Diag.mark(context, Diag.OFFLINE_AT, Diag.OFFLINE_WHY to (c?.problem?.name ?: "SERVER_FAILED"))
 			if(!ok && fastShown.get()) return@whenComplete
 			merge(fromCloud)?.let(show)
