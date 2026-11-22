@@ -14,6 +14,8 @@ void *android_chiaki_audio_output_new(ChiakiLog *log);
 void android_chiaki_audio_output_free(void *audio_output);
 void android_chiaki_audio_output_settings(uint32_t channels, uint32_t rate, void *audio_output);
 void android_chiaki_audio_output_frame(int16_t *buf, size_t samples_count, void *audio_output);
+/** HDMI mode: the PS5's own sound plays through HDMI, so the stream's copy stays silent (speech reading still gets it). */
+void android_chiaki_audio_output_set_muted(int muted);
 
 #ifdef __cplusplus
 }

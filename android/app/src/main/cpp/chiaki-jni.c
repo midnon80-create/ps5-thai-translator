@@ -410,6 +410,11 @@ JNIEXPORT void JNICALL JNI_FCN(sessionSetSurface)(JNIEnv *env, jobject obj, jlon
 	android_chiaki_video_decoder_set_surface(&session->video_decoder, env, surface);
 }
 
+JNIEXPORT void JNICALL JNI_FCN(audioSetMuted)(JNIEnv *env, jobject obj, jboolean muted)
+{
+	android_chiaki_audio_output_set_muted(muted ? 1 : 0);
+}
+
 JNIEXPORT void JNICALL JNI_FCN(sessionSetControllerState)(JNIEnv *env, jobject obj, jlong ptr, jobject controller_state_java)
 {
 	AndroidChiakiSession *session = (AndroidChiakiSession *)ptr;

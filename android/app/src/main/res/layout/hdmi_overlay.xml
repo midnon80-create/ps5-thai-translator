@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HDMI mode: a transparent window over the TV's HDMI picture that only holds the Thai subtitles. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <!-- stands for the game picture (the whole screen) when placing the Thai line -->
+    <View
+        android:id="@+id/hdmiVideo"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent" />
+
+    <LinearLayout
+        android:id="@+id/translatorOverlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="28dp"
+        android:layout_marginLeft="48dp"
+        android:layout_marginRight="48dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:focusable="false"
+        android:clickable="false">
+
+        <TextView
+            android:id="@+id/translatorStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/translator_bg"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:layout_marginBottom="6dp"
+            android:textColor="#FFE082"
+            android:textSize="16sp"
+            android:visibility="gone" />
+
+        <com.metallic.chiaki.translate.SubtitleTextView
+            android:id="@+id/translatorScreenText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/translator_bg"
+            android:gravity="center"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="26sp"
+            android:visibility="gone" />
+
+        <com.metallic.chiaki.translate.SubtitleTextView
+            android:id="@+id/translatorSpeechText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/translator_bg"
+            android:gravity="center"
+            android:paddingLeft="20dp"
+            android:paddingRight="20dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textColor="#B3E5FC"
+            android:textStyle="bold"
+            android:textSize="26sp"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

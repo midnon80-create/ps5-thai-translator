@@ -25,8 +25,10 @@ import java.util.concurrent.atomic.AtomicIntegerArray
  */
 class TranslatorController(
 	private val context: Context,
-	private val surfaceView: SurfaceView,
-	private val ui: Ui)
+	private val surfaceView: SurfaceView?,
+	private val ui: Ui,
+	/** HDMI mode: frames come from the hidden stream instead of a SurfaceView on screen (null = nothing new yet). */
+	private val frameSource: (() -> Bitmap?)? = null)
 {
 	interface Ui
 	{
@@ -221,23 +223,37 @@ class TranslatorController(
 		}
 	}
 
-	/** Rows [top, bottom) to read: the learned band (plus room for a second line), else the lower 45 %. */
+	/** Rows [top, bottom) to read: the learned band (plus room for more lines), else the lower 45 %. */
+	@Volatile private var bandMissed = false
 	private fun subtitleBand(h: Int): IntArray
 	{
 		val wide = intArrayOf((h * 0.55f).toInt(), h)
 		bandReads++
 		val tops: List<Int>; val bottoms: List<Int>
 		synchronized(bandTops) { tops = bandTops.sorted(); bottoms = bandBottoms.sorted() }
-		// every 12th read looks at the whole lower part again, so a moved or 3-line subtitle is found too
-		if(tops.size < 4 || bandReads % 12 == 0) return wide
+		// the whole lower part again every 3rd read, and right after the band came up empty: GTA switches between
+		// big one-line and small two-line subtitles at another height (they were missed for seconds before)
+		if(tops.size < 4 || bandReads % 3 == 0 || bandMissed) return wide
 		val top = tops[tops.size / 2]
 		val bottom = bottoms[bottoms.size / 2]
 		val line = maxOf(h / 30, (bottom - top) / 2)
-		return intArrayOf(maxOf(wide[0], top - line * 2), minOf(h, bottom + line))
+		return intArrayOf(maxOf(wide[0], top - line * 3), minOf(h, bottom + line * 2))
 	}
 
 	private fun grabFrame()
 	{
+		val src = frameSource
+		if(src != null)
+		{
+			busy.set(true)
+			st.incrementAndGet(0)
+			worker.execute {
+				val b = try { src() } catch(_: Throwable) { null }
+				if(b != null && running.get()) processFrame(b) else { if(b == null) st.incrementAndGet(1); busy.set(false) }
+			}
+			return
+		}
+		val surfaceView = surfaceView ?: return
 		val handlerThread = copyThread ?: return
 		val holderSurface = surfaceView.holder.surface
 		if(holderSurface == null || !holderSurface.isValid || Build.VERSION.SDK_INT < Build.VERSION_CODES.N)
@@ -304,7 +320,12 @@ class TranslatorController(
 			// do not recycle the cropped copy: on slow TVs ML Kit may still be reading it after a time-out
 			// (recycling it crashed 32-bit TVs); the garbage collector frees it safely
 			if(reader.timedOut) { frame = null; slowReads++ } // the shared frame may still be in use too: take a fresh one next time
-			val dialogue = blocks.firstOrNull { it.kind == TextKind.DIALOGUE }
+			// subtitles sit low on the screen; text around the middle (the in-game phone, menus) is not a subtitle:
+			// it moved the Thai line up to the middle of the screen and taught the band the wrong height
+			val dialogue = blocks.firstOrNull { it.kind == TextKind.DIALOGUE &&
+				(it.box.centerY() + yOffset).toFloat() / bmp.height >= SUBTITLE_MIN_CENTER }
+			val readWide = band[0] <= (bmp.height * 0.56f).toInt()
+			if(!full) bandMissed = dialogue == null && !readWide
 			if(!full && dialogue != null) learnBand(dialogue.box.top + yOffset, dialogue.box.bottom + yOffset, bmp.height)
 			val english = dialogue?.text ?: ""
 			val now = SystemClock.elapsedRealtime()
@@ -565,6 +586,8 @@ class TranslatorController(
 		private const val TAG = "Translator"
 		private const val FRAME_INTERVAL_MS = 250L // 4 reads a second
 		private const val FRAME_INTERVAL_IDLE_MS = 600L
+		/** A subtitle's centre is below this fraction of the picture (GTA: ~0.8-0.93; the in-game phone: ~0.55-0.75). */
+		private const val SUBTITLE_MIN_CENTER = 0.70f
 		private const val SIG_W = 64
 		private const val SIG_H = 16
 		private const val MAX_SKIPS = 6 // re-read at least every ~3 s anyway

@@ -239,7 +239,7 @@ class SubtitleTracker
 		val key = normalise(text)
 		if(key.isEmpty())
 		{
-			pendingKey = ""
+			pendingKey = ""; pendingText = ""; pendingReads = 0
 			if(shownKey.isEmpty()) return Action.None
 			if(emptySince == 0L) emptySince = now
 			if(now - emptySince > CLEAR_AFTER_MS)
@@ -256,22 +256,46 @@ class SubtitleTracker
 		// a shorter, partial read of the line already shown (OCR missed a bit): keep the full one
 		if(shownKey.isNotEmpty() && key.length < shownKey.length && shownKey.split(' ').toSet().containsAll(key.split(' ')))
 			return Action.None
-		if(pendingKey.isNotEmpty() && similar(key, pendingKey) >= 0.9)
+		// A clearly different line is on screen: take the old Thai down at once. Before, the old line stayed up
+		// for as long as the new one had not been read the same way twice (small 2-line subtitles never were).
+		if(shownKey.isNotEmpty() && similar(key, shownKey) < 0.6)
 		{
-			// Seen twice in a row: it stopped typing out, translate it.
-			shownKey = key
-			pendingKey = ""
-			return Action.Show(text)
+			shownKey = ""
+			pendingKey = key; pendingText = text; pendingReads = 1
+			return Action.Clear
 		}
+		if(pendingKey.isNotEmpty() && similar(key, pendingKey) >= 0.8)
+		{
+			// Seen twice in a row (OCR may differ a little): it stopped typing out, translate it.
+			shownKey = key
+			pendingKey = ""; pendingReads = 0
+			return Action.Show(if(text.length >= pendingText.length) text else pendingText)
+		}
+		// still changing: a line read 3 times in a row without settling (jittery small text) is shown anyway,
+		// the longest read wins (it is usually the most complete)
+		pendingReads++
+		if(text.length > pendingText.length || pendingKey.isEmpty()) pendingText = text
 		pendingKey = key
+		if(pendingReads >= 3)
+		{
+			shownKey = key
+			val best = pendingText
+			pendingKey = ""; pendingText = ""; pendingReads = 0
+			return Action.Show(best)
+		}
 		return Action.None
 	}
+
+	private var pendingText = ""
+	private var pendingReads = 0
 
 	fun reset()
 	{
 		pendingKey = ""
 		shownKey = ""
 		emptySince = 0L
+		pendingText = ""
+		pendingReads = 0
 	}
 
 	companion object

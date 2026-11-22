@@ -677,7 +677,44 @@ class TvActivity : AppCompatActivity()
 			})
 			return
 		}
+		if(com.metallic.chiaki.hdmi.HdmiModeService.running)
+		{
+			guide("โหมด HDMI ทำงานอยู่", listOf(
+				"ซับไทยกำลังทำงานเบื้องหลัง · สลับทีวีไปช่อง HDMI ที่ต่อ PS5 เพื่อเล่น",
+				"ต้องการเลิก หรือเปลี่ยนไปเล่นผ่านแอป: กด \"หยุดโหมด HDMI\""),
+				"หยุดโหมด HDMI") { com.metallic.chiaki.hdmi.HdmiModeService.stop(this); toast("หยุดโหมด HDMI แล้ว") }
+			return
+		}
+		com.metallic.chiaki.hdmi.HdmiModeService.lastProblem?.let { p ->
+			com.metallic.chiaki.hdmi.HdmiModeService.lastProblem = null
+			toast("โหมด HDMI ครั้งก่อน: $p")
+		}
 		preflight(host, registeredHost)
+	}
+
+	private fun modeLabel(hdmi: Boolean) =
+		if(hdmi) "โหมด: เล่นผ่าน HDMI (ภาพ 4K · จอยต่อ PS5) · กดเพื่อเปลี่ยน" else "โหมด: เล่นผ่านแอป (จอยต่อทีวี) · กดเพื่อเปลี่ยนเป็นเล่นผ่าน HDMI"
+
+	private fun openOverlaySettings()
+	{
+		val tries = listOf(
+			Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName")),
+			Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+			Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
+		for(i in tries) try { startActivity(i); return } catch(_: Throwable) { }
+		toast("เปิดหน้าตั้งค่าไม่ได้ · ทีวีนี้อาจไม่รองรับโหมด HDMI")
+	}
+
+	/** HDMI mode: start the hidden stream + overlay, then tell the player to switch the TV to the PS5's HDMI input. */
+	private fun startHdmi(host: DisplayHost, registeredHost: RegisteredHost)
+	{
+		val info = ConnectInfo(host.isPS5, host.host, registeredHost.rpRegistKey, registeredHost.rpKey, Preferences(this).videoProfile)
+		com.metallic.chiaki.hdmi.HdmiModeService.start(this, info)
+		guide("เริ่มโหมด HDMI แล้ว", listOf(
+			"ใช้รีโมททีวีกดเปลี่ยนแหล่งสัญญาณ (Input / Source) ไปช่อง HDMI ที่ต่อ PS5",
+			"เล่นด้วยจอยที่ต่อ PS5 ตามปกติ ซับไทยจะขึ้นทับภาพเอง (ต้องเปิดซับไตเติลในเกม)",
+			"ไม่เห็นซับไทยเลยหลัง 1 นาที: ทีวีรุ่นนี้อาจไม่ให้แสดงทับช่อง HDMI · กลับมาที่แอปแล้วใช้โหมดเล่นผ่านแอป",
+			"เลิกเล่น: เปิดแอปนี้แล้วกดการ์ด PS5 › หยุดโหมด HDMI"), null) { }
 	}
 
 	/** Step-by-step help for one checklist line, with an optional button that does the fix. */
@@ -711,6 +748,30 @@ class TvActivity : AppCompatActivity()
 		val box = Ui.col(this).apply { background = Ui.round(Ui.PANEL2, 36f, 3, Ui.VIOLET2); setPadding(64, 48, 64, 48) }
 		box.addView(text(this, "เช็กก่อนเข้าเกม", 46f, Ui.TEXT, W.BOLD))
 		box.addView(text(this, "ต้องผ่านครบ 4 ข้อ ซับไทยถึงจะขึ้น · ข้อไหนยังไม่ผ่าน กดที่ข้อนั้นเพื่อแก้", 24f, Ui.MUTED), llp(WRAP, WRAP, t = 6))
+		// play mode (link build): through the app (stream) or on the TV's HDMI input with Thai drawn on top
+		val hdmiAllowed = !Store.IS_PLAY
+		fun hdmi() = hdmiAllowed && sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
+		var modeText: TextView? = null
+		if(hdmiAllowed)
+		{
+			val mode = Card(this, 22f); mode.grow = 1.02f
+			val mt = text(this, "", 26f, Ui.TEXT, W.MEDIUM, Gravity.CENTER_VERTICAL).apply { setPadding(30, 0, 30, 0) }
+			mode.addView(mt, FrameLayout.LayoutParams(MATCH, MATCH))
+			modeText = mt
+			mode.setOnClickListener {
+				if(hdmi()) sp.edit().putString(KEY_PLAY_MODE, "stream").apply()
+				else guide("เล่นผ่าน HDMI (ทดลอง)", listOf(
+					"ภาพเกมมาจาก HDMI ของ PS5 ตรง ๆ: ภาพ 4K ไม่หน่วง จอยต่อ PS5 ตามปกติ ไม่ต้องต่อทีวี",
+					"แอปจะต่อ PS5 เบื้องหลังเพื่ออ่านซับอย่างเดียว แล้ววาดซับไทยทับภาพ HDMI",
+					"ใช้ได้เฉพาะทีวี Android TV / Google TV ที่ PS5 เสียบอยู่ (กล่องหรือดองเกิลใช้โหมดนี้ไม่ได้)",
+					"ต้องอนุญาต \"แสดงทับแอปอื่น\" ให้แอปนี้ (ข้อแรกในรายการจะพาไป)",
+					"ทีวีบางรุ่นปิดแอปเบื้องหลังหรือไม่ให้แสดงทับช่อง HDMI: ถ้าไม่เห็นซับ ให้กลับมาใช้โหมดเล่นผ่านแอป"),
+					"ใช้โหมด HDMI") { sp.edit().putString(KEY_PLAY_MODE, "hdmi").apply() }
+				main.postDelayed({ modeText?.text = modeLabel(hdmi()) }, 300)
+			}
+			box.addView(mode, llp(1100, 84, t = 16))
+			mt.text = modeLabel(hdmi())
+		}
 		data class Row(val card: Card, val mark: TextView, val title: TextView, val sub: TextView)
 		val rows = HashMap<String, Row>()
 		var wakeSent = false
@@ -752,13 +813,25 @@ class TvActivity : AppCompatActivity()
 		}
 		var allOk = false
 		go.setOnClickListener {
-			if(allOk) { close(); connect(currentHost(), registeredHost) }
-			else toast("ยังไม่ครบ · กดที่ข้อที่มี ✕ เพื่อแก้ก่อน")
+			if(!allOk) { toast("ยังไม่ครบ · กดที่ข้อที่มี ✕ เพื่อแก้ก่อน"); return@setOnClickListener }
+			close()
+			if(hdmi()) startHdmi(currentHost(), registeredHost) else connect(currentHost(), registeredHost)
 		}
 		// every line that is not ready opens step-by-step help with a button that does the fix
 		fun ready(key: String) = rows[key]?.mark?.text == "✔"
 		fixes["pad"] = {
-			if(ready("pad")) toast("จอยพร้อมแล้ว ✔")
+			if(hdmi())
+			{
+				if(ready("pad")) toast("อนุญาตแล้ว ✔")
+				else guide("อนุญาตให้แอปแสดงซับทับภาพ HDMI", listOf(
+					"กด \"ไปที่การตั้งค่า\" ด้านล่าง",
+					"หาแอป Eyesmaxxing แล้วเปิด \"อนุญาตให้แสดงทับแอปอื่น\" (Display over other apps)",
+					"ถ้าไม่เจอเมนูนี้: ตั้งค่าทีวี › แอป › สิทธิ์เข้าถึงพิเศษของแอป › แสดงทับแอปอื่น",
+					"ทีวีบางรุ่นไม่มีเมนูนี้เลย = ใช้โหมด HDMI ไม่ได้ ให้กดเปลี่ยนกลับเป็นโหมดเล่นผ่านแอป",
+					"กดย้อนกลับมาหน้านี้ ข้อนี้จะขึ้น ✔ เอง"),
+					"ไปที่การตั้งค่า") { openOverlaySettings() }
+			}
+			else if(ready("pad")) toast("จอยพร้อมแล้ว ✔")
 			else guide("ต่อจอยกับทีวี", listOf(
 				"จอยต้องต่อกับทีวี ไม่ใช่กับ PS5 (จอยที่ต่อ PS5 ใช้ในแอปไม่ได้)",
 				"ทางที่ง่ายสุด: เสียบสาย USB จากจอยเข้าทีวีตรง ๆ (ต้องเป็นสายที่ส่งข้อมูลได้ ไม่ใช่สายชาร์จอย่างเดียว)",
@@ -821,10 +894,20 @@ class TvActivity : AppCompatActivity()
 
 		tick = object : Runnable { override fun run() {
 			if(closed) return
-			// 1. controller on the TV
-			val pads = Diag.gamepads()
-			if(pads.isNotEmpty()) set("pad", true, "จอยต่อกับทีวีแล้ว", pads.first().take(40))
-			else set("pad", false, "ยังไม่ได้ต่อจอยกับทีวี", "จอยต้องต่อกับทีวี (ไม่ใช่ PS5) · เสียบสาย USB หรือกดที่นี่เพื่อจับคู่บลูทูธ (Create + PS ค้าง)")
+			// 1. controller on the TV (app mode) / permission to draw over the HDMI picture (HDMI mode)
+			if(hdmi())
+			{
+				if(com.metallic.chiaki.hdmi.HdmiModeService.canDrawOverlays(this@TvActivity))
+					set("pad", true, "แสดงซับทับภาพ HDMI ได้", "จอยต่อ PS5 ตามปกติ ไม่ต้องต่อทีวี")
+				else set("pad", false, "ยังไม่ได้อนุญาตให้แสดงทับแอปอื่น", "กดที่นี่ แล้วเปิด \"แสดงทับแอปอื่น\" ให้ Eyesmaxxing")
+			}
+			else
+			{
+				val pads = Diag.gamepads()
+				if(pads.isNotEmpty()) set("pad", true, "จอยต่อกับทีวีแล้ว", pads.first().take(40))
+				else set("pad", false, "ยังไม่ได้ต่อจอยกับทีวี", "จอยต้องต่อกับทีวี (ไม่ใช่ PS5) · เสียบสาย USB หรือกดที่นี่เพื่อจับคู่บลูทูธ (Create + PS ค้าง)")
+			}
+			modeText?.text = modeLabel(hdmi())
 			// 2. Thai subtitles switched on
 			if(TranslatorPrefs(this@TvActivity).enabled) set("subs", true, "เปิดซับไทยแล้ว", "ซับไทยจะขึ้นเองเมื่อเข้าเกม")
 			else set("subs", false, "ซับไทยปิดอยู่", "กดที่นี่เพื่อเปิด")
@@ -1159,5 +1242,7 @@ class TvActivity : AppCompatActivity()
 	companion object
 	{
 		const val KEY_ONBOARDED = "tv_onboarded"
+		/** "stream" = play through the app, "hdmi" = PS5 on the TV's HDMI input with Thai drawn on top (link build). */
+		const val KEY_PLAY_MODE = "tv_play_mode"
 	}
 }

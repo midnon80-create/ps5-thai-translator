@@ -119,11 +119,20 @@ extern "C" void android_chiaki_audio_output_settings(uint32_t channels, uint32_t
 	}
 }
 
+static std::atomic<bool> g_muted{false};
+
+extern "C" void android_chiaki_audio_output_set_muted(int muted)
+{
+	g_muted = muted != 0;
+}
+
 extern "C" void android_chiaki_audio_output_frame(int16_t *buf, size_t samples_count, void *audio_output)
 {
 	auto ao = reinterpret_cast<AudioOutput *>(audio_output);
 
 	android_chiaki_audio_tap_push(buf, samples_count);
+	if(g_muted)
+		return; // nothing queued: the output plays silence
 
 	// sound device lost or never opened: reopen (at most once a second)
 	if(ao->rate && (ao->reopen || !ao->stream || ao->stream->getState() == oboe::StreamState::Disconnected) && now_ms() >= ao->next_try_ms)

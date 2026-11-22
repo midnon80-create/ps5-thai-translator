@@ -22,7 +22,7 @@ import com.metallic.chiaki.R
  * [root] must be a FrameLayout-based screen that contains the views of the translator overlay
  * (ids translatorOverlay, translatorStatus, translatorScreenText, translatorSpeechText).
  */
-class TranslatorOverlay(private val root: View, private val video: SurfaceView) : TranslatorController.Ui
+class TranslatorOverlay(private val root: View, private val video: View) : TranslatorController.Ui
 {
 	private val context = root.context
 	private val prefs = TranslatorPrefs(context)

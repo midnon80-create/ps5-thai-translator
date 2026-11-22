@@ -1,0 +1,246 @@
+package com.metallic.chiaki.hdmi
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.ImageFormat
+import android.graphics.PixelFormat
+import android.media.ImageReader
+import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.IBinder
+import android.os.Looper
+import android.os.SystemClock
+import android.provider.Settings
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
+import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
+import com.metallic.chiaki.R
+import com.metallic.chiaki.lib.*
+import com.metallic.chiaki.translate.TranslatorController
+import com.metallic.chiaki.translate.TranslatorOverlay
+
+/**
+ * HDMI mode: the player watches the PS5 on the TV's HDMI input (full 4K, no lag, controller on the PS5) while this
+ * service keeps a silent, hidden Remote Play stream open only to read the English subtitles, and draws the Thai line
+ * in a transparent window on top of the HDMI picture.
+ *
+ * Needs: an Android / Google TV that the PS5 is plugged into (a box cannot draw over another HDMI input),
+ * "display over other apps" for this app, and the TV keeping this app running in the background.
+ */
+class HdmiModeService : Service()
+{
+	companion object
+	{
+		const val EXTRA_CONNECT_INFO = "connect_info"
+		private const val ACTION_STOP = "com.metallic.chiaki.hdmi.STOP"
+		private const val CHANNEL = "hdmi_mode"
+		private const val NOTE_ID = 7301
+
+		@Volatile var running = false
+			private set
+		/** Last thing that went wrong, shown on the home screen. */
+		@Volatile var lastProblem: String? = null
+
+		fun canDrawOverlays(c: Context) = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(c)
+
+		fun start(c: Context, info: ConnectInfo)
+		{
+			lastProblem = null
+			ContextCompat.startForegroundService(c, Intent(c, HdmiModeService::class.java).putExtra(EXTRA_CONNECT_INFO, info))
+		}
+
+		fun stop(c: Context) { c.startService(Intent(c, HdmiModeService::class.java).setAction(ACTION_STOP)) }
+	}
+
+	private val main = Handler(Looper.getMainLooper())
+	private var session: Session? = null
+	private var reader: ImageReader? = null
+	private var readerThread: HandlerThread? = null
+	private var overlay: View? = null
+	private var ui: TranslatorOverlay? = null
+	private var translator: TranslatorController? = null
+
+	// newest picture from the hidden stream, as a small grey image for the text reader
+	private val frameLock = Any()
+	private var frame: Bitmap? = null
+	private var frameAt = 0L
+	private var takenAt = 0L
+	private var pixels: IntArray? = null
+
+	override fun onBind(intent: Intent?): IBinder? = null
+
+	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int
+	{
+		if(intent?.action == ACTION_STOP) { stopEverything(); stopSelf(); return START_NOT_STICKY }
+		val info = intent?.let { IntentCompat.getParcelableExtra(it, EXTRA_CONNECT_INFO, ConnectInfo::class.java) }
+		goForeground()
+		if(info == null || running) return START_NOT_STICKY
+		if(!canDrawOverlays(this))
+		{
+			lastProblem = "ยังไม่ได้อนุญาตให้แอปแสดงทับแอปอื่น"
+			stopSelf(); return START_NOT_STICKY
+		}
+		running = true
+		try { begin(info) }
+		catch(t: Throwable)
+		{
+			lastProblem = "เริ่มโหมด HDMI ไม่สำเร็จ: " + (t.message ?: t.javaClass.simpleName)
+			stopEverything(); stopSelf()
+		}
+		return START_NOT_STICKY
+	}
+
+	private fun goForeground()
+	{
+		val nm = getSystemService(NotificationManager::class.java)
+		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm?.getNotificationChannel(CHANNEL) == null)
+			nm?.createNotificationChannel(NotificationChannel(CHANNEL, "ซับไทยโหมด HDMI", NotificationManager.IMPORTANCE_LOW))
+		val stop = PendingIntent.getService(this, 1, Intent(this, HdmiModeService::class.java).setAction(ACTION_STOP),
+			PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+		val b = if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL) else @Suppress("DEPRECATION") Notification.Builder(this)
+		val note = b.setSmallIcon(R.mipmap.ic_launcher)
+			.setContentTitle("ซับไทยโหมด HDMI ทำงานอยู่")
+			.setContentText("สลับทีวีไปช่อง HDMI ที่ต่อ PS5 ได้เลย")
+			.setOngoing(true)
+			.addAction(Notification.Action.Builder(null, "หยุด", stop).build())
+			.build()
+		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+			startForeground(NOTE_ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+		else startForeground(NOTE_ID, note)
+	}
+
+	private fun begin(info0: ConnectInfo)
+	{
+		// the hidden stream is only read, never watched: 720p 30 at a small bit rate keeps the TV light
+		val p = info0.videoProfile
+		val profile = ConnectVideoProfile(1280, 720, 30, 6000, p.codec)
+		val info = ConnectInfo(info0.ps5, info0.host, info0.registKey, info0.morning, profile)
+
+		// 1. transparent window over everything (the HDMI picture too)
+		val wm = getSystemService(WindowManager::class.java)
+		val root = LayoutInflater.from(this).inflate(R.layout.hdmi_overlay, null)
+		val lp = WindowManager.LayoutParams(
+			WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+			else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+			WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+				WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+			PixelFormat.TRANSLUCENT)
+		wm.addView(root, lp)
+		overlay = root
+		val overlayUi = TranslatorOverlay(root, root.findViewById(R.id.hdmiVideo))
+		ui = overlayUi
+		overlayUi.showStatus("กำลังเชื่อมต่อ PS5 เพื่ออ่านซับ…")
+
+		// 2. hidden stream decoded into an image buffer (nothing on screen)
+		val rt = HandlerThread("hdmi-frames").also { it.start() }
+		readerThread = rt
+		val ir = ImageReader.newInstance(profile.width, profile.height, ImageFormat.YUV_420_888, 3)
+		ir.setOnImageAvailableListener({ r -> onImage(r) }, Handler(rt.looper))
+		reader = ir
+
+		Session.setAudioMuted(true)
+		val s = Session(info, null, false)
+		s.eventCallback = { ev -> main.post { onEvent(ev) } }
+		s.start()
+		s.setSurface(ir.surface)
+		session = s
+
+		// 3. the same subtitle reader / translator as the normal mode, fed from the hidden stream
+		val tr = TranslatorController(this, null, overlayUi) { latestFrame() }
+		translator = tr
+		tr.start()
+	}
+
+	private fun onEvent(ev: Event)
+	{
+		when(ev)
+		{
+			is ConnectedEvent -> { translator?.setStreamConnected(true); ui?.showStatus("✔ ซับไทยพร้อม · สลับทีวีไปช่อง HDMI ที่ต่อ PS5 ได้เลย")
+				main.postDelayed({ ui?.showStatus(null) }, 8000) }
+			is LoginPinRequestEvent -> { lastProblem = "PS5 ขอรหัส PIN ผู้ใช้ · ปิดรหัสล็อกผู้ใช้ใน PS5 หรือใช้โหมดเล่นผ่านแอป"
+				ui?.showStatus(lastProblem); main.postDelayed({ stop(this) }, 8000) }
+			is QuitEvent -> { lastProblem = "การเชื่อมต่อกับ PS5 หลุด" + (ev.reasonString?.let { " ($it)" } ?: "") + " · กลับเข้าแอปแล้วเริ่มใหม่"
+				translator?.setStreamConnected(false); ui?.showStatus(lastProblem); main.postDelayed({ stop(this) }, 6000) }
+			else -> {}
+		}
+	}
+
+	/** Keeps the newest picture as a 960x540 grey bitmap (only the brightness plane: all the text reader needs). */
+	private fun onImage(r: ImageReader)
+	{
+		val img = try { r.acquireLatestImage() } catch(_: Throwable) { null } ?: return
+		try
+		{
+			val now = SystemClock.elapsedRealtime()
+			if(now - frameAt < 200) return // at most 5 a second: the reader takes 4
+			val plane = img.planes[0]
+			val buf = plane.buffer
+			val rs = plane.rowStride; val ps = plane.pixelStride
+			val sw = img.width; val sh = img.height
+			val dw = 960; val dh = 540
+			val px = pixels ?: IntArray(dw * dh).also { pixels = it }
+			for(y in 0 until dh)
+			{
+				val row = (y * sh / dh) * rs
+				for(x in 0 until dw)
+				{
+					val v = buf.get(row + (x * sw / dw) * ps).toInt() and 0xff
+					px[y * dw + x] = (0xff shl 24) or (v shl 16) or (v shl 8) or v
+				}
+			}
+			synchronized(frameLock)
+			{
+				val bmp = frame ?: Bitmap.createBitmap(dw, dh, Bitmap.Config.ARGB_8888).also { frame = it }
+				bmp.setPixels(px, 0, dw, 0, 0, dw, dh)
+				frameAt = now
+			}
+		}
+		catch(_: Throwable) { }
+		finally { img.close() }
+	}
+
+	/** A copy of the newest picture, or null when nothing new arrived since the last call. */
+	private fun latestFrame(): Bitmap?
+	{
+		synchronized(frameLock)
+		{
+			val f = frame ?: return null
+			if(frameAt == takenAt) return null
+			takenAt = frameAt
+			return f.copy(Bitmap.Config.ARGB_8888, false)
+		}
+	}
+
+	private fun stopEverything()
+	{
+		running = false
+		try { translator?.stop() } catch(_: Throwable) { }
+		translator = null
+		try { session?.stop(); session?.dispose() } catch(_: Throwable) { }
+		session = null
+		Session.setAudioMuted(false)
+		try { reader?.close() } catch(_: Throwable) { }
+		reader = null
+		readerThread?.quitSafely(); readerThread = null
+		overlay?.let { v -> try { getSystemService(WindowManager::class.java).removeView(v) } catch(_: Throwable) { } }
+		overlay = null; ui = null
+		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+	}
+
+	override fun onDestroy()
+	{
+		stopEverything()
+		super.onDestroy()
+	}
+}
