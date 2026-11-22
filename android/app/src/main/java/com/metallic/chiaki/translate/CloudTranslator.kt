@@ -115,7 +115,9 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 				doOutput = true
 				setRequestProperty("Content-Type", "application/json")
 			}
-			conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+			val bytes = body.toString().toByteArray(Charsets.UTF_8)
+			AppSig.headers(body.optString("device"), bytes).forEach { (k, v) -> conn.setRequestProperty(k, v) }
+			conn.outputStream.use { it.write(bytes) }
 			val code = conn.responseCode
 			val stream = if(code in 200..299) conn.inputStream else conn.errorStream
 			val text = stream?.bufferedReader(Charsets.UTF_8)?.readText().orEmpty()
