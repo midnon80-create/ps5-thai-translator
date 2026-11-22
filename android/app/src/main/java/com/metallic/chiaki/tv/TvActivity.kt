@@ -1354,6 +1354,9 @@ class TvActivity : AppCompatActivity()
 	override fun onDestroy()
 	{
 		stopRefresh()
+		// the player closed the app (back out of the home screen / closed it): 4K mode and every connection end
+		// with it; nothing reconnects until the app is opened again
+		if(isFinishing) try { com.metallic.chiaki.hdmi.HdmiModeService.stop(this) } catch(_: Throwable) { }
 		super.onDestroy()
 	}
 

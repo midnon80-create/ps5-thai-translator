@@ -42,6 +42,7 @@ class HdmiModeService : Service()
 	companion object
 	{
 		const val EXTRA_CONNECT_INFO = "connect_info"
+		private const val IDLE_STOP_MS = 20L * 60 * 1000
 		private const val ACTION_STOP = "com.metallic.chiaki.hdmi.STOP"
 		private const val CHANNEL = "hdmi_mode"
 		private const val NOTE_ID = 7301
@@ -61,7 +62,15 @@ class HdmiModeService : Service()
 			if(com.metallic.chiaki.store.Store.IS_PLAY) c.startService(i) else ContextCompat.startForegroundService(c, i)
 		}
 
-		fun stop(c: Context) { c.startService(Intent(c, HdmiModeService::class.java).setAction(ACTION_STOP)) }
+		@Volatile private var instance: HdmiModeService? = null
+
+		/** Stops 4K mode: straight to the running service (asking Android to start it with "stop" can be refused). */
+		fun stop(c: Context)
+		{
+			val s = instance
+			if(s != null) { s.main.post { s.shutDown() }; return }
+			try { c.startService(Intent(c, HdmiModeService::class.java).setAction(ACTION_STOP)) } catch(_: Throwable) { }
+		}
 	}
 
 	private val main = Handler(Looper.getMainLooper())
@@ -81,6 +90,8 @@ class HdmiModeService : Service()
 	private var pixels: IntArray? = null
 
 	override fun onBind(intent: Intent?): IBinder? = null
+
+	override fun onCreate() { super.onCreate(); instance = this }
 
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int
 	{
@@ -165,6 +176,7 @@ class HdmiModeService : Service()
 		translator = tr
 		tr.start()
 		startedAt = SystemClock.elapsedRealtime()
+		main.postDelayed(idleCheck, 60_000L)
 	}
 
 	private fun onEvent(ev: Event)
@@ -173,13 +185,41 @@ class HdmiModeService : Service()
 		{
 			is ConnectedEvent -> { translator?.setStreamConnected(true); ui?.showStatus("✔ ซับไทยพร้อม · สลับทีวีไปช่อง HDMI ที่ต่อ PS5 ได้เลย")
 				main.postDelayed({ ui?.showStatus(null) }, 8000) }
-			is LoginPinRequestEvent -> { lastProblem = "PS5 ขอรหัส PIN ผู้ใช้ · ปิดรหัสล็อกผู้ใช้ใน PS5 หรือใช้โหมดเล่นผ่านแอป"
-				ui?.showStatus(lastProblem); main.postDelayed({ stop(this) }, 8000) }
-			is QuitEvent -> { lastProblem = "การเชื่อมต่อกับ PS5 หลุด" + (ev.reasonString?.let { " ($it)" } ?: "") + " · กลับเข้าแอปแล้วเริ่มใหม่"
-				translator?.setStreamConnected(false); ui?.showStatus(lastProblem); main.postDelayed({ stop(this) }, 6000) }
+			// PS5 gone / asks for a PIN: everything stops at once (no message left on the TV, no reconnecting);
+			// the reason is shown next time the app is opened
+			is LoginPinRequestEvent -> { lastProblem = "PS5 ขอรหัส PIN ผู้ใช้ · ปิดรหัสล็อกผู้ใช้ใน PS5 หรือใช้โหมดเล่นผ่านแอป"; shutDown() }
+			is QuitEvent -> { lastProblem = "การเชื่อมต่อกับ PS5 หลุด" + (ev.reasonString?.let { " ($it)" } ?: ""); shutDown() }
 			else -> {}
 		}
 	}
+
+	/** Ends 4K mode from inside the service (works in the background too). */
+	private fun shutDown()
+	{
+		main.removeCallbacks(idleCheck)
+		stopEverything()
+		stopSelf()
+	}
+
+	/** The app was closed from the recent-apps list: 4K mode ends with it. */
+	override fun onTaskRemoved(rootIntent: Intent?)
+	{
+		lastProblem = null
+		shutDown()
+		super.onTaskRemoved(rootIntent)
+	}
+
+	// no Thai line for a long time (PS5 left on its home screen, TV switched to something else): stop by itself
+	private val idleCheck = object : Runnable { override fun run() {
+		val tr = translator ?: return
+		val quietSince = maxOf(startedAt, tr.lastShownAt)
+		if(startedAt > 0 && SystemClock.elapsedRealtime() - quietSince > IDLE_STOP_MS)
+		{
+			lastProblem = "หยุดโหมด 4K อัตโนมัติ (ไม่มีซับเกม " + IDLE_STOP_MS / 60000 + " นาที)"
+			shutDown(); return
+		}
+		main.postDelayed(this, 60_000L)
+	} }
 
 	/** Keeps the newest picture as a 960x540 grey bitmap (only the brightness plane: all the text reader needs). */
 	private fun onImage(r: ImageReader)
@@ -254,6 +294,7 @@ class HdmiModeService : Service()
 
 	override fun onDestroy()
 	{
+		if(instance === this) instance = null
 		stopEverything()
 		super.onDestroy()
 	}

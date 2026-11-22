@@ -196,6 +196,14 @@ class TranslatorController(
 
 	@Volatile private var engineSeen = ""
 
+	/** Last time a Thai subtitle was shown (elapsedRealtime), for 4K mode's auto-stop. */
+	@Volatile var lastShownAt = 0L
+		private set
+
+	// the PS5's own screens (home, library, store, settings): never "translated" as subtitles
+	private val ps5MenuSigns = Regex("""\b(game library|playstation store|playstation plus|game base|all games|media gallery|remastered|ps4\s*&\s*ps5|ps5\s*&\s*ps4)\b""", RegexOption.IGNORE_CASE)
+	@Volatile private var menuUntil = 0L
+
 	// ---- in the game yet? Thai shows only after GTA VI is recognised (Rockstar / GTA screens, GTA place names,
 	// or the server already knows this TV is in GTA). Fallback for a player who resumes straight into the game:
 	// subtitle-like lines in the subtitle band keep coming for 25 s after the stream started.
@@ -370,7 +378,9 @@ class TranslatorController(
 			{
 				is SubtitleTracker.Action.Show ->
 				{
-					if(!inGame(now)) return
+					if(ps5MenuSigns.containsMatchIn(action.text)) { menuUntil = now + 15_000L; main.post { ui.clearScreenText() }; return }
+					if(now < menuUntil || !inGame(now)) return
+					lastShownAt = now
 					lastScreenTextAt = now
 					st.incrementAndGet(5)
 					Diag.mark(context, Diag.SUBTITLE_AT)
