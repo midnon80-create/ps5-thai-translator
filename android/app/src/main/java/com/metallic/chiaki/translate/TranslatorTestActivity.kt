@@ -86,7 +86,7 @@ class TranslatorTestActivity : AppCompatActivity()
 		when
 		{
 			hosts > 0 -> item(true, "จับคู่ PS5 แล้ว ($hosts เครื่อง)", null)
-			hosts == 0 -> item(false, "ยังไม่ได้จับคู่ PS5", "หน้าแรก › กดการ์ด PS5 › พิมพ์ชื่อ PSN › ใส่รหัส 8 หลักจาก PS5 (ตั้งค่า › ระบบ › การเล่นระยะไกล › เชื่อมโยงอุปกรณ์)")
+			hosts == 0 -> item(false, "ยังไม่ได้จับคู่ PS5", "หน้าแรก › กดการ์ด PS5 › พิมพ์ชื่อออนไลน์ไอดี › ใส่รหัส 8 หลักจาก PS5 (ตั้งค่า › ระบบ › การเล่นระยะไกล › เชื่อมโยงอุปกรณ์)")
 		}
 
 		// 3. controller on the TV

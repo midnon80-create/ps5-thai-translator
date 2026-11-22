@@ -8,7 +8,7 @@ class TranslatorPrefs(context: Context)
 {
 	enum class Mode { BOTH, SCREEN, SPEECH }
 	enum class Region { BOTTOM, FULL }
-	enum class Position { ABOVE_SUBTITLE, TOP, BOTTOM }
+	enum class Position { ABOVE_SUBTITLE, BELOW_SUBTITLE, TOP, BOTTOM }
 	/** Subtitle fonts offered in the settings screen (value stored in "tr_font"). */
 	enum class Font(val value: String, val title: String, val res: Int)
 	{
@@ -44,6 +44,7 @@ class TranslatorPrefs(context: Context)
 	val position get() = when(sp.getString("tr_position", "above")) {
 		"top" -> Position.TOP
 		"bottom" -> Position.BOTTOM
+		"below" -> Position.BELOW_SUBTITLE
 		else -> Position.ABOVE_SUBTITLE
 	}
 
@@ -51,10 +52,25 @@ class TranslatorPrefs(context: Context)
 
 	/** Text height as a fraction of the screen height, so it looks the same on every TV size and resolution. */
 	val textHeightFraction get() = when(sp.getString("tr_text_size", "medium")) {
+		"english" -> 0.034f // about the size of GTA's own English subtitles (the smallest choice)
 		"small" -> 0.040f
 		"large" -> 0.052f
 		"xlarge" -> 0.060f
 		else -> 0.046f // medium = the size in the trailer sample
+	}
+
+	/** Thai letter colour; always drawn with a black outline so it reads on any picture. */
+	val textColor get() = when(sp.getString(KEY_COLOR, "white")) {
+		"yellow" -> 0xFFFFE14D.toInt()
+		"green" -> 0xFF5CFF7A.toInt()
+		else -> 0xFFFFFFFF.toInt()
+	}
+
+	/** Dark band behind the Thai line: 0 = off (letters only), else its alpha. */
+	val backgroundAlpha get() = when(sp.getString(KEY_BG, "medium")) {
+		"off" -> 0
+		"light" -> 0x40
+		else -> 0x73 // 45 % black, the original look
 	}
 
 	/** Set by the translator test: this TV can't recognise speech in real time. */
@@ -92,6 +108,9 @@ class TranslatorPrefs(context: Context)
 	companion object
 	{
 		const val KEY_MODE = "tr_mode"
+		const val KEY_COLOR = "tr_text_color"
+		const val KEY_BG = "tr_bg"
+		const val KEY_POSITION = "tr_position"
 		const val KEY_LICENCE = "tr_licence"
 		/** Eyesmaxxing server (Cloudflare Worker); empty = cloud off until it is deployed. */
 		const val SERVER_URL = "https://eyesmaxxing.midtdqxx.workers.dev"

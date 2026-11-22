@@ -146,8 +146,6 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			return d.take(12).joinToString("") { "%02x".format(it) }
 		}
 
-		private val BUY = if(com.metallic.chiaki.store.Store.IS_PLAY) "กดสมัครในตั้งค่า" else "ซื้อรหัสจากผู้ขาย"
-		const val PRICES = "ทดลอง 1 วัน 29 บาท · รายเดือน 149 บาท · รายปี 329 บาท · ตลอดชีพ 759 บาท"
 
 		/** When AI translation opens (server lock until the game is out), ms; 0 = unknown. */
 		@Volatile var aiStart = 0L
@@ -155,15 +153,11 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 
 		fun problemText(p: Problem, plan: String = "") = when(p)
 		{
-			Problem.NOT_STARTED -> "รหัสใช้ได้ ✔ แปลด้วย AI จะเปิดวันที่ GTA 6 ออก (${aiStartText()}) — ตอนนี้ใช้ตัวแปลออฟไลน์"
+			Problem.NOT_STARTED -> "แปลด้วย AI จะเปิดวันที่ GTA 6 ออก (${aiStartText()}) — ตอนนี้ใช้ตัวแปลออฟไลน์"
 			Problem.NONE -> "แปลด้วย Gemini พร้อมใช้"
-			Problem.NO_LICENCE, Problem.NEED_BUY -> if(com.metallic.chiaki.store.Store.IS_PLAY) "แปลด้วย AI ต้องใช้รหัส ($PRICES) $BUY — ตอนนี้ใช้ตัวแปลออฟไลน์ฟรี"
-				else "ยังไม่ได้ใส่รหัส: ออกจากเกม › ⚙️ ตั้งค่า › รหัสไลเซนส์ ($PRICES) — ตอนนี้ใช้ตัวแปลออฟไลน์ฟรี"
-			Problem.EXPIRED -> if(plan == "day") "ครบ 1 วันแล้ว ถ้าพอใจ อัปเกรดเป็นรายเดือน 149 · รายปี 329 หรือตลอดชีพ 759 บาท ($BUY) — ตอนนี้ใช้ตัวแปลออฟไลน์"
-				else "รหัสหมดอายุแล้ว ต่ออายุ ($BUY) เพื่อใช้ AI ต่อ — ตอนนี้ใช้ตัวแปลออฟไลน์"
-			Problem.LICENCE_INVALID -> "รหัสไลเซนส์ไม่ถูกต้อง ตรวจรหัสอีกครั้ง — ใช้ตัวแปลออฟไลน์"
-			Problem.OTHER_DEVICE -> "รหัสนี้ใช้กับทีวีเครื่องอื่นไปแล้ว ติดต่อผู้ขาย — ใช้ตัวแปลออฟไลน์"
-			Problem.TRIAL_OVER -> "ช่วงทดลองฟรีครบแล้ว $BUY ($PRICES) — ยังแปลออฟไลน์ได้ฟรี"
+			// the app is free now: these only happen for a moment (server busy / an old code); never ask to buy
+			Problem.NO_LICENCE, Problem.NEED_BUY, Problem.EXPIRED, Problem.LICENCE_INVALID, Problem.OTHER_DEVICE, Problem.TRIAL_OVER ->
+				"AI ยังไม่พร้อมชั่วคราว ลองออกแล้วเข้าใหม่อีกครั้ง"
 			Problem.POOL_EMPTY -> "โควตาแปล Gemini เต็มชั่วคราว ประโยคที่เคยแปลแล้วยังใช้ได้ ที่เหลือใช้ตัวแปลออฟไลน์"
 			Problem.DAILY_LIMIT -> "วันนี้แปลประโยคใหม่ครบโควตาแล้ว — ใช้ตัวแปลออฟไลน์ถึงพรุ่งนี้"
 			Problem.OFFLINE -> "ต่อเซิร์ฟเวอร์แปลไม่ได้ — ใช้ตัวแปลออฟไลน์"

@@ -67,7 +67,7 @@ class DeviceCaps(private val context: Context)
 	/** Strong enough for the sharpest picture? */
 	val strong get() = hevc1080 && ramGb >= 1.7 && sdk >= 26
 
-	fun autoTitle(c: Context) = when(autoLevel(c, this)) { 0 -> "1080p 60 เฟรม · คมสุด"; 1 -> "1080p 60 เฟรม"; else -> "720p 60 เฟรม" }
+	fun autoTitle(c: Context) = when(autoLevel(c, this)) { 0 -> "1080p คมสุดสำหรับเครื่องนี้"; 1 -> "1080p สำหรับเครื่องนี้"; else -> "1080p เบาเครื่อง" }
 
 	companion object
 	{
@@ -92,9 +92,10 @@ class DeviceCaps(private val context: Context)
 			val caps = DeviceCaps(c)
 			val p = Preferences(c)
 			// PS5 Remote Play tops out at 1080p 60 (no 4K); sharpness comes from the bit rate and H.265
-			val level = when(mode) { "sharp" -> 0; "smooth" -> 2; else -> autoLevel(c, caps) }
-			val hevc = if(level == 2) caps.hevc720 else caps.hevc1080
-			p.resolution = if(level < 2) Preferences.Resolution.RES_1080P else Preferences.Resolution.RES_720P
+			// always 1080p now (720p is gone): weaker TVs get a lighter bit rate / H.264 instead of a smaller picture
+			val level = when(mode) { "sharp" -> 0; else -> autoLevel(c, caps) }
+			val hevc = caps.hevc1080
+			p.resolution = Preferences.Resolution.RES_1080P
 			p.fps = Preferences.FPS.FPS_60
 			p.codec = if(hevc) Preferences.Codec.CODEC_H265 else Preferences.Codec.CODEC_H264
 			p.bitrate = when(level)
@@ -102,7 +103,7 @@ class DeviceCaps(private val context: Context)
 				// big screens: more data = fewer blocks; the TV itself upscales 1080p to its 4K panel
 				0 -> if(caps.wired) 35000 else if(caps.wifiGhz == 5.0) 30000 else 22000
 				1 -> 15000
-				else -> if(hevc) 8000 else 10000
+				else -> if(hevc) 10000 else 12000
 			}
 		}
 

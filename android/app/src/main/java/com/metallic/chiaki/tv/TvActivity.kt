@@ -36,7 +36,6 @@ import com.metallic.chiaki.store.Store
 import com.metallic.chiaki.stream.StreamActivity
 import com.metallic.chiaki.translate.CloudTranslator
 import com.metallic.chiaki.translate.Diag
-import com.metallic.chiaki.translate.LicencePrompt
 import com.metallic.chiaki.translate.TranslatorPrefs
 import com.metallic.chiaki.translate.TranslatorTestActivity
 import com.metallic.chiaki.tv.Ui.MATCH
@@ -69,13 +68,12 @@ class TvActivity : AppCompatActivity()
 	private var firstResume = true
 	private var refresher: Runnable? = null
 
-	private val trialDays = 15 // closed test (server PLAY_TRIAL_DAYS); 2 at the public launch
-
 	override fun onCreate(savedInstanceState: Bundle?)
 	{
 		super.onCreate(savedInstanceState)
 		stage = Stage(this)
 		setContentView(stage)
+		hideCursor(window.decorView)
 		WindowCompat.setDecorFitsSystemWindows(window, false)
 		WindowInsetsControllerCompat(window, stage).let {
 			it.hide(WindowInsetsCompat.Type.systemBars())
@@ -84,7 +82,8 @@ class TvActivity : AppCompatActivity()
 		vm = ViewModelProvider(this, viewModelFactory { MainViewModel(getDatabase(this), Preferences(this)) })[MainViewModel::class.java]
 		vm.discoveryManager.active = true
 		// picture settings that suit this TV (unless the player picked them)
-		if(DeviceCaps.quality(this) == "auto") try { DeviceCaps.apply(this, "auto") } catch(_: Throwable) {}
+		// (the old "smooth" 720p choice is gone: it becomes automatic, which is always 1080p now)
+		if(DeviceCaps.quality(this) != "sharp") try { DeviceCaps.apply(this, "auto") } catch(_: Throwable) {}
 		// clear button fixes from older versions once: the controller layout is now detected automatically
 		if(PadConfig.migrateOnce(this)) toast("อัปเดตการตั้งค่าจอยใหม่แล้ว ✔ ปุ่มจอย PS4/PS5 ถูกต้องอัตโนมัติ")
 
@@ -108,8 +107,16 @@ class TvActivity : AppCompatActivity()
 	{
 		super.onResume()
 		if(!firstResume && tab >= 0) showTab(tab, Trans.NONE) // fresh status after a game / settings
-		if(!firstResume && sp.getBoolean(KEY_ONBOARDED, false)) LicencePrompt.maybeShow(this)
 		firstResume = false
+		// just paired a PS5: go straight on to the pre-game checklist for it (the next step)
+		sp.getString(KEY_JUST_PAIRED, null)?.let { addr ->
+			sp.edit().remove(KEY_JUST_PAIRED).apply()
+			main.postDelayed({
+				val h = vm.displayHosts.value?.firstOrNull { it.host == addr && it.registeredHost != null }
+					?: vm.displayHosts.value?.firstOrNull { it.registeredHost != null }
+				if(h != null) hostTriggered(h) else toast("จับคู่ PS5 สำเร็จ ✔ กดการ์ด PS5 เพื่อเล่น")
+			}, 700)
+		}
 	}
 
 	private fun startStoreOnce()
@@ -117,6 +124,20 @@ class TvActivity : AppCompatActivity()
 		if(storeStarted) return
 		storeStarted = true
 		try { Store.onAppStart(this) } catch(e: Throwable) { android.util.Log.e("Eyesmaxxing", "store start failed", e) }
+	}
+
+	/** The PS5 controller's touchpad can act as a mouse on some TVs: never show its arrow over the app. */
+	private fun hideCursor(v: View)
+	{
+		if(android.os.Build.VERSION.SDK_INT >= 24) try { v.pointerIcon = android.view.PointerIcon.getSystemIcon(this, android.view.PointerIcon.TYPE_NULL) } catch(_: Throwable) { }
+	}
+
+	override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean
+	{
+		padView?.let { if(PadConfig.fromPad(ev)) it.motion(ev) }
+		// mouse / touchpad pointer moves: swallowed, so no cursor appears and nothing gets clicked by accident
+		if(ev.isFromSource(android.view.InputDevice.SOURCE_MOUSE) && !ev.isFromSource(android.view.InputDevice.SOURCE_TOUCHSCREEN)) return true
+		return super.dispatchGenericMotionEvent(ev)
 	}
 
 	// ------------------------------------------------------------------ transitions
@@ -216,15 +237,15 @@ class TvActivity : AppCompatActivity()
 		v.addView(Ui.dots(this, 4, i), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 110 })
 		val hints = if(i == 0) listOf("▶" to "ถัดไป", "○" to "ข้าม") else listOf("◀" to "ก่อนหน้า", "▶" to "ถัดไป", "○" to "ข้าม")
 		v.addView(Ui.hint(this, hints), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
-		v.setOnClickListener { if(i < 2) showFeature(i + 1, Trans.LEFT) else showTrial(Trans.LEFT) }
+		v.setOnClickListener { if(i < 2) showFeature(i + 1, Trans.LEFT) else showFree(Trans.LEFT) }
 		go(v, t)
 		keyCatcher = { e ->
 			if(e.action == KeyEvent.ACTION_UP) when(e.keyCode)
 			{
 				KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A ->
-					if(i < 2) showFeature(i + 1, Trans.LEFT) else showTrial(Trans.LEFT)
+					if(i < 2) showFeature(i + 1, Trans.LEFT) else showFree(Trans.LEFT)
 				KeyEvent.KEYCODE_DPAD_LEFT -> if(i > 0) showFeature(i - 1, Trans.RIGHT)
-				KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_BUTTON_B -> showTrial(Trans.LEFT)
+				KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_BUTTON_B -> showFree(Trans.LEFT)
 			}
 			true
 		}
@@ -257,23 +278,22 @@ class TvActivity : AppCompatActivity()
 		card.background = Ui.gradient(intArrayOf(Ui.VIOLET, Ui.PURPLE), 60f)
 	}
 
-	private fun showTrial(t: Trans)
+	/** "เล่นฟรี": the app costs nothing. */
+	private fun showFree(t: Trans)
 	{
 		keyCatcher = null
 		val v = FrameLayout(this)
 		v.addView(Ui.brand(this), lp(WRAP, WRAP, 64, 44))
 		val c = Ui.col(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
-		val play = Store.IS_PLAY
-		c.addView(text(this, if(play) "ช่วงทดสอบระบบปิด" else "เริ่มใช้งาน", 26f, Ui.VIOLET2).apply {
+		c.addView(text(this, "ไม่มีค่าใช้จ่าย", 26f, Ui.VIOLET2).apply {
 			background = Ui.round(Ui.PANEL2, 40f, 2, Ui.LINE); setPadding(26, 10, 26, 10) })
-		c.addView(text(this, if(play) "ฟรี $trialDays วัน" else "ใส่รหัสแล้วเล่นได้เลย", if(play) 150f else 96f, Ui.TEXT, W.EXTRABOLD, Gravity.CENTER).apply {
-			paint.shader = android.graphics.LinearGradient(0f, 0f, 0f, if(play) 170f else 110f, 0xFFFFFFFF.toInt(), 0xFFC4B5FD.toInt(), android.graphics.Shader.TileMode.CLAMP)
+		c.addView(text(this, "เล่นฟรี", 170f, Ui.TEXT, W.EXTRABOLD, Gravity.CENTER).apply {
+			paint.shader = android.graphics.LinearGradient(0f, 0f, 0f, 190f, 0xFFFFFFFF.toInt(), 0xFFC4B5FD.toInt(), android.graphics.Shader.TileMode.CLAMP)
 			setShadowLayer(60f, 0f, 0f, 0x668B5CF6)
 		}, llp(WRAP, WRAP, t = 10))
-		c.addView(text(this, if(play) "ทดลองใช้ซับไทยครบทุกฟีเจอร์" else "รหัสซื้อได้จากผู้ขายทาง LINE", 56f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER), llp(WRAP, WRAP, t = 6))
-		c.addView(text(this, if(play) "ไม่ต้องผูกบัตร · ไม่ต้องใส่รหัส · กดเริ่มแล้วใช้ได้ทันที" else "ทุกแพ็กเกจใช้ได้ครบทุกฟีเจอร์", 30f, Ui.MUTED, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 18))
-		if(play) c.addView(text(this, "หลังเปิดตัวจริงบน Google Play: ทดลองฟรี 2 วัน", 24f, Ui.WARN, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 14))
-		val cta = pill(if(play) "เริ่มทดลองฟรี" else "ดูแพ็กเกจ") { showPackages(true, Trans.LEFT) }
+		c.addView(text(this, "ซับไทยครบทุกฟีเจอร์", 56f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER), llp(WRAP, WRAP, t = 6))
+		c.addView(text(this, "ไม่ต้องสมัคร · ไม่ต้องใส่รหัส · ไม่ต้องผูกบัตร", 30f, Ui.MUTED, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 18))
+		val cta = pill("เริ่มเลย") { showDeviceCheck(Trans.LEFT) }
 		c.addView(cta, llp(440, 100, t = 40))
 		v.addView(c, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER).apply { topMargin = -30 })
 		v.addView(Ui.dots(this, 4, 3), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 110 })
@@ -285,118 +305,80 @@ class TvActivity : AppCompatActivity()
 		}
 	}
 
-	// ------------------------------------------------------------------ packages
+	/** Small "เล่นฟรี" banner on the main screen. */
+	private fun freeBadge(): View = text(this, "เล่นฟรี", 26f, Ui.TEXT, W.BOLD, Gravity.CENTER).apply {
+		background = Ui.gradient(intArrayOf(Ui.VIOLET, Ui.GLOW), 30f); setPadding(28, 6, 28, 8) }
 
-	private class Pack(val name: String, val len: String, val old: String?, val price: String, val unit: String,
-		val per: String, val badge: String?, val free: Boolean = false, val recommended: Boolean = false, val product: String? = null)
+	// ------------------------------------------------------------------ game picker
 
-	private val packs = listOf(
-		Pack("ทดลองฟรี", "ช่วงทดสอบ $trialDays วัน", null, "ฟรี", "", "ใช้ครบทุกฟีเจอร์\nไม่ผูกบัตร", "เริ่มที่นี่", free = true),
-		Pack("7 วัน", "เล่นต่อเนื่องทั้งสัปดาห์", "79 บาท", "49", "บาท", "ตกวันละ 7 บาท", null, product = Store.ONE_TIME_WEEK),
-		Pack("รายเดือน", "30 วัน", "299 บาท", "189", "บาท", "คุ้มสุดสำหรับเล่นจบเนื้อเรื่อง", "แนะนำ", recommended = true, product = Store.SUB_MONTHLY),
-		Pack("รายปี", "365 วัน", "999 บาท", "759", "บาท", "ตกเดือนละ 63 บาท", null, product = Store.SUB_YEARLY),
-		Pack("ตลอดชีพ", "จ่ายครั้งเดียว", "1,299 บาท", "1,099", "บาท", "รวมเกมที่จะเพิ่มในอนาคต", null, product = Store.ONE_TIME_LIFETIME))
+	/** GTA VI cover drawn by the app (game screenshot + our own lettering, not the official logo). */
+	private fun gtaCover(): View
+	{
+		val f = FrameLayout(this)
+		val img = Ui.topImage(this, R.drawable.gta_shot2, 1f)
+		(img as? android.widget.ImageView)?.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+		f.addView(img, FrameLayout.LayoutParams(MATCH, MATCH))
+		f.addView(View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+			intArrayOf(0x22000000, 0x55100018, 0xF0100018.toInt())) }, FrameLayout.LayoutParams(MATCH, MATCH))
+		val c = Ui.col(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
+		c.addView(text(this, "GTA", 140f, 0xFFFFFFFF.toInt(), W.EXTRABOLD, Gravity.CENTER).apply {
+			setShadowLayer(40f, 0f, 0f, 0xCCFF4FA3.toInt()); includeFontPadding = false })
+		c.addView(text(this, "VI", 180f, 0xFFFFFFFF.toInt(), W.EXTRABOLD, Gravity.CENTER).apply {
+			includeFontPadding = false
+			paint.shader = android.graphics.LinearGradient(0f, 20f, 0f, 200f, 0xFFFFC46B.toInt(), 0xFFFF4FA3.toInt(), android.graphics.Shader.TileMode.CLAMP)
+			setShadowLayer(50f, 0f, 0f, 0x99FF4FA3.toInt()) })
+		f.addView(c, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER).apply { topMargin = -40 })
+		return f
+	}
 
-	private fun packagesView(onboarding: Boolean): Pair<FrameLayout, View>
+	private fun gameCard(onPick: () -> Unit): Card
+	{
+		val card = Card(this, 30f, Ui.PANEL) { true }
+		card.grow = 1.05f
+		val cover = gtaCover()
+		Ui.clipRound(cover, 28f)
+		card.addView(cover, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(4, 4, 4, 4) })
+		val c = Ui.col(this)
+		c.addView(text(this, "Grand Theft Auto VI", 34f, Ui.TEXT, W.BOLD))
+		c.addView(text(this, "ซับไทยพร้อม ✔", 24f, Ui.OK, W.MEDIUM), llp(WRAP, WRAP, t = 2))
+		card.addView(c, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { setMargins(34, 0, 34, 30) })
+		card.setOnClickListener { onPick() }
+		return card
+	}
+
+	private fun gamesContent(onboarding: Boolean): View
 	{
 		val v = FrameLayout(this)
-		val head = Ui.col(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
-		head.addView(text(this, "เลือกแพ็กเกจ", 58f, Ui.TEXT, W.BOLD, Gravity.CENTER))
-		head.addView(text(this, if(Store.IS_PLAY) "ราคาพิเศษช่วงเปิดตัว · ช่วงทดสอบใช้ฟรีทั้งหมด" else "ราคาพิเศษช่วงเปิดตัว · ซื้อรหัสได้จากผู้ขายทาง LINE",
-			28f, Ui.MUTED, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 8))
-		v.addView(head, FrameLayout.LayoutParams(MATCH, WRAP).apply { topMargin = if(onboarding) 150 else 120 })
-		var first: View? = null
-		val top = if(onboarding) 330 else 300
-		packs.forEachIndexed { i, p ->
-			val card = Card(this, 30f, if(p.free) 0xFF1B1435.toInt() else Ui.PANEL) { p.recommended }
-			card.grow = 1.06f
-			val c = Ui.col(this).apply { gravity = Gravity.CENTER_HORIZONTAL; setPadding(24, 44, 24, 34) }
-			c.addView(text(this, p.name, 32f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER))
-			c.addView(text(this, p.len, 24f, Ui.MUTED, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 4))
-			c.addView(text(this, p.old ?: "", 30f, Ui.DIM, gravity = Gravity.CENTER).apply {
-				paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG }, llp(WRAP, 46, t = 34))
-			val price = android.text.SpannableStringBuilder(p.price).apply {
-				if(p.unit.isNotEmpty()) { val s = length; append(" " + p.unit)
-					setSpan(android.text.style.AbsoluteSizeSpan(30), s, length, 0) }
-			}
-			c.addView(text(this, price, 84f, Ui.TEXT, W.EXTRABOLD, Gravity.CENTER).apply { setLineSpacing(0f, 1f) }, llp(WRAP, WRAP))
-			if(p.free && Store.IS_PLAY)
-				c.addView(text(this, "หลังเปิดตัวจริง: ทดลองฟรี 2 วัน", 21f, Ui.WARN, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 10))
-			c.addView(View(this), llp(1, 0, 1f))
-			c.addView(text(this, p.per, 23f, Ui.MUTED, gravity = Gravity.CENTER).apply { setLineSpacing(0f, 1.3f) }, llp(WRAP, WRAP))
-			card.addView(c, FrameLayout.LayoutParams(MATCH, MATCH))
-			val x = 80 + i * (330 + 28)
-			v.addView(card, lp(330, 520, x, top))
-			p.badge?.let { b ->
-				val badge = text(this, b, 22f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER).apply {
-					background = Ui.gradient(intArrayOf(Ui.VIOLET, Ui.GLOW), 30f); setPadding(22, 4, 22, 4); elevation = 60f }
-				v.addView(badge, FrameLayout.LayoutParams(WRAP, WRAP).apply { leftMargin = x; topMargin = top - 22 })
-				badge.post { badge.translationX = (330 - badge.width) / 2f }
-			}
-			card.setOnClickListener { choosePack(p, onboarding) }
-			if(i == 0) first = card
+		val top = if(onboarding) 150 else 140
+		v.addView(text(this, "เลือกเกม", 46f, Ui.TEXT, W.BOLD), lp(WRAP, WRAP, 90, top))
+		v.addView(text(this, "เกมแรกที่แปลไทยได้ · เกมอื่นจะเพิ่มเข้ามาเรื่อย ๆ", 27f, Ui.MUTED), lp(WRAP, WRAP, 90, top + 66))
+		val card = gameCard {
+			sp.edit().putString(KEY_GAME, "gta6").apply()
+			if(onboarding) { sp.edit().putBoolean(KEY_ONBOARDED, true).apply(); showTab(0, Trans.LEFT) }
+			else { toast("เลือก GTA VI แล้ว ✔"); showTab(0, Trans.RIGHT) }
 		}
-		v.addView(text(this, if(Store.IS_PLAY) "ช่วงทดสอบยังไม่เก็บเงินจริง · ชำระผ่าน Google Play เมื่อเปิดขาย" else "ส่งชื่อแพ็กเกจให้ผู้ขายทาง LINE แล้วใส่รหัสที่ได้รับ",
-			24f, Ui.MUTED, gravity = Gravity.CENTER), FrameLayout.LayoutParams(MATCH, WRAP).apply { topMargin = top + 560 })
-		return v to first!!
+		v.addView(card, lp(480, 640, 90, top + 140))
+		// the next games: "coming soon", not selectable
+		for(k in 0 until 2)
+		{
+			val soon = FrameLayout(this).apply { background = Ui.round(Ui.PANEL, 30f, 2, Ui.LINE); alpha = 0.5f }
+			soon.addView(text(this, "เกมถัดไป\nเร็ว ๆ นี้", 32f, Ui.MUTED, W.SEMIBOLD, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
+			v.addView(soon, lp(480, 640, 90 + (k + 1) * 530, top + 140))
+		}
+		return v
 	}
 
-	private fun showPackages(onboarding: Boolean, t: Trans)
+	private fun showGamePicker(t: Trans)
 	{
 		keyCatcher = null
-		val (v, first) = packagesView(onboarding)
+		val v = gamesContent(true) as FrameLayout
 		v.addView(Ui.brand(this), lp(WRAP, WRAP, 64, 44))
-		v.addView(Ui.hint(this, listOf("◀" to "", "▶" to "เลือก", "✕" to "ยืนยัน")), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
-		go(v, t, first)
+		v.addView(Ui.hint(this, listOf("✕" to "เลือก")), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
+		go(v, t)
 		keyCatcher = { e ->
 			if(e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B)
-			{ if(e.action == KeyEvent.ACTION_UP) showTrial(Trans.RIGHT); true } else false
+			{ if(e.action == KeyEvent.ACTION_UP) showDeviceCheck(Trans.RIGHT); true } else false
 		}
-	}
-
-	private fun choosePack(p: Pack, onboarding: Boolean)
-	{
-		if(p.free)
-		{
-			if(!Store.IS_PLAY) { if(onboarding) showDeviceCheck(Trans.LEFT); LicencePrompt.ask(this); return }
-			toast("กำลังเริ่มทดลองฟรี…")
-			val prefs = TranslatorPrefs(this)
-			Thread {
-				val cloud = CloudTranslator(prefs.serverUrl, prefs.cloudCode, CloudTranslator.deviceId(this))
-				val prob = cloud.check()
-				main.post {
-					when(prob)
-					{
-						CloudTranslator.Problem.NONE, CloudTranslator.Problem.DAILY_LIMIT, CloudTranslator.Problem.POOL_EMPTY ->
-							toast("เริ่มทดลองฟรีแล้ว ✔" + daysLeft(cloud.expires))
-						CloudTranslator.Problem.OFFLINE -> toast("ต่ออินเทอร์เน็ตไม่ได้ · จะเริ่มทดลองให้เมื่อทีวีต่อเน็ต")
-						else -> toast(CloudTranslator.problemText(prob, cloud.plan))
-					}
-					if(onboarding) showDeviceCheck(Trans.LEFT)
-				}
-			}.start()
-			return
-		}
-		if(Store.IS_PLAY) Store.openPurchase(this, p.product)
-		else android.app.AlertDialog.Builder(this)
-			.setTitle("แพ็กเกจ ${p.name} · ${p.price} บาท")
-			.setMessage("ส่งชื่อแพ็กเกจนี้ให้ผู้ขายทาง LINE เพื่อรับรหัส แล้วกด \"ใส่รหัส\"")
-			.setPositiveButton("ใส่รหัส") { _, _ -> LicencePrompt.ask(this) }
-			.setNegativeButton("ภายหลัง", null)
-			.show()
-	}
-
-	private fun planName(plan: String) = when(plan)
-	{
-		"trial" -> "ทดลองฟรี"; "day" -> "แพ็ก 1 วัน"; "week" -> "แพ็ก 7 วัน"; "month" -> "รายเดือน"
-		"year" -> "รายปี"; "life" -> "ตลอดชีพ"; else -> "ใช้งานได้"
-	}
-
-	private fun daysLeft(expires: Long): String
-	{
-		if(expires <= 0) return ""
-		val d = ((expires - System.currentTimeMillis()) / 86_400_000L).coerceAtLeast(0)
-		return " · เหลือ $d วัน"
 	}
 
 	// ------------------------------------------------------------------ device check (first launch)
@@ -456,15 +438,12 @@ class TvActivity : AppCompatActivity()
 		c.addView(info, llp(MATCH, WRAP, t = 22))
 		v.addView(c, lp(1740, WRAP, 90, 150))
 
-		val start = pill("เริ่มใช้งาน") {
-			sp.edit().putBoolean(KEY_ONBOARDED, true).apply()
-			showTab(0, Trans.LEFT)
-		}
+		val start = pill("ถัดไป ▶") { showGamePicker(Trans.LEFT) }
 		v.addView(start, lp(400, 96, 760, 930))
 		go(v, t, start)
 		keyCatcher = { e ->
 			if(e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B)
-			{ if(e.action == KeyEvent.ACTION_UP) showPackages(true, Trans.RIGHT); true } else false
+			{ if(e.action == KeyEvent.ACTION_UP) showFree(Trans.RIGHT); true } else false
 		}
 	}
 
@@ -477,7 +456,7 @@ class TvActivity : AppCompatActivity()
 
 	// ------------------------------------------------------------------ main screen with tabs
 
-	private val tabs = listOf("เล่น", "ตั้งค่าซับ", "จอย", "แพ็กเกจ", "ช่วยเหลือ")
+	private val tabs = listOf("เล่น", "ตั้งค่าซับ", "จอย", "เลือกเกม", "ช่วยเหลือ")
 
 	private fun showTab(i: Int, t: Trans)
 	{
@@ -502,10 +481,11 @@ class TvActivity : AppCompatActivity()
 			0 -> homeContent()
 			1 -> settingsContent()
 			2 -> padContent()
-			3 -> packagesView(false).first
+			3 -> gamesContent(false)
 			else -> helpContent()
 		}
 		v.addView(content, 0, FrameLayout.LayoutParams(1920, 1080))
+		v.addView(freeBadge(), FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { topMargin = 50; rightMargin = 90 })
 		// from the content, "down" always reaches the tab bar; from the tab bar "up" goes back into the content
 		navCards.forEach { it.nextFocusUpId = View.NO_ID }
 		tab = i
@@ -581,7 +561,7 @@ class TvActivity : AppCompatActivity()
 		}
 		col.addView(status, llp(MATCH, WRAP, t = 6))
 		// play mode: 4K over HDMI (TV with the PS5 plugged in) or through the app (any TV / box / dongle)
-		val hdmiAvailable = !Store.IS_PLAY
+		val hdmiAvailable = true
 		fun isHdmi() = hdmiAvailable && sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
 		val modeRow = Ui.row(this)
 		val modeCards = ArrayList<Card>()
@@ -594,7 +574,6 @@ class TvActivity : AppCompatActivity()
 			c.addView(text(this, sub, 20f, Ui.MUTED).apply { maxLines = 2 }, llp(WRAP, WRAP, t = 2))
 			card.addView(c, FrameLayout.LayoutParams(MATCH, MATCH))
 			card.setOnClickListener {
-				if(hdmiCard && !hdmiAvailable) { toast("โหมด 4K ผ่าน HDMI กำลังมาในเวอร์ชัน Google Play เร็ว ๆ นี้"); return@setOnClickListener }
 				sp.edit().putString(KEY_PLAY_MODE, if(hdmiCard) "hdmi" else "stream").apply()
 				modeCards.forEach { it.refresh() }
 				toast(if(hdmiCard) "โหมด 4K: เสียบ PS5 เข้าทีวีเครื่องนี้ แล้วกดการ์ด PS5" else "โหมดเล่นผ่านแอป: ต่อจอยกับทีวี แล้วกดการ์ด PS5")
@@ -602,17 +581,20 @@ class TvActivity : AppCompatActivity()
 			modeCards.add(card)
 			return card
 		}
-		modeRow.addView(modeCard("โหมด 4K · HDMI", if(hdmiAvailable) "ภาพ 4K ไม่ดรอป · จอยต่อ PS5" else "เร็ว ๆ นี้", true), llp(0, 112, 1f))
+		modeRow.addView(modeCard("โหมด 4K · HDMI", "ภาพ 4K ไม่ดรอป · จอยต่อ PS5", true), llp(0, 112, 1f))
 		modeRow.addView(modeCard("โหมดเล่นผ่านแอป", "ทีวีทุกรุ่น · กล่อง · ดองเกิล", false), llp(0, 112, 1f, l = 20))
 		col.addView(modeRow, llp(MATCH, WRAP, t = 22))
-		val noteCard = text(this, "", 24f, Ui.MUTED).apply {
-			background = Ui.round(Ui.PANEL, 26f, 2, Ui.LINE); setPadding(34, 26, 34, 26)
-			text = android.text.SpannableStringBuilder("แปลเฉพาะ ").apply {
-				val s = length; append("GTA 6"); setSpan(android.text.style.ForegroundColorSpan(Ui.TEXT), s, length, 0)
-				setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), s, length, 0)
-				append(" · เกมอื่นทยอยเพิ่มเร็ว ๆ นี้") }
-		}
-		col.addView(noteCard, llp(MATCH, WRAP, t = 26))
+		// "เลิกเล่น": disconnect from the PS5 (HDMI mode included) and close the app, no auto-reconnect
+		val quit = Card(this, 22f, Ui.PANEL); quit.grow = 1.03f
+		val qr = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(30, 0, 30, 0) }
+		qr.addView(text(this, "⏻", 40f, Ui.WARN, W.BOLD, Gravity.CENTER), llp(60, WRAP))
+		val qc = Ui.col(this)
+		qc.addView(text(this, "เลิกเล่น", 28f, Ui.TEXT, W.SEMIBOLD))
+		qc.addView(text(this, "ตัดการเชื่อมต่อ PS5 และออกจากแอป", 20f, Ui.MUTED), llp(WRAP, WRAP, t = 2))
+		qr.addView(qc, llp(0, WRAP, 1f, l = 14))
+		quit.addView(qr, FrameLayout.LayoutParams(MATCH, MATCH))
+		quit.setOnClickListener { quitApp() }
+		col.addView(quit, llp(MATCH, 104, t = 22))
 		v.addView(col, lp(751, WRAP, 1079, 150))
 
 		fun ok(b: Boolean) = if(b) "✔ " else "! "
@@ -635,10 +617,10 @@ class TvActivity : AppCompatActivity()
 				when(pr)
 				{
 					CloudTranslator.Problem.NONE, CloudTranslator.Problem.DAILY_LIMIT, CloudTranslator.Problem.POOL_EMPTY ->
-						setTile("ai", true, "AI พร้อม", planName(cloud.plan) + daysLeft(cloud.expires))
+						setTile("ai", true, "AI พร้อม", "เล่นฟรี")
 					CloudTranslator.Problem.NOT_STARTED -> setTile("ai", false, "AI ยังไม่เปิด", CloudTranslator.aiStartText())
 					CloudTranslator.Problem.OFFLINE -> setTile("ai", false, "ไม่มีอินเทอร์เน็ต", "ตรวจเน็ตของทีวี")
-					else -> setTile("ai", false, "ยังไม่ได้ใช้ AI", if(Store.IS_PLAY) "ดูแพ็กเกจ" else "ใส่รหัสในหน้าช่วยเหลือ")
+					else -> setTile("ai", false, "AI ยังไม่พร้อม", "ลองใหม่อีกครั้งในไม่กี่นาที")
 				}
 			}
 		}.start()
@@ -681,6 +663,15 @@ class TvActivity : AppCompatActivity()
 			main.postDelayed(this, 1500) } }
 		startRefresh(tick)
 		return v
+	}
+
+	/** Stops everything that talks to the PS5 (HDMI mode too) and closes the app. */
+	private fun quitApp()
+	{
+		try { if(com.metallic.chiaki.hdmi.HdmiModeService.running) com.metallic.chiaki.hdmi.HdmiModeService.stop(this) } catch(_: Throwable) { }
+		try { vm.discoveryManager.active = false } catch(_: Throwable) { }
+		toast("เลิกเล่นแล้ว · ตัดการเชื่อมต่อ PS5 เรียบร้อย")
+		main.postDelayed({ finishAffinity() }, 600)
 	}
 
 	private fun hostCard(name: String, sub: String, badge: String, onClick: () -> Unit): View
@@ -783,7 +774,7 @@ class TvActivity : AppCompatActivity()
 		box.addView(text(this, "เช็กก่อนเข้าเกม", 46f, Ui.TEXT, W.BOLD))
 		box.addView(text(this, "ต้องผ่านครบ 4 ข้อ ซับไทยถึงจะขึ้น · ข้อไหนยังไม่ผ่าน กดที่ข้อนั้นเพื่อแก้", 24f, Ui.MUTED), llp(WRAP, WRAP, t = 6))
 		// play mode (link build): through the app (stream) or on the TV's HDMI input with Thai drawn on top
-		val hdmiAllowed = !Store.IS_PLAY
+		val hdmiAllowed = true
 		fun hdmi() = hdmiAllowed && sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
 		var modeText: TextView? = null
 		if(hdmiAllowed)
@@ -895,17 +886,10 @@ class TvActivity : AppCompatActivity()
 				p == CloudTranslator.Problem.NOT_STARTED -> guide("AI ยังไม่เปิด", listOf(
 					"แปลด้วย AI จะเปิดวันที่ " + CloudTranslator.aiStartText(),
 					"ระหว่างนี้จับคู่ PS5 และต่อจอยให้เรียบร้อยไว้ก่อนได้"), null) { }
-				Store.IS_PLAY -> guide("ยังไม่มีแพ็กเกจที่ใช้ได้", listOf(
-					"กด \"ไปหน้าแพ็กเกจ\" ด้านล่าง",
-					"เลือกทดลองฟรี หรือแพ็กเกจที่ต้องการ แล้วจ่ายผ่าน Google Play (บัตร · ทรูมันนี่ · หักค่าโทรศัพท์)",
-					"จ่ายเสร็จแอปเปิดใช้ทันที กลับมาหน้าเล่นแล้วกด PS5 อีกครั้ง",
-					"เคยซื้อแล้วแต่ขึ้นหมดอายุ: แท็บ ช่วยเหลือ › กู้คืนการซื้อ"),
-					"ไปหน้าแพ็กเกจ") { close(); showTab(3, Trans.LEFT) }
-				else -> guide("ยังไม่ได้ใส่รหัส / รหัสหมดอายุ", listOf(
-					"กด \"ใส่รหัส\" ด้านล่าง แล้วพิมพ์รหัสที่ได้รับ (ขึ้นต้นด้วย EYE-)",
-					"รหัสหมดอายุ: ต่ออายุแล้วใช้รหัสเดิมได้เลย",
-					"ขึ้นว่าใช้กับทีวีเครื่องอื่นแล้ว: ติดต่อผู้ขายเพื่อย้ายเครื่อง"),
-					"ใส่รหัส") { close(); LicencePrompt.ask(this) }
+				else -> guide("AI ยังไม่พร้อม", listOf(
+					"กด \"ตรวจใหม่\" ด้านล่าง",
+					"ถ้ายังไม่ได้: ปิดแอปแล้วเปิดใหม่ หรือรอ 2–3 นาที",
+					"ตรวจว่าทีวีต่ออินเทอร์เน็ตอยู่ (ลองเปิด YouTube)"), "ตรวจใหม่") { aiCheck = null; tick.run() }
 			}
 		}
 		fixes["ps5"] = {
@@ -964,8 +948,7 @@ class TvActivity : AppCompatActivity()
 					set("ai", true, "AI แปลภาษาพร้อม", "ต่ออินเทอร์เน็ตแล้ว")
 				CloudTranslator.Problem.OFFLINE -> set("ai", false, "ทีวีไม่มีอินเทอร์เน็ต", "เช็ก Wi-Fi หรือสาย LAN ของทีวี (ลองเปิด YouTube) แล้วรอสักครู่")
 				CloudTranslator.Problem.NOT_STARTED -> set("ai", false, "AI ยังไม่เปิด", "เปิดวันที่ " + CloudTranslator.aiStartText())
-				else -> set("ai", false, if(Store.IS_PLAY) "ยังไม่มีแพ็กเกจ / หมดอายุ" else "ยังไม่ได้ใส่รหัส / หมดอายุ",
-					if(Store.IS_PLAY) "กดที่นี่เพื่อดูแพ็กเกจ (ทดลองฟรีได้)" else "กดที่นี่เพื่อใส่รหัส")
+				else -> set("ai", false, "AI ยังไม่พร้อม", "กดที่นี่เพื่อตรวจใหม่")
 			}
 			// 4. PS5 on the home network and awake
 			val h = currentHost()
@@ -1000,83 +983,110 @@ class TvActivity : AppCompatActivity()
 	{
 		val v = FrameLayout(this)
 		val left = Ui.col(this)
-		left.addView(text(this, "ตั้งค่าซับไทย", 46f, Ui.TEXT, W.BOLD))
+		left.addView(text(this, "ตั้งค่าซับไทย", 44f, Ui.TEXT, W.BOLD))
 		val groups = ArrayList<Card>()
 		lateinit var refreshPreview: () -> Unit
-		fun option(title: String, sub: String?, isSel: () -> Boolean, pick: () -> Unit, font: android.graphics.Typeface? = null, size: Float = 26f, center: Boolean = false): Card
+		fun option(title: CharSequence, sub: String?, isSel: () -> Boolean, pick: () -> Unit, font: android.graphics.Typeface? = null, size: Float = 24f,
+			center: Boolean = true, color: Int = Ui.TEXT): Card
 		{
-			val card = Card(this, 20f, Ui.PANEL, isSel)
-			card.grow = 1.04f
-			val c = Ui.col(this).apply { setPadding(22, 14, 22, 14); gravity = if(center) Gravity.CENTER else Gravity.CENTER_VERTICAL }
-			c.addView(text(this, title, size, Ui.TEXT, W.REGULAR, if(center) Gravity.CENTER else Gravity.START).apply { if(font != null) typeface = font })
-			if(sub != null) c.addView(text(this, sub, 20f, Ui.MUTED, gravity = if(center) Gravity.CENTER else Gravity.START), llp(WRAP, WRAP, t = 2))
+			val card = Card(this, 18f, Ui.PANEL, isSel)
+			card.grow = 1.05f
+			val c = Ui.col(this).apply { setPadding(14, 8, 14, 8); gravity = if(center) Gravity.CENTER else Gravity.CENTER_VERTICAL }
+			c.addView(text(this, title, size, color, W.REGULAR, if(center) Gravity.CENTER else Gravity.START).apply { if(font != null) typeface = font; maxLines = 1 })
+			if(sub != null) c.addView(text(this, sub, 18f, Ui.MUTED, gravity = if(center) Gravity.CENTER else Gravity.START).apply { maxLines = 1 }, llp(WRAP, WRAP, t = 2))
 			card.addView(c, FrameLayout.LayoutParams(MATCH, MATCH))
 			card.setOnClickListener { pick(); groups.forEach { it.refresh() }; refreshPreview() }
 			groups += card
 			return card
 		}
-		fun head(s: String) = text(this, s, 28f, Ui.VIOLET2, W.MEDIUM)
-		val prefs = { TranslatorPrefs(this) }
-
-		left.addView(head("แปลจาก"), llp(WRAP, WRAP, t = 22))
-		val seg = Ui.row(this)
-		seg.addView(option("อ่านซับอย่างเดียว", "ลื่นที่สุด แนะนำ", { prefs().mode == TranslatorPrefs.Mode.SCREEN }, { prefs().setMode(TranslatorPrefs.Mode.SCREEN); clearAutoMode() }), llp(0, 104, 1f))
-		seg.addView(option("ฟังเสียง + อ่านซับ", "ได้ทุกบทพูด ใช้เครื่องหนักขึ้น", { prefs().mode == TranslatorPrefs.Mode.BOTH }, { prefs().setMode(TranslatorPrefs.Mode.BOTH); clearAutoMode() }), llp(0, 104, 1f, l = 16))
-		left.addView(seg, llp(MATCH, WRAP, t = 12))
-
-		left.addView(head("ฟอนต์"), llp(WRAP, WRAP, t = 26))
-		val fonts = TranslatorPrefs.Font.values()
-		for(r in 0 until 2)
+		fun head(s: String) = text(this, s, 25f, Ui.VIOLET2, W.MEDIUM)
+		fun row(cells: List<Card>, h: Int): LinearLayout
 		{
-			val row = Ui.row(this)
-			for(k in 0 until 3)
-			{
-				val f = fonts[r * 3 + k]
-				row.addView(option("สวัสดี GTA", f.title, { prefs().font == f }, { sp.edit().putString("tr_font", f.value).apply() },
-					ResourcesCompat.getFont(this, f.res), 30f, true), llp(0, 104, 1f, l = if(k == 0) 0 else 14))
-			}
-			left.addView(row, llp(MATCH, WRAP, t = if(r == 0) 12 else 14))
+			val r = Ui.row(this)
+			cells.forEachIndexed { k, c -> r.addView(c, llp(0, h, 1f, l = if(k == 0) 0 else 12)) }
+			return r
 		}
+		val prefs = { TranslatorPrefs(this) }
+		fun str(k: String, d: String) = sp.getString(k, d) ?: d
+		fun put(k: String, value: String) = sp.edit().putString(k, value).apply()
 
-		left.addView(head("ขนาดตัวอักษร"), llp(WRAP, WRAP, t = 26))
-		val sizes = listOf("small" to "เล็ก", "medium" to "กลาง", "large" to "ใหญ่", "xlarge" to "ใหญ่มาก")
-		val srow = Ui.row(this)
-		sizes.forEachIndexed { k, (value, label) ->
-			srow.addView(option(label, null, { (sp.getString("tr_text_size", "medium") ?: "medium") == value }, { sp.edit().putString("tr_text_size", value).apply() },
-				size = 24f, center = true), llp(0, 66, 1f, l = if(k == 0) 0 else 14))
-		}
-		left.addView(srow, llp(MATCH, WRAP, t = 12))
-		v.addView(left, lp(934, WRAP, 90, 140))
+		left.addView(head("แปลจาก"), llp(WRAP, WRAP, t = 14))
+		left.addView(row(listOf(
+			option("อ่านซับอย่างเดียว", "ลื่นที่สุด แนะนำ", { prefs().mode == TranslatorPrefs.Mode.SCREEN }, { prefs().setMode(TranslatorPrefs.Mode.SCREEN); clearAutoMode() }),
+			option("ฟังเสียง + อ่านซับ", "ได้ทุกบทพูด ใช้เครื่องหนักขึ้น", { prefs().mode == TranslatorPrefs.Mode.BOTH }, { prefs().setMode(TranslatorPrefs.Mode.BOTH); clearAutoMode() })), 86), llp(MATCH, WRAP, t = 8))
 
-		// right: live preview + picture
+		left.addView(head("ฟอนต์"), llp(WRAP, WRAP, t = 16))
+		val fonts = TranslatorPrefs.Font.values().filter { it != TranslatorPrefs.Font.NOTO }
+		left.addView(row(fonts.map { f ->
+			option("สวัสดี", f.title, { prefs().font == f }, { put("tr_font", f.value) }, ResourcesCompat.getFont(this, f.res), 26f) }, 86), llp(MATCH, WRAP, t = 8))
+
+		left.addView(head("ขนาดตัวอักษร (เล็กสุด = เท่าซับอังกฤษ)"), llp(WRAP, WRAP, t = 16))
+		val sizes = listOf("english" to "เท่าซับอังกฤษ", "small" to "เล็ก", "medium" to "กลาง", "large" to "ใหญ่", "xlarge" to "ใหญ่มาก")
+		left.addView(row(sizes.map { (value, label) ->
+			option(label, null, { str("tr_text_size", "medium") == value }, { put("tr_text_size", value) }, size = 22f) }, 64), llp(MATCH, WRAP, t = 8))
+
+		left.addView(head("สีซับ (ขอบดำทุกสี)"), llp(WRAP, WRAP, t = 16))
+		val colors = listOf(Triple("white", "ขาว", 0xFFFFFFFF.toInt()), Triple("yellow", "เหลือง", 0xFFFFE14D.toInt()), Triple("green", "เขียวสว่าง", 0xFF5CFF7A.toInt()))
+		left.addView(row(colors.map { (value, label, col) ->
+			option(label, null, { str(TranslatorPrefs.KEY_COLOR, "white") == value }, { put(TranslatorPrefs.KEY_COLOR, value) }, size = 26f, color = col) }, 64), llp(MATCH, WRAP, t = 8))
+
+		left.addView(head("พื้นหลังแถบดำ"), llp(WRAP, WRAP, t = 16))
+		val bgs = listOf("off" to "ปิด (ตัวหนังสืออย่างเดียว)", "light" to "จาง", "medium" to "ปานกลาง")
+		left.addView(row(bgs.map { (value, label) ->
+			option(label, null, { str(TranslatorPrefs.KEY_BG, "medium") == value }, { put(TranslatorPrefs.KEY_BG, value) }, size = 22f) }, 64), llp(MATCH, WRAP, t = 8))
+		v.addView(left, lp(940, WRAP, 90, 128))
+
+		// right: live preview, position, picture
 		val right = Ui.col(this)
 		right.addView(head("ตัวอย่างบนจอ"))
 		val prev = FrameLayout(this).apply { background = Ui.round(0, 26f, 2, Ui.LINE) }
 		prev.addView(Ui.topImage(this, R.drawable.gta_shot3, 0.7f), FrameLayout.LayoutParams(MATCH, MATCH))
 		Ui.clipRound(prev, 26f)
-		val thai = text(this, "เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า", 30f, 0xFFFFFFFF.toInt(), W.BOLD, Gravity.CENTER).apply {
-			setBackgroundColor(0x73000000); setPadding(18, 2, 18, 4) }
-		val eng = text(this, "Okay, you're wound up a little tight. What's up?", 22f, 0xFFDDDDDD.toInt(), gravity = Gravity.CENTER).apply {
+		val prevH = 300
+		val thai = com.metallic.chiaki.translate.SubtitleTextView(this).apply {
+			text = "เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า"; gravity = Gravity.CENTER; setPadding(14, 2, 14, 4) }
+		val eng = text(this, "Okay, you're wound up a little tight. What's up?", 15f, 0xFFDDDDDD.toInt(), gravity = Gravity.CENTER).apply {
 			typeface = android.graphics.Typeface.SANS_SERIF; setShadowLayer(4f, 0f, 1f, 0xFF000000.toInt()) }
-		prev.addView(eng, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 20 })
-		prev.addView(thai, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = 60 })
-		right.addView(prev, llp(MATCH, 430, t = 12))
+		prev.addView(eng, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 16 })
+		prev.addView(thai, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = 44 })
+		right.addView(prev, llp(MATCH, prevH, t = 8))
 		refreshPreview = {
 			val p = prefs()
 			thai.typeface = ResourcesCompat.getFont(this, p.font.res)
-			thai.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, p.textHeightFraction * 430f * 1.45f)
+			val px = p.textHeightFraction * prevH * 1.45f
+			thai.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px)
+			thai.setTextColor(p.textColor)
+			thai.outlineColor = 0xFF000000.toInt()
+			thai.outlineWidthPx = px * (if(p.backgroundAlpha == 0) 0.11f else 0.07f)
+			thai.background = if(p.backgroundAlpha == 0) null else android.graphics.drawable.ColorDrawable(p.backgroundAlpha shl 24)
+			val tl = thai.layoutParams as FrameLayout.LayoutParams
+			when(p.position)
+			{
+				TranslatorPrefs.Position.TOP -> { tl.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; tl.topMargin = 14; tl.bottomMargin = 0 }
+				TranslatorPrefs.Position.BELOW_SUBTITLE -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 0 }
+				else -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 44 }
+			}
+			(eng.layoutParams as FrameLayout.LayoutParams).bottomMargin = if(p.position == TranslatorPrefs.Position.BELOW_SUBTITLE) (px * 1.6f).toInt() + 8 else 16
+			thai.layoutParams = tl; eng.requestLayout()
 		}
-		refreshPreview()
 
-		right.addView(head("ภาพ"), llp(WRAP, WRAP, t = 26))
+		right.addView(head("ตำแหน่งซับไทย"), llp(WRAP, WRAP, t = 16))
+		val places = listOf("above" to "เหนือซับอังกฤษ", "below" to "ใต้ซับอังกฤษ", "top" to "บนสุดของจอ")
+		right.addView(row(places.map { (value, label) ->
+			option(label, null, { str(TranslatorPrefs.KEY_POSITION, "above") == value }, { put(TranslatorPrefs.KEY_POSITION, value) }, size = 22f) }, 64), llp(MATCH, WRAP, t = 8))
+
+		right.addView(head("ภาพ"), llp(WRAP, WRAP, t = 16))
 		val caps = DeviceCaps(this)
-		val q = Ui.row(this)
-		val qs = listOf(Triple("auto", "อัตโนมัติ", caps.autoTitle(this) + " (เครื่องนี้)"), Triple("smooth", "ลื่นสุด", "720p 60 เฟรม"), Triple("sharp", "คมสุด", "1080p 60 · จอใหญ่"))
-		qs.forEachIndexed { k, (value, label, s) ->
-			q.addView(option(label, s, { DeviceCaps.quality(this) == value }, { DeviceCaps.apply(this, value) }, size = 26f), llp(0, 104, 1f, l = if(k == 0) 0 else 14))
-		}
-		right.addView(q, llp(MATCH, WRAP, t = 12))
-		v.addView(right, lp(760, WRAP, 1070, 150))
+		fun hdmiMode() = sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
+		right.addView(row(listOf(
+			option("อัตโนมัติ", caps.autoTitle(this), { !hdmiMode() && DeviceCaps.quality(this) == "auto" },
+				{ sp.edit().putString(KEY_PLAY_MODE, "stream").apply(); DeviceCaps.apply(this, "auto") }),
+			option("1080p คมสุด", "60 เฟรม · ผ่านแอป", { !hdmiMode() && DeviceCaps.quality(this) == "sharp" },
+				{ sp.edit().putString(KEY_PLAY_MODE, "stream").apply(); DeviceCaps.apply(this, "sharp") }),
+			option("4K · HDMI", "PS5 เสียบทีวีเครื่องนี้", { hdmiMode() },
+				{ sp.edit().putString(KEY_PLAY_MODE, "hdmi").apply(); toast("โหมด 4K: เสียบ PS5 เข้าทีวีเครื่องนี้ แล้วกดการ์ด PS5 ในหน้าเล่น") })), 86), llp(MATCH, WRAP, t = 8))
+		v.addView(right, lp(760, WRAP, 1070, 140))
+		refreshPreview()
 		return v
 	}
 
@@ -1205,14 +1215,10 @@ class TvActivity : AppCompatActivity()
 		val grid = Ui.col(this)
 		val items = ArrayList<Triple<String, String, () -> Unit>>().apply {
 			add(Triple("ตรวจปัญหา", "บอกทีละขั้นว่าติดตรงไหน พร้อมวิธีแก้") { startActivity(Intent(this@TvActivity, TranslatorTestActivity::class.java)) })
-			add(Triple("จับคู่ PS5 ใหม่", "พิมพ์ชื่อ PSN แล้วใส่รหัส 8 หลักจาก PS5 (ไม่ต้องใช้รหัสผ่าน)") { startActivity(Intent(this@TvActivity, RegistActivity::class.java)) })
+			add(Triple("จับคู่ PS5 ใหม่", "พิมพ์ชื่อออนไลน์ไอดี แล้วใส่รหัส 8 หลักจาก PS5") { startActivity(Intent(this@TvActivity, RegistActivity::class.java)) })
 			add(Triple("เพิ่ม PS5 ด้วยเลข IP", "ถ้าแอปหา PS5 ไม่เจอเอง") { startActivity(Intent(this@TvActivity, EditManualConsoleActivity::class.java)) })
-			if(!Store.IS_PLAY) add(Triple("ใส่รหัสไลเซนส์", TranslatorPrefs(this@TvActivity).licence.ifBlank { "ยังไม่ได้ใส่รหัส" }) {
-				LicencePrompt.ask(this@TvActivity) })
-			if(Store.IS_PLAY) add(Triple("กู้คืนการซื้อ", "ซื้อแล้วแต่ยังไม่ขึ้น หรือย้ายมาทีวีเครื่องใหม่") {
-				toast("กำลังตรวจการซื้อกับ Google Play…"); Store.refresh(this@TvActivity) { msg -> toast(msg) } })
 			add(Triple("ตั้งค่าขั้นสูง", "ภาพ เสียง และตัวเลือกทั้งหมด") { startActivity(Intent(this@TvActivity, SettingsActivity::class.java)) })
-			add(Triple("ดูหน้าแนะนำอีกครั้ง", "ฟีเจอร์ ทดลองฟรี และแพ็กเกจ") { showFeature(0, Trans.LEFT); tab = -1 })
+			add(Triple("ดูหน้าแนะนำอีกครั้ง", "ฟีเจอร์ และวิธีเริ่มใช้งาน") { showFeature(0, Trans.LEFT); tab = -1 })
 		}
 		var row: LinearLayout? = null
 		items.forEachIndexed { k, (title, sub, action) ->
@@ -1261,11 +1267,6 @@ class TvActivity : AppCompatActivity()
 		return super.dispatchKeyEvent(event)
 	}
 
-	override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean
-	{
-		padView?.let { if(PadConfig.fromPad(ev)) it.motion(ev) }
-		return super.dispatchGenericMotionEvent(ev)
-	}
 
 	override fun onDestroy()
 	{
@@ -1276,6 +1277,9 @@ class TvActivity : AppCompatActivity()
 	companion object
 	{
 		const val KEY_ONBOARDED = "tv_onboarded"
+		const val KEY_GAME = "tv_game"
+		/** Set by the pairing screen: address of the PS5 just paired, so the next step (checklist) opens by itself. */
+		const val KEY_JUST_PAIRED = "tv_just_paired"
 		/** "stream" = play through the app, "hdmi" = PS5 on the TV's HDMI input with Thai drawn on top (link build). */
 		const val KEY_PLAY_MODE = "tv_play_mode"
 	}

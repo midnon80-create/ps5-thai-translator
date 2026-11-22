@@ -165,16 +165,10 @@ class SettingsFragment: PreferenceFragmentCompat(), TitleFragment
 			}
 		}
 		fixIntents(preferenceScreen)
-		// Google Play build: buy inside the app (Play Billing); no self-update, no typed codes
-		if(com.metallic.chiaki.store.Store.IS_PLAY)
-		{
-			preferenceScreen.findPreference<Preference>("tr_check_update")?.isVisible = false
-			preferenceScreen.findPreference<Preference>(com.metallic.chiaki.translate.TranslatorPrefs.KEY_LICENCE)?.isVisible = false
-			preferenceScreen.findPreference<Preference>("tr_buy")?.let {
-				it.isVisible = true
-				it.setOnPreferenceClickListener { activity?.let { a -> com.metallic.chiaki.store.Store.openPurchase(a) }; true }
-			}
-		}
+		// the app is free: no licence code, no buying; Google Play updates the Play build itself
+		if(com.metallic.chiaki.store.Store.IS_PLAY) preferenceScreen.findPreference<Preference>("tr_check_update")?.isVisible = false
+		preferenceScreen.findPreference<Preference>(com.metallic.chiaki.translate.TranslatorPrefs.KEY_LICENCE)?.isVisible = false
+		preferenceScreen.findPreference<Preference>("tr_buy")?.isVisible = false
 		preferenceScreen.findPreference<Preference>(getString(R.string.preferences_import_settings_key))?.setOnPreferenceClickListener { importSettings(); true }
 	}
 

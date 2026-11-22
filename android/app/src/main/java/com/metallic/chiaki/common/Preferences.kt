@@ -41,8 +41,9 @@ class Preferences(context: Context)
 
 	companion object
 	{
-		val resolutionDefault = Resolution.RES_720P
-		val resolutionAll = Resolution.values()
+		val resolutionDefault = Resolution.RES_1080P
+		// only 1080p is offered (4K is the HDMI mode); older saved choices still load
+		val resolutionAll = arrayOf(Resolution.RES_1080P)
 		val fpsDefault = FPS.FPS_60
 		val fpsAll = FPS.values()
 		val codecDefault = Codec.CODEC_H265
@@ -108,7 +109,7 @@ class Preferences(context: Context)
 	val resolutionKey get() = resources.getString(R.string.preferences_resolution_key)
 	var resolution
 		get() = sharedPreferences.getString(resolutionKey, resolutionDefault.value)?.let { value ->
-			Resolution.values().firstOrNull { it.value == value }
+			resolutionAll.firstOrNull { it.value == value }
 		} ?: resolutionDefault
 		set(value) { sharedPreferences.edit().putString(resolutionKey, value.value).apply() }
 

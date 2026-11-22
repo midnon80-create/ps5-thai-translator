@@ -56,7 +56,9 @@ class HdmiModeService : Service()
 		fun start(c: Context, info: ConnectInfo)
 		{
 			lastProblem = null
-			ContextCompat.startForegroundService(c, Intent(c, HdmiModeService::class.java).putExtra(EXTRA_CONNECT_INFO, info))
+			val i = Intent(c, HdmiModeService::class.java).putExtra(EXTRA_CONNECT_INFO, info)
+			// Play build: a plain service (started while the app is on screen); the Thai overlay window keeps it alive
+			if(com.metallic.chiaki.store.Store.IS_PLAY) c.startService(i) else ContextCompat.startForegroundService(c, i)
 		}
 
 		fun stop(c: Context) { c.startService(Intent(c, HdmiModeService::class.java).setAction(ACTION_STOP)) }
@@ -103,6 +105,7 @@ class HdmiModeService : Service()
 
 	private fun goForeground()
 	{
+		if(com.metallic.chiaki.store.Store.IS_PLAY) return // no foreground service in the Play build (see its manifest)
 		val nm = getSystemService(NotificationManager::class.java)
 		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm?.getNotificationChannel(CHANNEL) == null)
 			nm?.createNotificationChannel(NotificationChannel(CHANNEL, "ซับไทยโหมด HDMI", NotificationManager.IMPORTANCE_LOW))
@@ -245,7 +248,8 @@ class HdmiModeService : Service()
 		readerThread?.quitSafely(); readerThread = null
 		overlay?.let { v -> try { getSystemService(WindowManager::class.java).removeView(v) } catch(_: Throwable) { } }
 		overlay = null; ui = null
-		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
+		if(!com.metallic.chiaki.store.Store.IS_PLAY)
+			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
 	}
 
 	override fun onDestroy()

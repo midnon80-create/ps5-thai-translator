@@ -56,12 +56,14 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 			v.typeface = font
 			v.includeFontPadding = true // room for Thai vowels and tone marks above and below
 			v.setLineSpacing(0f, 1.15f)
-			v.maxWidth = (metrics.widthPixels * 0.78f).toInt()
+			// one long line across the screen (left to right) before it wraps
+			v.maxWidth = (metrics.widthPixels * 0.96f).toInt()
 			v.maxLines = 3
 			v.outlineColor = Color.BLACK
-			// light dark band behind the Thai line (the game still shows through), like the GTA trailer sample
-			v.background = GradientDrawable().apply {
-				setColor(0x73000000) // 45 % black, measured from the trailer sample: the game still shows through
+			v.setTextColor(prefs.textColor)
+			// dark band behind the Thai line: off / light / medium (the game still shows through)
+			v.background = if(prefs.backgroundAlpha == 0) null else GradientDrawable().apply {
+				setColor(prefs.backgroundAlpha shl 24)
 				cornerRadius = 0f
 			}
 			v.setShadowLayer(textPx * 0.05f, 0f, textPx * 0.02f, 0x80000000.toInt())
@@ -83,14 +85,14 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 			else -> 1f
 		}
 		view.setTextSize(TypedValue.COMPLEX_UNIT_PX, textPx * scale)
-		view.outlineWidthPx = 0f // like the sample: plain white letters on the band
+		// black outline around the chosen colour (yellow / white / green), thicker when there is no band behind
+		view.outlineWidthPx = textPx * scale * (if(prefs.backgroundAlpha == 0) 0.11f else 0.07f)
 		val main = if(showEnglish) thai + '\n' + english else thai
 		view.text = if(previous == null) main else android.text.SpannableStringBuilder().apply {
-			// the line before stays a moment, smaller and dimmer, so a fast cutscene can still be read
+			// the line before stays a moment on the same line, in another colour, so a fast cutscene can still be read
 			append(previous)
-			setSpan(android.text.style.ForegroundColorSpan(0xB3FFFFFF.toInt()), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-			setSpan(android.text.style.RelativeSizeSpan(0.8f), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-			append('\n')
+			append("  ›  ")
+			setSpan(FillColorSpan(PREVIOUS_COLOR), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
 			append(main)
 		}
 		view.isVisible = true
@@ -105,7 +107,7 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 		if(screenText.isVisible && curThai.isNotEmpty()) setText(screenText, curThai, curEnglish)
 	}
 
-	override fun showScreenText(thai: String, english: String, subtitleTop: Float?)
+	override fun showScreenText(thai: String, english: String, subtitleTop: Float?, subtitleBottom: Float?)
 	{
 		screenText.removeCallbacks(clearScreenNow)
 		val now = SystemClock.elapsedRealtime()
@@ -120,8 +122,8 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 		}
 		// same English line again = the better (AI) version of it replaces the quick one in place
 		curThai = thai
-		place(subtitleTop)
 		setText(screenText, thai, english, prevThai)
+		place(subtitleTop, subtitleBottom)
 		// long enough to read even if the game's subtitle vanishes quickly: 1.8-3.5 s by length
 		screenHoldMs = (1300L + thai.length * 35L).coerceIn(1800L, 3500L)
 	}
@@ -327,8 +329,8 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 
 	override fun showSpeechText(thai: String, english: String)
 	{
-		if(!screenText.isVisible) place(null)
 		setText(speechText, thai, english)
+		if(!screenText.isVisible) place(null)
 	}
 
 	override fun clearSpeechText() { speechText.isGone = true }
@@ -343,7 +345,9 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 	 * Puts the Thai text where it covers the least: right above the English subtitle
 	 * (found by the screen reader), or at the top/bottom edge if chosen in the settings.
 	 */
-	private fun place(subtitleTop: Float?)
+	private var lastSubtitleBottomY: Int? = null
+
+	private fun place(subtitleTop: Float?, subtitleBottom: Float? = null)
 	{
 		val h = if(root.height > 0) root.height else context.resources.displayMetrics.heightPixels
 		val lp = overlay.layoutParams as FrameLayout.LayoutParams
@@ -361,6 +365,23 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 			{
 				lp.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
 				lp.bottomMargin = (h * 0.04f).toInt()
+			}
+			TranslatorPrefs.Position.BELOW_SUBTITLE ->
+			{
+				// right under the English subtitle, never over it; pushed up only as far as the screen edge needs
+				if(subtitleBottom != null)
+				{
+					val v = IntArray(2).also { video.getLocationInWindow(it) }
+					val origin = IntArray(2).also { root.getLocationInWindow(it) }
+					val videoH = if(video.height > 0) video.height else h
+					lastSubtitleBottomY = (v[1] - origin[1] + subtitleBottom * videoH).toInt()
+				}
+				val w = if(root.width > 0) root.width else context.resources.displayMetrics.widthPixels
+				overlay.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+				val oh = overlay.measuredHeight
+				lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+				val y = lastSubtitleBottomY ?: (h * 0.93f).toInt()
+				lp.topMargin = minOf(y + gap / 2, h - oh - (h * 0.01f).toInt()).coerceAtLeast(0)
 			}
 			TranslatorPrefs.Position.ABOVE_SUBTITLE ->
 			{
@@ -389,5 +410,16 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 	{
 		const val PREVIOUS_IF_SHOWN_UNDER_MS = 3000L
 		const val PREVIOUS_KEEP_MS = 2500L
+		/** The line before, shown in front of the new one on the same line. */
+		const val PREVIOUS_COLOR = 0xFF9FB4FF.toInt()
+	}
+}
+
+/** Colours only the letters, not the black outline drawn under them (SubtitleTextView strokes first). */
+class FillColorSpan(private val color: Int) : android.text.style.CharacterStyle()
+{
+	override fun updateDrawState(tp: android.text.TextPaint)
+	{
+		if(tp.style != android.graphics.Paint.Style.STROKE) tp.color = color
 	}
 }

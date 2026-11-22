@@ -23,9 +23,12 @@ object LicencePrompt
 	@Volatile private var showing = false
 	@Volatile private var checking = false
 
+	const val FREE = true
+
 	fun maybeShow(activity: Activity)
 	{
-		if(com.metallic.chiaki.store.Store.IS_PLAY || showing || checking || activity.isFinishing) return
+		// the app is free: nobody is asked for a code any more
+		if(FREE || com.metallic.chiaki.store.Store.IS_PLAY || showing || checking || activity.isFinishing) return
 		val prefs = TranslatorPrefs(activity)
 		if(prefs.licence.isNotBlank() || prefs.serverUrl.isBlank()) return
 		show(activity, null)

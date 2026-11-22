@@ -108,6 +108,11 @@ class StreamActivity : AppCompatActivity()
 
 		binding = ActivityStreamBinding.inflate(layoutInflater)
 		setContentView(binding.root)
+		// no mouse arrow over the game (the controller touchpad can act as a mouse on some TVs)
+		if(Build.VERSION.SDK_INT >= 24) try {
+			val none = android.view.PointerIcon.getSystemIcon(this, android.view.PointerIcon.TYPE_NULL)
+			binding.root.pointerIcon = none; binding.surfaceView.pointerIcon = none; window.decorView.pointerIcon = none
+		} catch(_: Throwable) { }
 
 		WindowCompat.setDecorFitsSystemWindows(window, false)
 		insetsController = WindowCompat.getInsetsController(window, window.decorView)
@@ -291,7 +296,7 @@ class StreamActivity : AppCompatActivity()
 			"การเชื่อมต่อกับ PS5 หลุด (เน็ตบ้านไม่เสถียร หรือ PS5 ปิดไป)\n" +
 			"• ใช้สาย LAN หรือ Wi-Fi 5GHz ทั้งทีวีและ PS5\n• กด \"เชื่อมต่อใหม่\""
 		reason.contains("Registration", true) ->
-			"การจับคู่กับ PS5 ใช้ไม่ได้แล้ว\n• ลบ PS5 ในตั้งค่าแอป แล้วจับคู่ใหม่ (ชื่อ PSN + รหัส 8 หลัก)"
+			"การจับคู่กับ PS5 ใช้ไม่ได้แล้ว\n• ลบ PS5 ในตั้งค่าแอป แล้วจับคู่ใหม่ (ชื่อออนไลน์ไอดี + รหัส 8 หลัก)"
 		else -> "การเชื่อมต่อกับ PS5 หยุดลง\n• ตรวจว่า PS5 เปิดอยู่ และทีวีกับ PS5 ใช้เน็ตบ้านเดียวกัน แล้วกด \"เชื่อมต่อใหม่\""
 	}
 
@@ -359,6 +364,7 @@ class StreamActivity : AppCompatActivity()
 		translator?.setStreamConnected(state == StreamStateConnected)
 		if(state == StreamStateConnected)
 		{
+			retryBox?.dismiss(); retryBox = null
 			autoRetries = 0
 			connectedAt = System.currentTimeMillis()
 			if(!padWarned && com.metallic.chiaki.translate.Diag.gamepads().isEmpty())
@@ -392,14 +398,13 @@ class StreamActivity : AppCompatActivity()
 						// The PS5 keeps the last session for a few seconds after a drop (or is still waking up):
 						// wait and reconnect by itself a few times before bothering the player.
 						if(autoRetries == 0) reportSession("หลุด: $reasonText · ${reasonStr ?: ""}")
+						if(userQuit) { finish(); return }
 						if(isRetryable(reasonText) && autoRetries < MAX_AUTO_RETRIES)
 						{
 							autoRetries++
-							android.widget.Toast.makeText(this,
-								"PS5 ยังไม่พร้อม กำลังเชื่อมต่อใหม่ให้อัตโนมัติ… ($autoRetries/$MAX_AUTO_RETRIES)",
-								android.widget.Toast.LENGTH_LONG).show()
+							showRetrying("PS5 ยังไม่พร้อม กำลังเชื่อมต่อใหม่ให้อัตโนมัติ… ($autoRetries/$MAX_AUTO_RETRIES)")
 							binding.progressBar.visibility = View.VISIBLE
-							retryHandler.postDelayed({ if(!isFinishing) reconnect() }, AUTO_RETRY_DELAY_MS)
+							retryHandler.postDelayed({ if(!isFinishing && !userQuit) reconnect() }, AUTO_RETRY_DELAY_MS)
 							return
 						}
 						autoRetries = 0
@@ -430,15 +435,14 @@ class StreamActivity : AppCompatActivity()
 						// dropping the player back to the PS5 list.
 						if(System.currentTimeMillis() - connectedAt > 120_000L) shutdownRetries = 0
 						if(shutdownRetries == 0) reportSession("PS5 ตัดการเชื่อมต่อ: ${state.reason} · ${state.reasonString ?: ""}")
-						if(shutdownRetries < 3)
+						if(userQuit) finish()
+						else if(shutdownRetries < 3)
 						{
 							shutdownRetries++
 							dialog?.dismiss()
-							android.widget.Toast.makeText(this,
-								"PS5 รีเซ็ตการเชื่อมต่อ กำลังเชื่อมต่อใหม่ให้อัตโนมัติ… ($shutdownRetries/3)",
-								android.widget.Toast.LENGTH_LONG).show()
+							showRetrying("PS5 รีเซ็ตการเชื่อมต่อ กำลังเชื่อมต่อใหม่ให้อัตโนมัติ… ($shutdownRetries/3)")
 							binding.progressBar.visibility = View.VISIBLE
-							retryHandler.postDelayed({ if(!isFinishing) reconnect() }, AUTO_RETRY_DELAY_MS)
+							retryHandler.postDelayed({ if(!isFinishing && !userQuit) reconnect() }, AUTO_RETRY_DELAY_MS)
 						}
 						else
 						{
@@ -538,7 +542,57 @@ class StreamActivity : AppCompatActivity()
 
 	private fun adjustStreamViewAspect() = adjustSurfaceViewAspect()
 
-	override fun dispatchKeyEvent(event: KeyEvent) = viewModel.input.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+	override fun dispatchKeyEvent(event: KeyEvent): Boolean
+	{
+		if(event.keyCode == KeyEvent.KEYCODE_BACK && !com.metallic.chiaki.session.PadConfig.fromPad(event))
+		{
+			if(event.action == KeyEvent.ACTION_UP) showQuitMenu()
+			return true
+		}
+		return viewModel.input.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
+	}
+
+	// ---- quitting: the player decides, and nothing reconnects by itself afterwards
+	private var userQuit = false
+	private var retryBox: androidx.appcompat.app.AlertDialog? = null
+
+	/** Reconnect-in-progress box with a "เลิกเล่น" button, so a player who is done is never pulled back in. */
+	private fun showRetrying(message: String)
+	{
+		retryBox?.dismiss()
+		retryBox = MaterialAlertDialogBuilder(this)
+			.setTitle("กำลังเชื่อมต่อใหม่")
+			.setMessage(message + "\n\nเลิกเล่นแล้ว? กด \"เลิกเล่น\" แอปจะตัดการเชื่อมต่อและไม่ต่อใหม่อีก")
+			.setNegativeButton("เลิกเล่น") { _, _ -> quitPlaying(false) }
+			.setCancelable(false)
+			.create()
+			.also { d -> d.show(); d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE)?.requestFocus() }
+	}
+
+	private fun showQuitMenu()
+	{
+		val d = MaterialAlertDialogBuilder(this)
+			.setTitle("เลิกเล่นไหม?")
+			.setMessage("เลิกเล่น = ตัดการเชื่อมต่อกับ PS5 แล้วกลับหน้าแรก (แอปจะไม่ต่อใหม่เอง)")
+			.setPositiveButton("เลิกเล่น") { _, _ -> quitPlaying(false) }
+			.setNeutralButton("ออกจากแอป") { _, _ -> quitPlaying(true) }
+			.setNegativeButton("เล่นต่อ", null)
+			.create()
+		d.show()
+		d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE)?.requestFocus()
+	}
+
+	/** Disconnects from the PS5 for good (no auto-reconnect), then home screen or out of the app. */
+	private fun quitPlaying(exitApp: Boolean)
+	{
+		userQuit = true
+		retryHandler.removeCallbacksAndMessages(null)
+		retryBox?.dismiss(); retryBox = null
+		dialog?.dismiss()
+		try { translator?.stop() } catch(_: Throwable) { }
+		try { viewModel.session.shutdown() } catch(_: Throwable) { }
+		if(exitApp) finishAffinity() else finish()
+	}
 	override fun onGenericMotionEvent(event: MotionEvent) = viewModel.input.onGenericMotionEvent(event) || super.onGenericMotionEvent(event)
 }
 

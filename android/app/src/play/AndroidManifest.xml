@@ -6,10 +6,12 @@
     <!-- Play restricts media permissions; the video test uses the system file picker instead -->
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <!-- HDMI 4K mode: Thai drawn over the TV's HDMI input. No foreground service here: while the Thai window is on
+         screen Android keeps the app running (an app showing an overlay counts as in use). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <application>
-        <activity
-            android:name="com.metallic.chiaki.store.PurchaseActivity"
-            android:label="สมัครใช้งาน Eyesmaxxing"
-            android:theme="@style/AppTheme" />
+        <service
+            android:name="com.metallic.chiaki.hdmi.HdmiModeService"
+            android:exported="false" />
     </application>
 </manifest>

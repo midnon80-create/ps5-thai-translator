@@ -39,8 +39,21 @@ object Diag
 	fun gamepads(): List<String> = InputDevice.getDeviceIds().toList().mapNotNull { id ->
 		val d = InputDevice.getDevice(id) ?: return@mapNotNull null
 		val s = d.sources
-		val pad = (s and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
-			(s and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
-		if(pad && !d.isVirtual) d.name else null
+		// a real controller has analog sticks AND face buttons; TV remotes, sound bars and other Bluetooth / HDMI
+		// devices (e.g. "LG S70TY", "AD401") also report game keys and used to be listed here by their own names
+		val stick = (s and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK &&
+			d.getMotionRange(android.view.MotionEvent.AXIS_X) != null && d.getMotionRange(android.view.MotionEvent.AXIS_Y) != null
+		// (PlayStation pads on the generic driver report BUTTON_1.. instead of A/X)
+		val face = d.hasKeys(android.view.KeyEvent.KEYCODE_BUTTON_A, android.view.KeyEvent.KEYCODE_BUTTON_X,
+			android.view.KeyEvent.KEYCODE_BUTTON_1, android.view.KeyEvent.KEYCODE_BUTTON_2).any { it }
+		if(d.isVirtual || !stick || !face) return@mapNotNull null
+		val n = d.name.orEmpty().lowercase()
+		when
+		{
+			"dualsense" in n || "ps5" in n -> "จอย PS5 (DualSense)"
+			"wireless controller" in n || "dualshock" in n || "sony" in n -> "จอย PlayStation"
+			"xbox" in n -> "จอย Xbox"
+			else -> "จอยเกม"
+		}
 	}.distinct()
 }

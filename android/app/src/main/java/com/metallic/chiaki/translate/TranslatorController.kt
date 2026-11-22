@@ -33,7 +33,7 @@ class TranslatorController(
 	interface Ui
 	{
 		/** [subtitleTop] = top edge of the English subtitle as a fraction of the video height, or null if unknown. */
-		fun showScreenText(thai: String, english: String, subtitleTop: Float?)
+		fun showScreenText(thai: String, english: String, subtitleTop: Float?, subtitleBottom: Float? = null)
 		fun clearScreenText()
 		fun showSpeechText(thai: String, english: String)
 		fun clearSpeechText()
@@ -91,10 +91,13 @@ class TranslatorController(
 				val p = c.check()
 				if(running.get())
 				{
-					// always say where things stand: players took "no message" for "not working"
-					status(if(p == CloudTranslator.Problem.NONE) "✔ พร้อมแปลด้วย AI · เปิดซับในเกม (Subtitles: On) แล้วซับไทยจะขึ้นเอง"
-						else CloudTranslator.problemText(p))
-					main.postDelayed({ if(running.get()) ui.showStatus(null) }, 7000)
+					// one plain line in Thai; nothing technical before the game
+					if(p == CloudTranslator.Problem.NONE || p == CloudTranslator.Problem.OFFLINE)
+					{
+						status(if(p == CloudTranslator.Problem.NONE) "✔ พร้อมแปล · ซับไทยจะขึ้นเองเมื่อเข้าเกม (เปิด Subtitles ในเกม)"
+							else "ต่ออินเทอร์เน็ตไม่ได้ · ตรวจเน็ตของทีวี")
+						main.postDelayed({ if(running.get()) ui.showStatus(null) }, 6000)
+					}
 				}
 			}
 		}
@@ -183,11 +186,30 @@ class TranslatorController(
 		val seen = screenReader?.lastTexts?.take(8)?.joinToString(" | ") ?: ""
 		com.metallic.chiaki.crash.CrashReport.upload(context,
 			"ประเภท: สรุปการเล่น (ยังไม่มีซับไทยใน 90 วิ)" + nl + why + nl + code + nl + "ตัวอย่างข้อความที่อ่านได้: " + seen + nl + "ข้อผิดพลาดล่าสุด: " + (screenReader?.lastError ?: "-"))
-		status("ยังไม่เห็นซับอังกฤษ: " + why + nl + "เปิดซับในเกม (Subtitles: On) · ถ้ายังไม่ขึ้น ถ่ายรูปนี้ส่งผู้ขาย [" + code + "]")
-		main.postDelayed({ if(running.get()) ui.showStatus(null) }, 15000)
+		// on screen only once in the game, as a plain tip (the details go to the owner's report above)
+		if((cloud?.gameOkUntil ?: 0L) > System.currentTimeMillis())
+		{
+			status("ยังไม่เห็นซับอังกฤษ · เปิดซับในเกม: Settings › Subtitles › On")
+			main.postDelayed({ if(running.get()) ui.showStatus(null) }, 8000)
+		}
 	}
 
 	@Volatile private var engineSeen = ""
+
+	// ---- in the game yet? Thai shows only after GTA VI is recognised (Rockstar / GTA screens, GTA place names,
+	// or the server already knows this TV is in GTA). Fallback for a player who resumes straight into the game:
+	// subtitle-like lines in the subtitle band keep coming for 25 s after the stream started.
+	@Volatile private var subtitleLikeSince = 0L
+	@Volatile private var subtitleLikeCount = 0
+
+	private fun inGame(now: Long): Boolean
+	{
+		if((cloud?.gameOkUntil ?: 0L) > System.currentTimeMillis()) return true
+		if(connectedSince == 0L || now - connectedSince < 20_000L) return false
+		if(subtitleLikeSince == 0L) subtitleLikeSince = now
+		subtitleLikeCount++
+		return subtitleLikeCount >= 4 && now - subtitleLikeSince >= 25_000L
+	}
 
 	/** Counters for the end-of-game report since the last call (take it before [stop]). */
 	fun stats(): SessionReport.Stats
@@ -348,16 +370,18 @@ class TranslatorController(
 			{
 				is SubtitleTracker.Action.Show ->
 				{
+					if(!inGame(now)) return
 					lastScreenTextAt = now
 					st.incrementAndGet(5)
 					Diag.mark(context, Diag.SUBTITLE_AT)
 					val top = dialogue?.let { (it.box.top + yOffset).toFloat() / bmp.height }
+					val bottom = dialogue?.let { (it.box.bottom + yOffset).toFloat() / bmp.height }
 					val prepared = GameText.fromScreen(action.text)
 					val seq = screenSeq.incrementAndGet()
 					translateWorker.execute {
 						smartTranslate(listOf(prepared.text), TextKind.DIALOGUE, { seq == screenSeq.get() }) { thai ->
 							val line = prepared.withSpeaker(thai)
-							main.post { if(running.get() && seq == screenSeq.get()) ui.showScreenText(line, action.text, top) }
+							main.post { if(running.get() && seq == screenSeq.get()) ui.showScreenText(line, action.text, top, bottom) }
 						}
 					}
 				}
@@ -474,6 +498,8 @@ class TranslatorController(
 		if(prefs.mode == TranslatorPrefs.Mode.BOTH &&
 			SystemClock.elapsedRealtime() - lastScreenTextAt < SPEECH_SUPPRESS_MS)
 			return
+		// speech before the game (PS5 menus, videos) is not translated either
+		if((cloud?.gameOkUntil ?: 0L) <= System.currentTimeMillis() && subtitleLikeCount < 4) return
 		val prepared = sentences.map { GameText.fromSpeech(it).text }
 		val english = prepared.joinToString(" ")
 		val seq = speechSeq.incrementAndGet()

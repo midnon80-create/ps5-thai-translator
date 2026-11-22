@@ -60,7 +60,26 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 		binding.hostEditText.setText(intent.getStringExtra(EXTRA_HOST) ?: "255.255.255.255")
 		binding.broadcastCheckBox.isChecked = intent.getBooleanExtra(EXTRA_BROADCAST, true)
 
-		binding.registButton.setOnClickListener { doRegist() }
+		binding.registButton.setOnClickListener { hideKeyboard(); doRegist() }
+
+		// host / broadcast / console type: rarely needed, kept out of the way at the bottom
+		binding.advancedToggle.setOnClickListener {
+			val show = binding.hostTextInputLayout.visibility != View.VISIBLE
+			for(v in listOf(binding.hostTextInputLayout, binding.broadcastCheckBox, binding.ps4VersionRadioGroup))
+				v.visibility = if(show) View.VISIBLE else View.GONE
+			binding.advancedToggle.text = if(show) "ซ่อนตั้งค่าขั้นสูง ▴" else "ตั้งค่าขั้นสูง (ไม่จำเป็น ไม่ต้องแก้) ▾"
+		}
+
+		// PIN: the number keyboard closes by itself once all 8 digits are in (or on "done"), then the button is next
+		binding.pinEditText.addTextChangedListener(object : android.text.TextWatcher {
+			override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+			override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+			override fun afterTextChanged(s: android.text.Editable?) {
+				if((s?.length ?: 0) >= PIN_LENGTH) { hideKeyboard(); binding.registButton.requestFocus() }
+			}
+		})
+		binding.pinEditText.setOnEditorActionListener { _, _, _ -> hideKeyboard(); binding.registButton.requestFocus(); true }
+		binding.psnIdEditText.setOnEditorActionListener { _, _, _ -> binding.pinEditText.requestFocus(); true }
 
 		// the PSN name typed last time, so a second PS5 needs nothing new
 		if(savedInstanceState == null && binding.psnIdEditText.text.isNullOrEmpty())
@@ -98,10 +117,18 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 		})
 	}
 
+	private fun hideKeyboard()
+	{
+		val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+		currentFocus?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
+		imm?.hideSoftInputFromWindow(binding.pinEditText.windowToken, 0)
+		binding.pinEditText.clearFocus()
+	}
+
 	/** Asks the Eyesmaxxing server for the account ID that belongs to a public PSN name, then pairs. */
 	private fun resolveThenRegist(name: String)
 	{
-		val wait = android.app.AlertDialog.Builder(this).setTitle("กำลังค้นหาบัญชี PSN…").setMessage(name).setCancelable(false).show()
+		val wait = android.app.AlertDialog.Builder(this).setTitle("กำลังค้นหาชื่อออนไลน์ไอดี…").setMessage(name).setCancelable(false).show()
 		val ctx = applicationContext
 		Thread {
 			var id: String? = null
@@ -130,23 +157,23 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 				{
 					resolvedAccountId = found; resolvedFor = name
 					androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).edit().putString(PREF_LAST_PSN_NAME, name).apply()
-					android.widget.Toast.makeText(this, "พบบัญชี PSN: $shown ✔", android.widget.Toast.LENGTH_SHORT).show()
+					android.widget.Toast.makeText(this, "พบชื่อออนไลน์ไอดี: $shown ✔", android.widget.Toast.LENGTH_SHORT).show()
 					doRegist()
 					return@runOnUiThread
 				}
-				val title = when(err) { "not_found" -> "ไม่พบชื่อ PSN \"$name\""; "offline" -> "ต่ออินเทอร์เน็ตไม่ได้"; "too_many" -> "ลองบ่อยเกินไป"; else -> "ค้นหาบัญชี PSN ไม่ได้ตอนนี้" }
+				val title = when(err) { "not_found" -> "ไม่พบชื่อออนไลน์ไอดี \"$name\""; "offline" -> "ต่ออินเทอร์เน็ตไม่ได้"; "too_many" -> "ลองบ่อยเกินไป"; else -> "ค้นหาชื่อออนไลน์ไอดี ไม่ได้ตอนนี้" }
 				val msg = when(err) {
-					"not_found" -> "ต้องใช้ Online ID (ไม่ใช่ชื่อเล่น ชื่อจริง หรืออีเมล)\n\n" +
+					"not_found" -> "ต้องใช้ชื่อออนไลน์ไอดี (ไม่ใช่ชื่อเล่น ชื่อจริง หรืออีเมล)\n\n" +
 						"วิธีแก้\n" +
 						"1. ที่ PS5 ไปที่ ตั้งค่า › ผู้ใช้และบัญชี › บัญชี › โปรไฟล์\n" +
-						"2. ดูช่อง Online ID แล้วพิมพ์ให้ตรงทุกตัวอักษร (พิมพ์เล็ก/ใหญ่ได้)\n" +
+						"2. ดูช่องชื่อออนไลน์ไอดี (Online ID) แล้วพิมพ์ให้ตรงทุกตัวอักษร (พิมพ์เล็ก/ใหญ่ได้)\n" +
 						"3. ยังไม่เจอ: ตั้งค่า › ผู้ใช้และบัญชี › ความเป็นส่วนตัว › ตั้ง \"ใครค้นหาคุณได้\" เป็น \"ทุกคน\" ชั่วคราว แล้วลองใหม่\n\n" +
-						"แอปไม่ขอรหัสผ่าน PSN เด็ดขาด"
+						"แอปไม่ขอรหัสผ่าน เด็ดขาด"
 					"offline" -> "วิธีแก้\n" +
 						"1. ตรวจว่าทีวีต่อเน็ตอยู่ (เปิด YouTube ดูได้ไหม)\n" +
 						"2. ถ้าใช้ Wi-Fi ลองปิด-เปิด Wi-Fi ของทีวี\n" +
 						"3. กลับมากดจับคู่ใหม่"
-					"too_many" -> "เพื่อความปลอดภัย ระบบให้ลองได้ 20 ครั้งต่อชั่วโมง\n\nวิธีแก้\n1. รอประมาณ 1 ชั่วโมง\n2. ระหว่างนี้เช็กชื่อ Online ID ที่ PS5 ให้ชัวร์ (ตั้งค่า › ผู้ใช้และบัญชี › บัญชี › โปรไฟล์)"
+					"too_many" -> "เพื่อความปลอดภัย ระบบให้ลองได้ 20 ครั้งต่อชั่วโมง\n\nวิธีแก้\n1. รอประมาณ 1 ชั่วโมง\n2. ระหว่างนี้เช็กชื่อออนไลน์ไอดี ที่ PS5 ให้ชัวร์ (ตั้งค่า › ผู้ใช้และบัญชี › บัญชี › โปรไฟล์)"
 					else -> "ระบบของ Sony ตอบช้าชั่วคราว (ไม่ใช่ความผิดของคุณ)\n\n" +
 						"วิธีแก้\n" +
 						"1. กด ตกลง แล้วกดจับคู่ใหม่อีกครั้ง\n" +

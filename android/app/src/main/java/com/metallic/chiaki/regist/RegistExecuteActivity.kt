@@ -55,6 +55,11 @@ class RegistExecuteActivity: AppCompatActivity()
 			binding.logTextView.scrollTo(0, max(scrollY, 0))
 		})
 
+		// the button is "ถัดไป" (next step) after a successful pairing; nothing to press while it runs
+		binding.shareLogButton.visibility = View.GONE
+		binding.shareLogButton.text = "ถัดไป ▶"
+		binding.shareLogButton.icon = null
+
 		viewModel.state.observe(this, Observer {
 			binding.progressBar.visibility = if(it == RegistExecuteViewModel.State.RUNNING) View.VISIBLE else View.GONE
 			when(it)
@@ -75,8 +80,10 @@ class RegistExecuteActivity: AppCompatActivity()
 				RegistExecuteViewModel.State.SUCCESSFUL, RegistExecuteViewModel.State.SUCCESSFUL_DUPLICATE ->
 				{
 					binding.infoTextView.visibility = View.VISIBLE
-					binding.infoTextView.text = "จับคู่ PS5 สำเร็จ ✔"
+					binding.infoTextView.text = "จับคู่ PS5 สำเร็จ ✔ กด \"ถัดไป\" เพื่อเช็กความพร้อมแล้วเข้าเกม"
 					setResult(RESULT_OK)
+					binding.shareLogButton.visibility = View.VISIBLE
+					binding.shareLogButton.requestFocus()
 					if(it == RegistExecuteViewModel.State.SUCCESSFUL_DUPLICATE)
 						showDuplicateDialog()
 				}
@@ -90,12 +97,13 @@ class RegistExecuteActivity: AppCompatActivity()
 		})
 
 		binding.shareLogButton.setOnClickListener {
-			val log = viewModel.logText.value ?: ""
-			Intent(Intent.ACTION_SEND).also {
-				it.type = "text/plain"
-				it.putExtra(Intent.EXTRA_TEXT, log)
-				startActivity(Intent.createChooser(it, resources.getString(R.string.action_share_log)))
+			// next step: back to the home screen, which opens the pre-game checklist for this PS5 by itself
+			IntentCompat.getParcelableExtra(intent, EXTRA_REGIST_INFO, RegistInfo::class.java)?.host?.let { addr ->
+				androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).edit()
+					.putString(com.metallic.chiaki.tv.TvActivity.KEY_JUST_PAIRED, addr).apply()
 			}
+			setResult(RESULT_OK)
+			finish()
 		}
 
 		val registInfo = IntentCompat.getParcelableExtra(intent, EXTRA_REGIST_INFO, RegistInfo::class.java)
