@@ -704,10 +704,8 @@ class TvActivity : AppCompatActivity()
 		}
 		if(com.metallic.chiaki.hdmi.HdmiModeService.running)
 		{
-			guide("โหมด HDMI ทำงานอยู่", listOf(
-				"ซับไทยกำลังทำงานเบื้องหลัง · สลับทีวีไปช่อง HDMI ที่ต่อ PS5 เพื่อเล่น",
-				"ต้องการเลิก หรือเปลี่ยนไปเล่นผ่านแอป: กด \"หยุดโหมด HDMI\""),
-				"หยุดโหมด HDMI") { com.metallic.chiaki.hdmi.HdmiModeService.stop(this); toast("หยุดโหมด HDMI แล้ว") }
+			val saved = sp.getString(KEY_PS5_INPUT, null)
+			if(saved == null || !openHdmiInput(saved)) hdmiReadyBox("โหมด 4K ทำงานอยู่แล้ว ✔")
 			return
 		}
 		com.metallic.chiaki.hdmi.HdmiModeService.lastProblem?.let { p ->
@@ -735,11 +733,81 @@ class TvActivity : AppCompatActivity()
 	{
 		val info = ConnectInfo(host.isPS5, host.host, registeredHost.rpRegistKey, registeredHost.rpKey, Preferences(this).videoProfile)
 		com.metallic.chiaki.hdmi.HdmiModeService.start(this, info)
-		guide("เริ่มโหมด HDMI แล้ว", listOf(
-			"ใช้รีโมททีวีกดเปลี่ยนแหล่งสัญญาณ (Input / Source) ไปช่อง HDMI ที่ต่อ PS5",
-			"เล่นด้วยจอยที่ต่อ PS5 ตามปกติ ซับไทยจะขึ้นทับภาพเอง (ต้องเปิดซับไตเติลในเกม)",
-			"ไม่เห็นซับไทยเลยหลัง 1 นาที: ทีวีรุ่นนี้อาจไม่ให้แสดงทับช่อง HDMI · กลับมาที่แอปแล้วใช้โหมดเล่นผ่านแอป",
-			"เลิกเล่น: เปิดแอปนี้แล้วกดการ์ด PS5 › หยุดโหมด HDMI"), null) { }
+		toast("เริ่มโหมด 4K แล้ว ✔ กำลังเปลี่ยนไปช่อง HDMI ของ PS5…")
+		// give the hidden reader a moment to start, then show the PS5's own 4K picture
+		main.postDelayed({ goToPs5Input() }, 1500)
+	}
+
+	/** HDMI inputs of this TV (Android TV input framework), e.g. "HDMI 2" → input id. Empty on boxes / when hidden. */
+	private fun hdmiInputs(): List<Pair<String, String>> = try
+	{
+		val tim = getSystemService(android.media.tv.TvInputManager::class.java)
+		val all = tim?.tvInputList.orEmpty().filter { it.type == android.media.tv.TvInputInfo.TYPE_HDMI && !it.isHidden(this) }
+		// something plugged in and switched on (INPUT_STATE_CONNECTED) first; the PS5 is one of those
+		fun on(id: String) = try { tim?.getInputState(id) == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED } catch(_: Throwable) { false }
+		all.sortedByDescending { on(it.id) }.map { (it.loadCustomLabel(this) ?: it.loadLabel(this)).toString() + (if(on(it.id)) " · มีสัญญาณ" else "") to it.id }
+	}
+	catch(_: Throwable) { emptyList() }
+
+	/** Switches the TV picture to that HDMI input (the Thai overlay stays on top). */
+	private fun openHdmiInput(id: String): Boolean = try
+	{
+		startActivity(Intent(Intent.ACTION_VIEW, android.media.tv.TvContract.buildChannelUriForPassthroughInput(id))
+			.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true
+	}
+	catch(_: Throwable) { false }
+
+	/**
+	 * Shows the PS5's HDMI input (its own 4K picture). The input picked last time is used again; with one plugged-in
+	 * HDMI input it is used straight away; otherwise the player picks once. Boxes / TVs that hide their inputs get
+	 * the box that explains the Input button.
+	 */
+	private fun goToPs5Input()
+	{
+		val inputs = hdmiInputs()
+		val saved = sp.getString(KEY_PS5_INPUT, null)
+		val live = inputs.filter { it.first.endsWith("มีสัญญาณ") }
+		val pick = inputs.firstOrNull { it.second == saved } ?: live.singleOrNull()
+		if(pick != null && openHdmiInput(pick.second)) { sp.edit().putString(KEY_PS5_INPUT, pick.second).apply(); return }
+		if(inputs.isNotEmpty()) chooseInput(inputs) else hdmiReadyBox("เริ่มโหมด 4K แล้ว ✔")
+	}
+
+	private fun chooseInput(inputs: List<Pair<String, String>>)
+	{
+		android.app.AlertDialog.Builder(this).setTitle("PS5 เสียบอยู่ช่อง HDMI ไหน? (เลือกครั้งเดียว ครั้งต่อไปแอปจำให้)")
+			.setItems(inputs.map { it.first }.toTypedArray()) { _, i ->
+				if(openHdmiInput(inputs[i].second)) sp.edit().putString(KEY_PS5_INPUT, inputs[i].second).apply()
+				else hdmiReadyBox("เปิดช่อง HDMI เองไม่ได้")
+			}
+			.setNegativeButton("ปิด", null)
+			.show()
+	}
+
+	/** 4K mode is on: the only thing left is to show the PS5's HDMI input. One button does it when the TV allows. */
+	private fun hdmiReadyBox(title: String)
+	{
+		val inputs = hdmiInputs()
+		val msg = "ซับไทยพร้อมแล้ว · ขั้นสุดท้าย: เปลี่ยนทีวีไปช่อง HDMI ที่เสียบ PS5\n\n" +
+			(if(inputs.isNotEmpty()) "กด \"ไปช่อง HDMI\" ด้านล่าง แล้วเลือกช่องที่ต่อ PS5\n\n" else "ใช้รีโมททีวีกดปุ่ม Input / Source แล้วเลือกช่อง HDMI ที่ต่อ PS5\n\n") +
+			"เล่นด้วยจอยที่ต่อ PS5 ตามปกติ ซับไทยจะขึ้นทับภาพเอง (เปิด Subtitles ในเกม)\n" +
+			"เลิกเล่น: กลับมาที่แอปนี้ › กด \"หยุดโหมด 4K\" หรือการ์ด \"เลิกเล่น\""
+		val b = android.app.AlertDialog.Builder(this).setTitle(title).setMessage(msg)
+		if(inputs.isNotEmpty()) b.setPositiveButton("ไปเล่นที่ช่อง PS5 ▶") { _, _ ->
+			val saved = sp.getString(KEY_PS5_INPUT, null)
+			if(saved != null && inputs.any { it.second == saved } && openHdmiInput(saved)) return@setPositiveButton
+			chooseInput(inputs)
+		}
+		b.setNeutralButton("หยุดโหมด 4K") { _, _ -> com.metallic.chiaki.hdmi.HdmiModeService.stop(this); toast("หยุดโหมด 4K แล้ว") }
+		b.setNegativeButton("ปิด", null)
+		val d = b.show()
+		try
+		{
+			d.findViewById<TextView>(android.R.id.message)?.apply { textSize = 18f; setLineSpacing(0f, 1.25f) }
+			for(w in listOf(android.app.AlertDialog.BUTTON_POSITIVE, android.app.AlertDialog.BUTTON_NEUTRAL, android.app.AlertDialog.BUTTON_NEGATIVE))
+				d.getButton(w)?.apply { textSize = 19f; isAllCaps = false }
+			d.getButton(if(inputs.isNotEmpty()) android.app.AlertDialog.BUTTON_POSITIVE else android.app.AlertDialog.BUTTON_NEGATIVE)?.requestFocus()
+		}
+		catch(_: Throwable) { }
 	}
 
 	/** Step-by-step help for one checklist line, with an optional button that does the fix. */
@@ -1280,6 +1348,8 @@ class TvActivity : AppCompatActivity()
 		const val KEY_GAME = "tv_game"
 		/** Set by the pairing screen: address of the PS5 just paired, so the next step (checklist) opens by itself. */
 		const val KEY_JUST_PAIRED = "tv_just_paired"
+		/** TV input id of the HDMI port the PS5 is plugged into (HDMI 4K mode), picked once. */
+		const val KEY_PS5_INPUT = "tv_ps5_input"
 		/** "stream" = play through the app, "hdmi" = PS5 on the TV's HDMI input with Thai drawn on top (link build). */
 		const val KEY_PLAY_MODE = "tv_play_mode"
 	}
