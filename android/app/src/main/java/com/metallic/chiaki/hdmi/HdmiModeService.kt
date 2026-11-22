@@ -156,6 +156,13 @@ class HdmiModeService : Service()
 		wm.addView(root, lp)
 		overlay = root
 		setUpController(root)
+		// a controller that disconnects never leaves a button held down on the PS5
+		val im = getSystemService(android.hardware.input.InputManager::class.java)
+		padListener = object : android.hardware.input.InputManager.InputDeviceListener {
+			override fun onInputDeviceAdded(id: Int) {}
+			override fun onInputDeviceRemoved(id: Int) { try { input.releaseAll() } catch(_: Throwable) { } }
+			override fun onInputDeviceChanged(id: Int) {}
+		}.also { im?.registerInputDeviceListener(it, main) }
 		val overlayUi = TranslatorOverlay(root, root.findViewById(R.id.hdmiVideo))
 		ui = overlayUi
 		overlayUi.showStatus("กำลังเชื่อมต่อ PS5 เพื่ออ่านซับ…")
@@ -201,6 +208,7 @@ class HdmiModeService : Service()
 	// ---- controller: same handling as app mode (StreamInput: button fixes, triggers, sticks)
 	private val input by lazy { com.metallic.chiaki.session.StreamInput(this, com.metallic.chiaki.common.Preferences(this)) }
 	private var backAt = 0L
+	private var padListener: android.hardware.input.InputManager.InputDeviceListener? = null
 
 	private fun setUpController(root: View)
 	{
@@ -217,7 +225,13 @@ class HdmiModeService : Service()
 			if(k == android.view.KeyEvent.KEYCODE_BACK && e.action == android.view.KeyEvent.ACTION_UP)
 			{
 				val now = SystemClock.elapsedRealtime()
-				if(now - backAt < 2500L) { lastProblem = null; shutDown() }
+				if(now - backAt < 2500L) {
+					lastProblem = null
+					androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).edit()
+						.putBoolean(com.metallic.chiaki.tv.TvActivity.KEY_SHOW_PAD_OFF, true).apply()
+					shutDown()
+					ui?.let { } // window is gone; the home screen shows how to switch the controller off next time
+				}
 				else { backAt = now; ui?.showStatus("กดย้อนกลับอีกครั้งเพื่อเลิกเล่น"); main.postDelayed({ ui?.showStatus(null) }, 2500) }
 			}
 			true
@@ -232,6 +246,8 @@ class HdmiModeService : Service()
 	private fun shutDown()
 	{
 		try { input.releaseAll() } catch(_: Throwable) { }
+		padListener?.let { l -> try { getSystemService(android.hardware.input.InputManager::class.java)?.unregisterInputDeviceListener(l) } catch(_: Throwable) { } }
+		padListener = null
 		main.removeCallbacks(idleCheck)
 		stopEverything()
 		stopSelf()

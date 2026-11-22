@@ -123,6 +123,11 @@ class TvActivity : AppCompatActivity()
 		super.onResume()
 		if(!firstResume && tab >= 0) showTab(tab, Trans.NONE) // fresh status after a game / settings
 		firstResume = false
+		if(sp.getBoolean(KEY_SHOW_PAD_OFF, false))
+		{
+			sp.edit().remove(KEY_SHOW_PAD_OFF).apply()
+			main.postDelayed({ showPadOff { } }, 400)
+		}
 		com.metallic.chiaki.hdmi.HdmiModeService.lastProblem?.let { p ->
 			com.metallic.chiaki.hdmi.HdmiModeService.lastProblem = null
 			main.postDelayed({ explain4kStop(p) }, 600)
@@ -687,9 +692,29 @@ class TvActivity : AppCompatActivity()
 	{
 		try { if(com.metallic.chiaki.hdmi.HdmiModeService.running) com.metallic.chiaki.hdmi.HdmiModeService.stop(this) } catch(_: Throwable) { }
 		try { vm.discoveryManager.active = false } catch(_: Throwable) { }
-		// Android does not let apps switch a Bluetooth controller off: tell the player the one-button way
-		toast("เลิกเล่นแล้ว ✔ ปิดจอย: กดปุ่ม PS ค้างไว้ 10 วินาที")
-		main.postDelayed({ finishAffinity() }, 1800)
+		// Android does not let apps switch a Bluetooth controller off: tell the player the one-button way, and to keep
+		// the TV's Bluetooth on (turning it off also cuts the TV remote)
+		showPadOff { finishAffinity() }
+	}
+
+	/** "เลิกเล่นแล้ว" box: how to switch the controller off without touching the TV's Bluetooth. */
+	private fun showPadOff(done: () -> Unit)
+	{
+		if(Diag.gamepads().isEmpty()) { toast("เลิกเล่นแล้ว ✔"); main.postDelayed({ done() }, 900); return }
+		val d = android.app.AlertDialog.Builder(this)
+			.setTitle("เลิกเล่นแล้ว ✔")
+			.setMessage("1. ปิดจอย: กดปุ่ม PS (ปุ่มกลางจอย) ค้างไว้ประมาณ 10 วินาที จนไฟที่จอยดับ\n\n" +
+				"2. ห้ามปิดบลูทูธของทีวี: รีโมททีวีใช้บลูทูธเหมือนกัน ถ้าปิด รีโมทจะใช้ไม่ได้\n\n" +
+				"ถ้าเผลอปิดบลูทูธไปแล้ว: ใช้แอป Google TV ในมือถือ (Wi-Fi เดียวกับทีวี) เป็นรีโมท › ตั้งค่า › รีโมทและอุปกรณ์เสริม › เปิดบลูทูธ")
+			.setPositiveButton("ตกลง") { _, _ -> done() }
+			.setOnCancelListener { done() }
+			.show()
+		try
+		{
+			d.findViewById<TextView>(android.R.id.message)?.apply { textSize = 19f; setLineSpacing(0f, 1.25f) }
+			d.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.apply { textSize = 20f; isAllCaps = false; requestFocus() }
+		}
+		catch(_: Throwable) { }
 	}
 
 	private fun hostCard(name: String, sub: String, badge: String, onClick: () -> Unit): View
@@ -1408,6 +1433,8 @@ class TvActivity : AppCompatActivity()
 	{
 		const val KEY_ONBOARDED = "tv_onboarded"
 		const val KEY_GAME = "tv_game"
+		/** Set by the game screen after "เลิกเล่น": the home screen shows how to switch the controller off. */
+		const val KEY_SHOW_PAD_OFF = "tv_show_pad_off"
 		/** Set by the pairing screen: address of the PS5 just paired, so the next step (checklist) opens by itself. */
 		const val KEY_JUST_PAIRED = "tv_just_paired"
 		/** TV input id of the HDMI port the PS5 is plugged into (HDMI 4K mode), picked once. */

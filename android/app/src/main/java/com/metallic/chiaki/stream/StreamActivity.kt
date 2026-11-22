@@ -157,7 +157,7 @@ class StreamActivity : AppCompatActivity()
 		val im = getSystemService(android.hardware.input.InputManager::class.java)
 		val padListener = object : android.hardware.input.InputManager.InputDeviceListener {
 			override fun onInputDeviceAdded(id: Int) = checkPads()
-			override fun onInputDeviceRemoved(id: Int) = checkPads()
+			override fun onInputDeviceRemoved(id: Int) { viewModel.input.releaseAll(); checkPads() }
 			override fun onInputDeviceChanged(id: Int) = checkPads()
 		}
 		im?.registerInputDeviceListener(padListener, null)
@@ -589,7 +589,8 @@ class StreamActivity : AppCompatActivity()
 		dialog?.dismiss()
 		try { translator?.stop() } catch(_: Throwable) { }
 		try { viewModel.session.shutdown() } catch(_: Throwable) { }
-		android.widget.Toast.makeText(this, "เลิกเล่นแล้ว ✔ ปิดจอย: กดปุ่ม PS ค้างไว้ 10 วินาที", android.widget.Toast.LENGTH_LONG).show()
+		androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).edit()
+			.putBoolean(com.metallic.chiaki.tv.TvActivity.KEY_SHOW_PAD_OFF, true).apply()
 		if(exitApp) finishAffinity() else finish()
 	}
 	override fun onGenericMotionEvent(event: MotionEvent) = viewModel.input.onGenericMotionEvent(event) || super.onGenericMotionEvent(event)
