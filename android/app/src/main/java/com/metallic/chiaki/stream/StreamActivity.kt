@@ -95,6 +95,9 @@ class StreamActivity : AppCompatActivity()
 
 		// phone volume keys change the game sound, and say so when the media volume is at zero ("ไม่มีเสียง")
 		volumeControlStream = android.media.AudioManager.STREAM_MUSIC
+		// TVs / boxes: game sound through the TV speakers / HDMI ARC from the start (not only the headphone jack)
+		try { com.metallic.chiaki.lib.Session.setAudioTv(packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+			!packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)) } catch(_: Throwable) { }
 		try
 		{
 			val am = getSystemService(android.media.AudioManager::class.java)

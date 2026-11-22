@@ -55,15 +55,48 @@ static int64_t now_ms()
 	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-/** Opens and starts the output. Shared mode first (works on every phone and TV), exclusive low-latency is not worth the failures. */
+// Ways to open the sound output, tried in order until one works.
+// Many TVs / boxes only send Android's low-latency "fast" audio path to the headphone jack: the TV speakers,
+// HDMI ARC and optical go through the normal media path. So TVs start with the plain media path (the same one
+// video apps use) and phones with low latency; when a way fails or stops pulling sound the next one is tried.
+struct AudioProfile { const char *name; oboe::AudioApi api; oboe::PerformanceMode perf; oboe::Usage usage; oboe::ContentType content; };
+static const AudioProfile PROFILE_MEDIA_SL = { "media/opensl", oboe::AudioApi::OpenSLES, oboe::PerformanceMode::None, oboe::Usage::Media, oboe::ContentType::Movie };
+static const AudioProfile PROFILE_MEDIA = { "media/aaudio", oboe::AudioApi::Unspecified, oboe::PerformanceMode::None, oboe::Usage::Media, oboe::ContentType::Movie };
+static const AudioProfile PROFILE_FAST = { "game/lowlatency", oboe::AudioApi::Unspecified, oboe::PerformanceMode::LowLatency, oboe::Usage::Game, oboe::ContentType::Music };
+static const AudioProfile *const ORDER_TV[] = { &PROFILE_MEDIA, &PROFILE_MEDIA_SL, &PROFILE_FAST };
+static const AudioProfile *const ORDER_PHONE[] = { &PROFILE_FAST, &PROFILE_MEDIA, &PROFILE_MEDIA_SL };
+static std::atomic<bool> g_tv{false};
+static std::atomic<int> g_profile{0}; // index into the order: kept for the whole app run once one works
+
+extern "C" void android_chiaki_audio_output_set_tv(int tv)
+{
+	if(g_tv.exchange(tv != 0) != (tv != 0))
+		g_profile = 0;
+}
+
+static const AudioProfile *current_profile()
+{
+	int i = g_profile.load() % 3;
+	return g_tv ? ORDER_TV[i] : ORDER_PHONE[i];
+}
+
+static void next_profile(AudioOutput *ao)
+{
+	g_profile = (g_profile.load() + 1) % 3;
+	CHIAKI_LOGW(ao->log, "Audio Output switching to %s", current_profile()->name);
+}
+
+/** Opens and starts the output in the current way. Shared mode always (exclusive is not worth the failures). */
 static bool open_stream(AudioOutput *ao)
 {
 	ao->stream = nullptr;
+	const AudioProfile *p = current_profile();
 	oboe::AudioStreamBuilder builder;
-	builder.setPerformanceMode(oboe::PerformanceMode::LowLatency)
+	builder.setAudioApi(p->api)
+		->setPerformanceMode(p->perf)
 		->setSharingMode(oboe::SharingMode::Shared)
-		->setUsage(oboe::Usage::Game)
-		->setContentType(oboe::ContentType::Music)
+		->setUsage(p->usage)
+		->setContentType(p->content)
 		->setFormat(oboe::AudioFormat::I16)
 		->setChannelCount(ao->channels)
 		->setSampleRate(ao->rate)
@@ -73,19 +106,21 @@ static bool open_stream(AudioOutput *ao)
 	auto result = builder.openManagedStream(ao->stream);
 	if(result != oboe::Result::OK || !ao->stream)
 	{
-		CHIAKI_LOGE(ao->log, "Audio Output failed to open Oboe stream: %s", oboe::convertToText(result));
+		CHIAKI_LOGE(ao->log, "Audio Output failed to open Oboe stream (%s): %s", p->name, oboe::convertToText(result));
 		ao->stream = nullptr;
+		next_profile(ao);
 		return false;
 	}
-	CHIAKI_LOGI(ao->log, "Audio Output opened Oboe stream");
 	result = ao->stream->requestStart();
 	if(result != oboe::Result::OK)
 	{
-		CHIAKI_LOGE(ao->log, "Audio Output failed to start Oboe stream: %s", oboe::convertToText(result));
+		CHIAKI_LOGE(ao->log, "Audio Output failed to start Oboe stream (%s): %s", p->name, oboe::convertToText(result));
 		ao->stream = nullptr;
+		next_profile(ao);
 		return false;
 	}
-	CHIAKI_LOGI(ao->log, "Audio Output started Oboe stream");
+	CHIAKI_LOGI(ao->log, "Audio Output started Oboe stream (%s, api %d, device %d)", p->name,
+		(int)ao->stream->getAudioApi(), (int)ao->stream->getDeviceId());
 	return true;
 }
 
@@ -148,7 +183,8 @@ extern "C" void android_chiaki_audio_output_frame(int16_t *buf, size_t samples_c
 	{
 		CHIAKI_LOGW(ao->log, "Audio Output Buffer Overflow!");
 		// the output stopped pulling (stream stalled without reporting it): restart it after a short while
-		if(++ao->overflows >= 25) { ao->overflows = 0; ao->reopen = true; }
+		// (the output never takes sound in this way on this TV: try the next way)
+		if(++ao->overflows >= 25) { ao->overflows = 0; next_profile(ao); ao->reopen = true; }
 	}
 	else
 		ao->overflows = 0;

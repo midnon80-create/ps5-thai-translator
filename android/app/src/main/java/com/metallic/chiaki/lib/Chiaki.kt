@@ -92,6 +92,7 @@ private class ChiakiNative
 		@JvmStatic external fun sessionJoin(ptr: Long): Int
 		@JvmStatic external fun sessionSetSurface(ptr: Long, surface: Surface?)
 		@JvmStatic external fun audioSetMuted(muted: Boolean)
+		@JvmStatic external fun audioSetTv(tv: Boolean)
 		@JvmStatic external fun sessionSetControllerState(ptr: Long, controllerState: ControllerState)
 		@JvmStatic external fun sessionSetLoginPin(ptr: Long, pin: String)
 		@JvmStatic external fun discoveryServiceCreate(result: CreateResult, options: DiscoveryServiceOptions, javaService: DiscoveryService)
@@ -387,6 +388,8 @@ class Session(connectInfo: ConnectInfo, logFile: String?, logVerbose: Boolean)
 	{
 		/** HDMI mode: keep the stream silent (the PS5 plays its sound through HDMI). */
 		fun setAudioMuted(muted: Boolean) = ChiakiNative.audioSetMuted(muted)
+		/** TVs / boxes: play through the normal media sound path (TV speakers, HDMI ARC), not the low-latency one. */
+		fun setAudioTv(tv: Boolean) = ChiakiNative.audioSetTv(tv)
 	}
 
 	fun setControllerState(controllerState: ControllerState)
