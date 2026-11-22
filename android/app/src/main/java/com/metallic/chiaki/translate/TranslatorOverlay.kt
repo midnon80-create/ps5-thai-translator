@@ -114,7 +114,7 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 		if(english != curEnglish)
 		{
 			// a new line: the previous Thai line moves up (dimmer) for PREVIOUS_KEEP_MS if it was shown only briefly
-			prevThai = if(screenText.isVisible && curThai.isNotEmpty() && now - screenShownAt < PREVIOUS_IF_SHOWN_UNDER_MS) curThai else null
+			prevThai = if(prefs.showPrevious && screenText.isVisible && curThai.isNotEmpty() && now - screenShownAt < PREVIOUS_IF_SHOWN_UNDER_MS) curThai else null
 			curEnglish = english
 			screenShownAt = now
 			screenText.removeCallbacks(dropPrevious)

@@ -1136,12 +1136,22 @@ class TvActivity : AppCompatActivity()
 			}
 			(eng.layoutParams as FrameLayout.LayoutParams).bottomMargin = if(p.position == TranslatorPrefs.Position.BELOW_SUBTITLE) (px * 1.6f).toInt() + 8 else 16
 			thai.layoutParams = tl; eng.requestLayout()
+			thai.text = if(p.showPrevious) android.text.SpannableStringBuilder("ใจเย็น ๆ  ›  ").apply {
+				setSpan(com.metallic.chiaki.translate.FillColorSpan(0xFF9FB4FF.toInt()), 0, length, 0); append("เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า") }
+				else "เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า"
 		}
 
 		right.addView(head("ตำแหน่งซับไทย"), llp(WRAP, WRAP, t = 16))
 		val places = listOf("above" to "เหนือซับอังกฤษ", "below" to "ใต้ซับอังกฤษ", "top" to "บนสุดของจอ")
 		right.addView(row(places.map { (value, label) ->
 			option(label, null, { str(TranslatorPrefs.KEY_POSITION, "above") == value }, { put(TranslatorPrefs.KEY_POSITION, value) }, size = 22f) }, 64), llp(MATCH, WRAP, t = 8))
+
+		right.addView(head("ประโยคก่อนหน้า (สีฟ้า ที่อ่านไม่ทัน)"), llp(WRAP, WRAP, t = 16))
+		fun prevOn() = sp.getBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, true)
+		right.addView(row(listOf(
+			option("แสดง", null, { prevOn() }, { sp.edit().putBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, true).apply() }, size = 22f),
+			option("ไม่แสดง (เฉพาะประโยคล่าสุด)", null, { !prevOn() }, { sp.edit().putBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, false).apply() }, size = 22f)), 64),
+			llp(MATCH, WRAP, t = 8))
 
 		right.addView(head("ภาพ"), llp(WRAP, WRAP, t = 16))
 		val caps = DeviceCaps(this)

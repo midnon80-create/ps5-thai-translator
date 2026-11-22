@@ -73,6 +73,9 @@ class TranslatorPrefs(context: Context)
 		else -> 0x73 // 45 % black, the original look
 	}
 
+	/** Show the line before (the one the player may not have finished reading) in front of the new one. */
+	val showPrevious get() = sp.getBoolean(KEY_SHOW_PREVIOUS, true)
+
 	/** Set by the translator test: this TV can't recognise speech in real time. */
 	val speechSlow get() = sp.getBoolean(KEY_SPEECH_SLOW, false)
 	fun setSpeechSlow(v: Boolean) = sp.edit().putBoolean(KEY_SPEECH_SLOW, v).apply()
@@ -109,6 +112,7 @@ class TranslatorPrefs(context: Context)
 	{
 		const val KEY_MODE = "tr_mode"
 		const val KEY_COLOR = "tr_text_color"
+		const val KEY_SHOW_PREVIOUS = "tr_show_previous"
 		const val KEY_BG = "tr_bg"
 		const val KEY_POSITION = "tr_position"
 		const val KEY_LICENCE = "tr_licence"
