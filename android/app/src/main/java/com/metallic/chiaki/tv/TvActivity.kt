@@ -704,9 +704,10 @@ class TvActivity : AppCompatActivity()
 		}
 		if(com.metallic.chiaki.hdmi.HdmiModeService.running)
 		{
-			val saved = sp.getString(KEY_PS5_INPUT, null)
-			if(saved == null || !openHdmiInput(saved)) hdmiReadyBox("โหมด 4K ทำงานอยู่แล้ว ✔")
-			return
+			if(sp.getString(KEY_PLAY_MODE, "stream") == "hdmi") { hdmiPicker(); return }
+			// the player switched to playing through the app (1080p): 4K mode must not keep pulling the TV to HDMI
+			com.metallic.chiaki.hdmi.HdmiModeService.stop(this)
+			toast("หยุดโหมด 4K แล้ว · กำลังเตรียมเล่นผ่านแอป")
 		}
 		com.metallic.chiaki.hdmi.HdmiModeService.lastProblem?.let { p ->
 			com.metallic.chiaki.hdmi.HdmiModeService.lastProblem = null
@@ -738,14 +739,18 @@ class TvActivity : AppCompatActivity()
 		main.postDelayed({ goToPs5Input() }, 1500)
 	}
 
-	/** HDMI inputs of this TV (Android TV input framework), e.g. "HDMI 2" → input id. Empty on boxes / when hidden. */
-	private fun hdmiInputs(): List<Pair<String, String>> = try
+	/** One HDMI input of this TV. [arc] = labelled ARC / eARC (usually the sound bar / speaker port, not the PS5). */
+	private class HdmiIn(val label: String, val id: String, val live: Boolean, val arc: Boolean)
+
+	/** HDMI inputs of this TV (Android TV input framework). Empty on boxes / dongles / TVs that hide them. */
+	private fun hdmiInputs(): List<HdmiIn> = try
 	{
 		val tim = getSystemService(android.media.tv.TvInputManager::class.java)
-		val all = tim?.tvInputList.orEmpty().filter { it.type == android.media.tv.TvInputInfo.TYPE_HDMI && !it.isHidden(this) }
-		// something plugged in and switched on (INPUT_STATE_CONNECTED) first; the PS5 is one of those
 		fun on(id: String) = try { tim?.getInputState(id) == android.media.tv.TvInputManager.INPUT_STATE_CONNECTED } catch(_: Throwable) { false }
-		all.sortedByDescending { on(it.id) }.map { (it.loadCustomLabel(this) ?: it.loadLabel(this)).toString() + (if(on(it.id)) " · มีสัญญาณ" else "") to it.id }
+		tim?.tvInputList.orEmpty().filter { it.type == android.media.tv.TvInputInfo.TYPE_HDMI && !it.isHidden(this) }.map {
+			val label = (it.loadCustomLabel(this) ?: it.loadLabel(this)).toString()
+			HdmiIn(label, it.id, on(it.id), Regex("""\b(e?arc)\b""", RegexOption.IGNORE_CASE).containsMatchIn(label))
+		}
 	}
 	catch(_: Throwable) { emptyList() }
 
@@ -757,57 +762,74 @@ class TvActivity : AppCompatActivity()
 	}
 	catch(_: Throwable) { false }
 
+	/** 4K mode started (or already running): the player picks the PS5's HDMI input, every time, so a wrong pick is easy to fix. */
+	private fun goToPs5Input() = hdmiPicker()
+
 	/**
-	 * Shows the PS5's HDMI input (its own 4K picture). The input picked last time is used again; with one plugged-in
-	 * HDMI input it is used straight away; otherwise the player picks once. Boxes / TVs that hide their inputs get
-	 * the box that explains the Input button.
+	 * Full-screen page: "which HDMI input is the PS5 on?". Every input is a big card (signal / last used / sound-bar port
+	 * marked), with ย้อนกลับ and หยุดโหมด 4K buttons. Nothing is picked automatically.
 	 */
-	private fun goToPs5Input()
+	private fun hdmiPicker()
 	{
 		val inputs = hdmiInputs()
 		val saved = sp.getString(KEY_PS5_INPUT, null)
-		val live = inputs.filter { it.first.endsWith("มีสัญญาณ") }
-		val pick = inputs.firstOrNull { it.second == saved } ?: live.singleOrNull()
-		if(pick != null && openHdmiInput(pick.second)) { sp.edit().putString(KEY_PS5_INPUT, pick.second).apply(); return }
-		if(inputs.isNotEmpty()) chooseInput(inputs) else hdmiReadyBox("เริ่มโหมด 4K แล้ว ✔")
-	}
-
-	private fun chooseInput(inputs: List<Pair<String, String>>)
-	{
-		android.app.AlertDialog.Builder(this).setTitle("PS5 เสียบอยู่ช่อง HDMI ไหน? (เลือกครั้งเดียว ครั้งต่อไปแอปจำให้)")
-			.setItems(inputs.map { it.first }.toTypedArray()) { _, i ->
-				if(openHdmiInput(inputs[i].second)) sp.edit().putString(KEY_PS5_INPUT, inputs[i].second).apply()
-				else hdmiReadyBox("เปิดช่อง HDMI เองไม่ได้")
+		val panel = FrameLayout(this).apply { setBackgroundColor(0xF007050C.toInt()); isClickable = true }
+		val box = Ui.col(this).apply { background = Ui.round(Ui.PANEL2, 36f, 3, Ui.VIOLET2); setPadding(64, 48, 64, 44) }
+		box.addView(text(this, "PS5 เสียบอยู่ช่อง HDMI ไหน?", 46f, Ui.TEXT, W.BOLD))
+		box.addView(text(this, if(inputs.isEmpty()) "ทีวีนี้ไม่ให้แอปเปลี่ยนช่องเอง · ใช้รีโมททีวีกดปุ่ม Input / Source แล้วเลือกช่อง HDMI ที่เสียบ PS5"
+			else "เลือกช่องที่เสียบสาย HDMI จาก PS5 · ไม่ใช่ช่อง eARC / ARC ที่ต่อลำโพงหรือซาวด์บาร์ · เลือกผิด กลับมาเลือกใหม่ได้ทุกครั้ง",
+			24f, Ui.MUTED).apply { setLineSpacing(0f, 1.25f) }, llp(1200, WRAP, t = 8))
+		var closed = false
+		fun close() { if(closed) return; closed = true; keyCatcher = null
+			panel.animate().alpha(0f).setDuration(160).withEndAction { root.removeView(panel) }.start() }
+		var focus: View? = null
+		var row: LinearLayout? = null
+		inputs.forEachIndexed { k, inp ->
+			if(k % 3 == 0) { row = Ui.row(this); box.addView(row, llp(1200, WRAP, t = if(k == 0) 26 else 16)) }
+			val card = Card(this, 24f, Ui.PANEL) { inp.id == saved }
+			card.grow = 1.05f
+			val c = Ui.col(this).apply { setPadding(26, 18, 26, 18); gravity = Gravity.CENTER_VERTICAL }
+			c.addView(text(this, inp.label, 34f, Ui.TEXT, W.SEMIBOLD).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+			val tags = ArrayList<Pair<String, Int>>()
+			tags += if(inp.live) "● มีสัญญาณ" to Ui.OK else "○ ไม่มีสัญญาณ" to Ui.DIM
+			if(inp.id == saved) tags += "ใช้ครั้งก่อน" to Ui.VIOLET2
+			if(inp.arc) tags += "ช่องลำโพง?" to Ui.WARN
+			c.addView(text(this, android.text.SpannableStringBuilder().apply {
+				tags.forEachIndexed { i, (t, col) -> if(i > 0) append("  ·  "); val s = length; append(t)
+					setSpan(android.text.style.ForegroundColorSpan(col), s, length, 0) } }, 21f, Ui.MUTED), llp(WRAP, WRAP, t = 4))
+			card.addView(c, FrameLayout.LayoutParams(MATCH, MATCH))
+			card.setOnClickListener {
+				sp.edit().putString(KEY_PS5_INPUT, inp.id).apply()
+				close()
+				if(!openHdmiInput(inp.id)) toast("เปิดช่องนี้ไม่ได้ · ใช้ปุ่ม Input ที่รีโมททีวีแทน")
 			}
-			.setNegativeButton("ปิด", null)
-			.show()
-	}
+			row!!.addView(card, llp(0, 130, 1f, l = if(k % 3 == 0) 0 else 18))
+			if(focus == null && inp.id == saved) focus = card
+		}
+		// fill the last row so the cards keep their size
+		if(inputs.isNotEmpty()) repeat((3 - inputs.size % 3) % 3) { row!!.addView(View(this), llp(0, 130, 1f, l = 18)) }
+		if(focus == null) focus = box.getFocusables(View.FOCUS_FORWARD).firstOrNull()
 
-	/** 4K mode is on: the only thing left is to show the PS5's HDMI input. One button does it when the TV allows. */
-	private fun hdmiReadyBox(title: String)
-	{
-		val inputs = hdmiInputs()
-		val msg = "ซับไทยพร้อมแล้ว · ขั้นสุดท้าย: เปลี่ยนทีวีไปช่อง HDMI ที่เสียบ PS5\n\n" +
-			(if(inputs.isNotEmpty()) "กด \"ไปช่อง HDMI\" ด้านล่าง แล้วเลือกช่องที่ต่อ PS5\n\n" else "ใช้รีโมททีวีกดปุ่ม Input / Source แล้วเลือกช่อง HDMI ที่ต่อ PS5\n\n") +
-			"เล่นด้วยจอยที่ต่อ PS5 ตามปกติ ซับไทยจะขึ้นทับภาพเอง (เปิด Subtitles ในเกม)\n" +
-			"เลิกเล่น: กลับมาที่แอปนี้ › กด \"หยุดโหมด 4K\" หรือการ์ด \"เลิกเล่น\""
-		val b = android.app.AlertDialog.Builder(this).setTitle(title).setMessage(msg)
-		if(inputs.isNotEmpty()) b.setPositiveButton("ไปเล่นที่ช่อง PS5 ▶") { _, _ ->
-			val saved = sp.getString(KEY_PS5_INPUT, null)
-			if(saved != null && inputs.any { it.second == saved } && openHdmiInput(saved)) return@setPositiveButton
-			chooseInput(inputs)
+		val buttons = Ui.row(this)
+		fun button(label: String, primary: Boolean, onClick: () -> Unit): Card = Card(this, 30f).apply {
+			grow = 1.05f
+			addView(text(context, label, 28f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
+			if(primary) background = Ui.gradient(intArrayOf(Ui.VIOLET, Ui.PURPLE), 30f)
+			setOnClickListener { onClick() }
 		}
-		b.setNeutralButton("หยุดโหมด 4K") { _, _ -> com.metallic.chiaki.hdmi.HdmiModeService.stop(this); toast("หยุดโหมด 4K แล้ว") }
-		b.setNegativeButton("ปิด", null)
-		val d = b.show()
-		try
-		{
-			d.findViewById<TextView>(android.R.id.message)?.apply { textSize = 18f; setLineSpacing(0f, 1.25f) }
-			for(w in listOf(android.app.AlertDialog.BUTTON_POSITIVE, android.app.AlertDialog.BUTTON_NEUTRAL, android.app.AlertDialog.BUTTON_NEGATIVE))
-				d.getButton(w)?.apply { textSize = 19f; isAllCaps = false }
-			d.getButton(if(inputs.isNotEmpty()) android.app.AlertDialog.BUTTON_POSITIVE else android.app.AlertDialog.BUTTON_NEGATIVE)?.requestFocus()
-		}
-		catch(_: Throwable) { }
+		val back = button("← ย้อนกลับ", inputs.isEmpty()) { close() }
+		buttons.addView(back, llp(0, 92, 1f))
+		buttons.addView(button("หยุดโหมด 4K", false) {
+			close(); com.metallic.chiaki.hdmi.HdmiModeService.stop(this); toast("หยุดโหมด 4K แล้ว · เล่นผ่านแอปได้ตามปกติ") }, llp(0, 92, 1f, l = 18))
+		box.addView(buttons, llp(1200, WRAP, t = 30))
+		box.addView(text(this, "เล่นด้วยจอยที่ต่อ PS5 · ซับไทยขึ้นทับภาพเอง (เปิด Subtitles ในเกม) · เลิกเล่น: กลับมาที่แอป › การ์ด \"เลิกเล่น\"",
+			21f, Ui.DIM, gravity = Gravity.CENTER), llp(1200, WRAP, t = 16))
+		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
+		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
+		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(200).start()
+		keyCatcher = { e -> if((e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B) && !PadConfig.fromPad(e)) { if(e.action == KeyEvent.ACTION_UP) close(); true } else false }
+		val f = focus ?: back
+		main.post { f.requestFocus() }
 	}
 
 	/** Step-by-step help for one checklist line, with an optional button that does the fix. */
@@ -887,8 +909,12 @@ class TvActivity : AppCompatActivity()
 		val go = Card(this, 30f); go.grow = 1.04f
 		val goText = text(this, "", 32f, Ui.TEXT, W.BOLD, Gravity.CENTER)
 		go.addView(goText, FrameLayout.LayoutParams(MATCH, MATCH))
-		box.addView(go, llp(1100, 100, t = 26))
-		box.addView(text(this, "รีโมททีวีกดย้อนกลับเพื่อออก", 21f, Ui.DIM, gravity = Gravity.CENTER), llp(MATCH, WRAP, t = 14))
+		val goRow = Ui.row(this)
+		val cancel = Card(this, 30f); cancel.grow = 1.04f
+		cancel.addView(text(this, "← ย้อนกลับ", 30f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
+		goRow.addView(cancel, llp(320, 100))
+		goRow.addView(go, llp(0, 100, 1f, l = 20))
+		box.addView(goRow, llp(1100, WRAP, t = 26))
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
 		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
 		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(220).start()
@@ -905,6 +931,7 @@ class TvActivity : AppCompatActivity()
 			r.title.text = title; r.sub.text = sub
 		}
 		var allOk = false
+		cancel.setOnClickListener { close() }
 		go.setOnClickListener {
 			if(!allOk) { toast("ยังไม่ครบ · กดที่ข้อที่มี ✕ เพื่อแก้ก่อน"); return@setOnClickListener }
 			close()
@@ -1047,72 +1074,60 @@ class TvActivity : AppCompatActivity()
 	}
 
 	// ---- tab 1: ตั้งค่าซับ
+	// Two columns: left = how the Thai looks (size, colour, band, font); right = live preview, where it sits,
+	// the line before, and how to play (through the app / 4K HDMI). Everything else is in ตั้งค่าขั้นสูง.
 	private fun settingsContent(): View
 	{
 		val v = FrameLayout(this)
-		val left = Ui.col(this)
-		left.addView(text(this, "ตั้งค่าซับไทย", 44f, Ui.TEXT, W.BOLD))
 		val groups = ArrayList<Card>()
 		lateinit var refreshPreview: () -> Unit
 		fun option(title: CharSequence, sub: String?, isSel: () -> Boolean, pick: () -> Unit, font: android.graphics.Typeface? = null, size: Float = 24f,
-			center: Boolean = true, color: Int = Ui.TEXT): Card
+			color: Int = Ui.TEXT): Card
 		{
 			val card = Card(this, 18f, Ui.PANEL, isSel)
 			card.grow = 1.05f
-			val c = Ui.col(this).apply { setPadding(14, 8, 14, 8); gravity = if(center) Gravity.CENTER else Gravity.CENTER_VERTICAL }
-			c.addView(text(this, title, size, color, W.REGULAR, if(center) Gravity.CENTER else Gravity.START).apply { if(font != null) typeface = font; maxLines = 1 })
-			if(sub != null) c.addView(text(this, sub, 18f, Ui.MUTED, gravity = if(center) Gravity.CENTER else Gravity.START).apply { maxLines = 1 }, llp(WRAP, WRAP, t = 2))
+			val c = Ui.col(this).apply { setPadding(12, 6, 12, 6); gravity = Gravity.CENTER }
+			c.addView(text(this, title, size, color, W.MEDIUM, Gravity.CENTER).apply { if(font != null) typeface = font; maxLines = 1 })
+			if(sub != null) c.addView(text(this, sub, 17f, Ui.MUTED, gravity = Gravity.CENTER).apply { maxLines = 1 }, llp(WRAP, WRAP, t = 1))
 			card.addView(c, FrameLayout.LayoutParams(MATCH, MATCH))
 			card.setOnClickListener { pick(); groups.forEach { it.refresh() }; refreshPreview() }
 			groups += card
 			return card
 		}
-		fun head(s: String) = text(this, s, 25f, Ui.VIOLET2, W.MEDIUM)
-		fun row(cells: List<Card>, h: Int): LinearLayout
+		fun section(parent: LinearLayout, title: String, cells: List<Card>, h: Int, top: Int = 22)
 		{
+			parent.addView(text(this, title, 24f, Ui.VIOLET2, W.MEDIUM), llp(WRAP, WRAP, t = top))
 			val r = Ui.row(this)
 			cells.forEachIndexed { k, c -> r.addView(c, llp(0, h, 1f, l = if(k == 0) 0 else 12)) }
-			return r
+			parent.addView(r, llp(MATCH, WRAP, t = 8))
 		}
 		val prefs = { TranslatorPrefs(this) }
 		fun str(k: String, d: String) = sp.getString(k, d) ?: d
 		fun put(k: String, value: String) = sp.edit().putString(k, value).apply()
 
-		left.addView(head("แปลจาก"), llp(WRAP, WRAP, t = 14))
-		left.addView(row(listOf(
-			option("อ่านซับอย่างเดียว", "ลื่นที่สุด แนะนำ", { prefs().mode == TranslatorPrefs.Mode.SCREEN }, { prefs().setMode(TranslatorPrefs.Mode.SCREEN); clearAutoMode() }),
-			option("ฟังเสียง + อ่านซับ", "ได้ทุกบทพูด ใช้เครื่องหนักขึ้น", { prefs().mode == TranslatorPrefs.Mode.BOTH }, { prefs().setMode(TranslatorPrefs.Mode.BOTH); clearAutoMode() })), 86), llp(MATCH, WRAP, t = 8))
-
-		left.addView(head("ฟอนต์"), llp(WRAP, WRAP, t = 16))
-		val fonts = TranslatorPrefs.Font.values().filter { it != TranslatorPrefs.Font.NOTO }
-		left.addView(row(fonts.map { f ->
-			option("สวัสดี", f.title, { prefs().font == f }, { put("tr_font", f.value) }, ResourcesCompat.getFont(this, f.res), 26f) }, 86), llp(MATCH, WRAP, t = 8))
-
-		left.addView(head("ขนาดตัวอักษร (เล็กสุด = เท่าซับอังกฤษ)"), llp(WRAP, WRAP, t = 16))
-		val sizes = listOf("english" to "เท่าซับอังกฤษ", "small" to "เล็ก", "medium" to "กลาง", "large" to "ใหญ่", "xlarge" to "ใหญ่มาก")
-		left.addView(row(sizes.map { (value, label) ->
-			option(label, null, { str("tr_text_size", "medium") == value }, { put("tr_text_size", value) }, size = 22f) }, 64), llp(MATCH, WRAP, t = 8))
-
-		left.addView(head("สีซับ (ขอบดำทุกสี)"), llp(WRAP, WRAP, t = 16))
-		val colors = listOf(Triple("white", "ขาว", 0xFFFFFFFF.toInt()), Triple("yellow", "เหลือง", 0xFFFFE14D.toInt()), Triple("green", "เขียวสว่าง", 0xFF5CFF7A.toInt()))
-		left.addView(row(colors.map { (value, label, col) ->
-			option(label, null, { str(TranslatorPrefs.KEY_COLOR, "white") == value }, { put(TranslatorPrefs.KEY_COLOR, value) }, size = 26f, color = col) }, 64), llp(MATCH, WRAP, t = 8))
-
-		left.addView(head("พื้นหลังแถบดำ"), llp(WRAP, WRAP, t = 16))
-		val bgs = listOf("off" to "ปิด (ตัวหนังสืออย่างเดียว)", "light" to "จาง", "medium" to "ปานกลาง")
-		left.addView(row(bgs.map { (value, label) ->
-			option(label, null, { str(TranslatorPrefs.KEY_BG, "medium") == value }, { put(TranslatorPrefs.KEY_BG, value) }, size = 22f) }, 64), llp(MATCH, WRAP, t = 8))
+		// ---- left: the look
+		val left = Ui.col(this)
+		left.addView(text(this, "ตั้งค่าซับไทย", 44f, Ui.TEXT, W.BOLD))
+		left.addView(text(this, "เลือกแล้วดูผลได้ทันทีในภาพตัวอย่างด้านขวา", 22f, Ui.MUTED), llp(WRAP, WRAP, t = 2))
+		section(left, "ขนาดตัวอักษร", listOf("english" to "เท่าซับอังกฤษ", "small" to "เล็ก", "medium" to "กลาง", "large" to "ใหญ่", "xlarge" to "ใหญ่มาก").map { (value, label) ->
+			option(label, null, { str("tr_text_size", "medium") == value }, { put("tr_text_size", value) }, size = 22f) }, 66)
+		section(left, "สีตัวอักษร (ขอบดำทุกสี)", listOf(Triple("white", "ขาว", 0xFFFFFFFF.toInt()), Triple("yellow", "เหลือง", 0xFFFFE14D.toInt()),
+			Triple("green", "เขียวสว่าง", 0xFF5CFF7A.toInt())).map { (value, label, col) ->
+			option(label, null, { str(TranslatorPrefs.KEY_COLOR, "white") == value }, { put(TranslatorPrefs.KEY_COLOR, value) }, size = 26f, color = col) }, 66)
+		section(left, "แถบดำด้านหลังซับ", listOf("off" to "ปิด", "light" to "จาง", "medium" to "ปานกลาง").map { (value, label) ->
+			option(label, null, { str(TranslatorPrefs.KEY_BG, "medium") == value }, { put(TranslatorPrefs.KEY_BG, value) }, size = 24f) }, 66)
+		section(left, "ฟอนต์", TranslatorPrefs.Font.values().filter { it != TranslatorPrefs.Font.NOTO }.map { f ->
+			option("สวัสดี", f.title, { prefs().font == f }, { put("tr_font", f.value) }, ResourcesCompat.getFont(this, f.res), 26f) }, 84)
 		v.addView(left, lp(940, WRAP, 90, 128))
 
-		// right: live preview, position, picture
+		// ---- right: preview + placement + how to play
 		val right = Ui.col(this)
-		right.addView(head("ตัวอย่างบนจอ"))
+		right.addView(text(this, "ตัวอย่างบนจอ", 24f, Ui.VIOLET2, W.MEDIUM), llp(WRAP, WRAP, t = 12))
 		val prev = FrameLayout(this).apply { background = Ui.round(0, 26f, 2, Ui.LINE) }
 		prev.addView(Ui.topImage(this, R.drawable.gta_shot3, 0.7f), FrameLayout.LayoutParams(MATCH, MATCH))
 		Ui.clipRound(prev, 26f)
-		val prevH = 300
-		val thai = com.metallic.chiaki.translate.SubtitleTextView(this).apply {
-			text = "เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า"; gravity = Gravity.CENTER; setPadding(14, 2, 14, 4) }
+		val prevH = 280
+		val thai = com.metallic.chiaki.translate.SubtitleTextView(this).apply { gravity = Gravity.CENTER; setPadding(14, 2, 14, 4) }
 		val eng = text(this, "Okay, you're wound up a little tight. What's up?", 15f, 0xFFDDDDDD.toInt(), gravity = Gravity.CENTER).apply {
 			typeface = android.graphics.Typeface.SANS_SERIF; setShadowLayer(4f, 0f, 1f, 0xFF000000.toInt()) }
 		prev.addView(eng, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 16 })
@@ -1127,43 +1142,33 @@ class TvActivity : AppCompatActivity()
 			thai.outlineColor = 0xFF000000.toInt()
 			thai.outlineWidthPx = px * (if(p.backgroundAlpha == 0) 0.11f else 0.07f)
 			thai.background = if(p.backgroundAlpha == 0) null else android.graphics.drawable.ColorDrawable(p.backgroundAlpha shl 24)
+			thai.text = if(p.showPrevious) android.text.SpannableStringBuilder("ใจเย็น ๆ  ›  ").apply {
+				setSpan(com.metallic.chiaki.translate.FillColorSpan(0xFF9FB4FF.toInt()), 0, length, 0); append("เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า") }
+				else "เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า"
 			val tl = thai.layoutParams as FrameLayout.LayoutParams
 			when(p.position)
 			{
 				TranslatorPrefs.Position.TOP -> { tl.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; tl.topMargin = 14; tl.bottomMargin = 0 }
-				TranslatorPrefs.Position.BELOW_SUBTITLE -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 0 }
+				TranslatorPrefs.Position.BELOW_SUBTITLE -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 6 }
 				else -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 44 }
 			}
-			(eng.layoutParams as FrameLayout.LayoutParams).bottomMargin = if(p.position == TranslatorPrefs.Position.BELOW_SUBTITLE) (px * 1.6f).toInt() + 8 else 16
+			(eng.layoutParams as FrameLayout.LayoutParams).bottomMargin = if(p.position == TranslatorPrefs.Position.BELOW_SUBTITLE) (px * 1.6f).toInt() + 10 else 16
 			thai.layoutParams = tl; eng.requestLayout()
-			thai.text = if(p.showPrevious) android.text.SpannableStringBuilder("ใจเย็น ๆ  ›  ").apply {
-				setSpan(com.metallic.chiaki.translate.FillColorSpan(0xFF9FB4FF.toInt()), 0, length, 0); append("เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า") }
-				else "เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า"
 		}
-
-		right.addView(head("ตำแหน่งซับไทย"), llp(WRAP, WRAP, t = 16))
-		val places = listOf("above" to "เหนือซับอังกฤษ", "below" to "ใต้ซับอังกฤษ", "top" to "บนสุดของจอ")
-		right.addView(row(places.map { (value, label) ->
-			option(label, null, { str(TranslatorPrefs.KEY_POSITION, "above") == value }, { put(TranslatorPrefs.KEY_POSITION, value) }, size = 22f) }, 64), llp(MATCH, WRAP, t = 8))
-
-		right.addView(head("ประโยคก่อนหน้า (สีฟ้า ที่อ่านไม่ทัน)"), llp(WRAP, WRAP, t = 16))
+		section(right, "ตำแหน่งซับไทย", listOf("above" to "เหนือซับอังกฤษ", "below" to "ใต้ซับอังกฤษ", "top" to "บนสุดของจอ").map { (value, label) ->
+			option(label, null, { str(TranslatorPrefs.KEY_POSITION, "above") == value }, { put(TranslatorPrefs.KEY_POSITION, value) }, size = 22f) }, 66)
 		fun prevOn() = sp.getBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, true)
-		right.addView(row(listOf(
+		section(right, "ประโยคก่อนหน้า (สีฟ้า)", listOf(
 			option("แสดง", null, { prevOn() }, { sp.edit().putBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, true).apply() }, size = 22f),
-			option("ไม่แสดง (เฉพาะประโยคล่าสุด)", null, { !prevOn() }, { sp.edit().putBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, false).apply() }, size = 22f)), 64),
-			llp(MATCH, WRAP, t = 8))
-
-		right.addView(head("ภาพ"), llp(WRAP, WRAP, t = 16))
-		val caps = DeviceCaps(this)
+			option("ไม่แสดง · เฉพาะประโยคล่าสุด", null, { !prevOn() }, { sp.edit().putBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, false).apply() }, size = 22f)), 66)
 		fun hdmiMode() = sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
-		right.addView(row(listOf(
-			option("อัตโนมัติ", caps.autoTitle(this), { !hdmiMode() && DeviceCaps.quality(this) == "auto" },
-				{ sp.edit().putString(KEY_PLAY_MODE, "stream").apply(); DeviceCaps.apply(this, "auto") }),
-			option("1080p คมสุด", "60 เฟรม · ผ่านแอป", { !hdmiMode() && DeviceCaps.quality(this) == "sharp" },
-				{ sp.edit().putString(KEY_PLAY_MODE, "stream").apply(); DeviceCaps.apply(this, "sharp") }),
+		section(right, "เล่นแบบ", listOf(
+			option("ผ่านแอป · 1080p", "ทีวีทุกรุ่น · ปรับภาพอัตโนมัติ", { !hdmiMode() }, {
+				sp.edit().putString(KEY_PLAY_MODE, "stream").apply(); DeviceCaps.apply(this, "auto")
+				if(com.metallic.chiaki.hdmi.HdmiModeService.running) { com.metallic.chiaki.hdmi.HdmiModeService.stop(this); toast("หยุดโหมด 4K แล้ว") } }),
 			option("4K · HDMI", "PS5 เสียบทีวีเครื่องนี้", { hdmiMode() },
-				{ sp.edit().putString(KEY_PLAY_MODE, "hdmi").apply(); toast("โหมด 4K: เสียบ PS5 เข้าทีวีเครื่องนี้ แล้วกดการ์ด PS5 ในหน้าเล่น") })), 86), llp(MATCH, WRAP, t = 8))
-		v.addView(right, lp(760, WRAP, 1070, 140))
+				{ sp.edit().putString(KEY_PLAY_MODE, "hdmi").apply(); toast("โหมด 4K: กดการ์ด PS5 ในหน้าเล่น แล้วเลือกช่อง HDMI ที่เสียบ PS5") })), 84)
+		v.addView(right, lp(760, WRAP, 1070, 128))
 		refreshPreview()
 		return v
 	}
