@@ -187,8 +187,9 @@ class HdmiModeService : Service()
 	{
 		when(ev)
 		{
-			is ConnectedEvent -> { translator?.setStreamConnected(true); ui?.showStatus("✔ ซับไทยพร้อม · สลับทีวีไปช่อง HDMI ที่ต่อ PS5 ได้เลย")
-				main.postDelayed({ ui?.showStatus(null) }, 8000) }
+			is ConnectedEvent -> { translator?.setStreamConnected(true); connectedAt = SystemClock.elapsedRealtime()
+				ui?.showStatus("✔ ซับไทยพร้อม · จอยที่ต่อทีวีใช้เล่นได้เลย · เลิกเล่น: กดย้อนกลับที่รีโมท 2 ครั้ง")
+				main.postDelayed({ ui?.showStatus(null) }, 9000) }
 			// PS5 gone / asks for a PIN: everything stops at once (no message left on the TV, no reconnecting);
 			// the reason is shown next time the app is opened
 			is LoginPinRequestEvent -> { lastProblem = "PS5 ขอรหัส PIN ผู้ใช้ · ปิดรหัสล็อกผู้ใช้ใน PS5 หรือใช้โหมดเล่นผ่านแอป"; shutDown() }
@@ -245,8 +246,18 @@ class HdmiModeService : Service()
 	}
 
 	// no Thai line for a long time (PS5 left on its home screen, TV switched to something else): stop by itself
+	private var connectedAt = 0L
+	private var noSubTipShown = false
+
 	private val idleCheck = object : Runnable { override fun run() {
 		val tr = translator ?: return
+		// connected 2 minutes and not one Thai line yet: almost always the game's own subtitles are off
+		if(!noSubTipShown && connectedAt > 0 && tr.lastShownAt == 0L && SystemClock.elapsedRealtime() - connectedAt > 120_000L)
+		{
+			noSubTipShown = true
+			ui?.showStatus("ยังไม่เห็นซับอังกฤษในเกม · เปิดในเกม: Settings › Subtitles › On (ซับไทยจะขึ้นเอง)")
+			main.postDelayed({ ui?.showStatus(null) }, 12_000L)
+		}
 		val quietSince = maxOf(startedAt, tr.lastShownAt)
 		if(startedAt > 0 && SystemClock.elapsedRealtime() - quietSince > IDLE_STOP_MS)
 		{

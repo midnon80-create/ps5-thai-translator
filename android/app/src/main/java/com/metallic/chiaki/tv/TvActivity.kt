@@ -123,6 +123,10 @@ class TvActivity : AppCompatActivity()
 		super.onResume()
 		if(!firstResume && tab >= 0) showTab(tab, Trans.NONE) // fresh status after a game / settings
 		firstResume = false
+		com.metallic.chiaki.hdmi.HdmiModeService.lastProblem?.let { p ->
+			com.metallic.chiaki.hdmi.HdmiModeService.lastProblem = null
+			main.postDelayed({ explain4kStop(p) }, 600)
+		}
 		// just paired a PS5: go straight on to the pre-game checklist for it (the next step)
 		sp.getString(KEY_JUST_PAIRED, null)?.let { addr ->
 			sp.edit().remove(KEY_JUST_PAIRED).apply()
@@ -723,10 +727,7 @@ class TvActivity : AppCompatActivity()
 			com.metallic.chiaki.hdmi.HdmiModeService.stop(this)
 			toast("หยุดโหมด 4K แล้ว · กำลังเตรียมเล่นผ่านแอป")
 		}
-		com.metallic.chiaki.hdmi.HdmiModeService.lastProblem?.let { p ->
-			com.metallic.chiaki.hdmi.HdmiModeService.lastProblem = null
-			toast("โหมด HDMI ครั้งก่อน: $p")
-		}
+
 		preflight(host, registeredHost)
 	}
 
@@ -844,6 +845,30 @@ class TvActivity : AppCompatActivity()
 		keyCatcher = { e -> if((e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B) && !PadConfig.fromPad(e)) { if(e.action == KeyEvent.ACTION_UP) close(); true } else false }
 		val f = focus ?: back
 		main.post { f.requestFocus() }
+	}
+
+	/** Why 4K mode stopped, and what to do (shown when the player comes back to the app). */
+	private fun explain4kStop(p: String)
+	{
+		val (title, steps) = when
+		{
+			p.contains("PIN") -> "PS5 ขอรหัส PIN ผู้ใช้" to listOf(
+				"ที่ PS5: ตั้งค่า › ผู้ใช้และบัญชี › การตั้งค่าการเข้าสู่ระบบ › ปิด \"รหัสผ่านเข้าสู่ระบบ PS5\"",
+				"กลับมาที่แอป กดการ์ด PS5 เพื่อเริ่มใหม่")
+			p.contains("หลุด") -> "การเชื่อมต่อกับ PS5 หลุด" to listOf(
+				"PS5 ต้องเปิดอยู่ (ไม่ใช่โหมดพักหรือปิดเครื่อง)",
+				"ปิด Remote Play ในมือถือ คอม หรือ PS Portal ที่อาจเปิดค้างอยู่ (PS5 ต่อได้ทีละเครื่อง)",
+				"ทีวีกับ PS5 ต้องใช้เน็ตบ้านวงเดียวกัน แนะนำ PS5 ต่อสาย LAN",
+				"กดการ์ด PS5 เพื่อเริ่มโหมด 4K ใหม่")
+			p.contains("อัตโนมัติ") -> "โหมด 4K หยุดเอง" to listOf(
+				"ไม่มีซับเกมนานเกินไป (เช่น เปิดทิ้งไว้ที่หน้าโฮม PS5 หรือไปดูช่องอื่น) แอปเลยหยุดให้เพื่อไม่ให้มีอะไรค้างบนจอ",
+				"เล่นต่อ: กดการ์ด PS5 อีกครั้ง")
+			p.contains("แสดงทับ") -> "ยังไม่ได้อนุญาตให้แสดงทับแอปอื่น" to listOf(
+				"ตั้งค่าทีวี › แอป › สิทธิ์เข้าถึงพิเศษของแอป › แสดงทับแอปอื่น › เปิดให้ Eyesmaxxing",
+				"ทีวีบางรุ่นไม่มีเมนูนี้ = ใช้โหมด 4K ไม่ได้ ให้เล่นแบบผ่านแอป 1080p")
+			else -> "โหมด 4K หยุดทำงาน" to listOf(p, "กดการ์ด PS5 เพื่อเริ่มใหม่ · ถ้ายังไม่ได้ ปิด-เปิดแอปหนึ่งครั้ง")
+		}
+		guide(title, steps, null) { }
 	}
 
 	/** Step-by-step help for one checklist line, with an optional button that does the fix. */
