@@ -20,6 +20,7 @@ object GameText
 		var s = raw.trim()
 			.replace('’', '\'').replace('‘', '\'').replace('“', '"').replace('”', '"')
 			.replace(hyphenBreak, "$1$2")
+			.replace(Regex("""\s+[oOxX○✕]$"""), "") // an icon read as a letter after the subtitle
 		s = fixOcr(s)
 		var speaker: String? = null
 		speakerRe.find(s)?.let { m ->

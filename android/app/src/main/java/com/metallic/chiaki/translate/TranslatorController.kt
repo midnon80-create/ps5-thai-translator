@@ -226,6 +226,12 @@ class TranslatorController(
 	private fun isButtonPrompt(text: String): Boolean
 	{
 		val words = text.lowercase().replace("'", "").replace("’", "").split(Regex("""[\s,.:;!?()\[\]"]+""")).filter { it.isNotEmpty() }
+			.let { w -> // a lone "o"/"x" at either end is usually an icon or OCR speck beside the subtitle, not a button
+				var a = 0; var b = w.size
+				while(a < b && w[a] in setOf("o", "x")) a++
+				while(b > a && w[b - 1] in setOf("o", "x")) b--
+				w.subList(a, b)
+			}
 		if(words.isEmpty()) return false
 		val sentence = words.count { it in sentenceWords }
 		if(sentence >= 2) return false
@@ -412,11 +418,12 @@ class TranslatorController(
 			quietFrames = if(blocks.isEmpty()) quietFrames + 1 else 0
 			if(english.isNotEmpty()) lastScreenTextAt = now
 			speech?.paused = prefs.mode == TranslatorPrefs.Mode.BOTH && now - lastScreenTextAt < SPEECH_SUPPRESS_MS
-			when(val action = tracker.update(english, now))
+			when(val action = tracker.update(english, now, oneRead = readMs > 550.0))
 			{
 				is SubtitleTracker.Action.Show ->
 				{
-					if(ps5MenuSigns.containsMatchIn(action.text)) { menuUntil = now + 15_000L; main.post { ui.clearScreenText() }; return }
+					// only a short line is a PS5 menu ("Game Library"); a sentence that happens to say "all games" is dialogue
+					if(ps5MenuSigns.containsMatchIn(action.text) && action.text.split(' ').size <= 6) { menuUntil = now + 15_000L; main.post { ui.clearScreenText() }; return }
 					if(isButtonPrompt(action.text)) return
 					if(now < menuUntil || !inGame(now)) return
 					lastShownAt = now

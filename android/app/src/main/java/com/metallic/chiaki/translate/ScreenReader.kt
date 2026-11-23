@@ -236,7 +236,7 @@ class SubtitleTracker
 		data class Show(val text: String) : Action()
 	}
 
-	fun update(text: String, now: Long): Action
+	fun update(text: String, now: Long, oneRead: Boolean = false): Action
 	{
 		val key = normalise(text)
 		if(key.isEmpty())
@@ -256,13 +256,17 @@ class SubtitleTracker
 		if(shownKey.isNotEmpty() && similar(key, shownKey) >= 0.85)
 			return Action.None // same subtitle still on screen (OCR jitter)
 		// a shorter, partial read of the line already shown (OCR missed a bit): keep the full one
-		if(shownKey.isNotEmpty() && key.length < shownKey.length && shownKey.split(' ').toSet().containsAll(key.split(' ')))
+		// (only a read nearly as long: "Yeah." after "Yeah, I know." is a new reply, not a partial read)
+		if(shownKey.isNotEmpty() && key.length < shownKey.length && key.length >= shownKey.length * 0.6 &&
+			shownKey.split(' ').toSet().containsAll(key.split(' ')))
 			return Action.None
 		// A clearly different line is on screen: take the old Thai down at once. Before, the old line stayed up
 		// for as long as the new one had not been read the same way twice (small 2-line subtitles never were).
 		if(shownKey.isNotEmpty() && similar(key, shownKey) < 0.6)
 		{
 			shownKey = ""
+			// slow TV (one read takes ~0.6 s+): a clear, full line is shown on its first read, or short lines are missed
+			if(oneRead && key.split(' ').size >= 3) { shownKey = key; pendingKey = ""; pendingText = ""; pendingReads = 0; return Action.Show(text) }
 			pendingKey = key; pendingText = text; pendingReads = 1
 			return Action.Clear
 		}
@@ -275,6 +279,8 @@ class SubtitleTracker
 		}
 		// still changing: a line read 3 times in a row without settling (jittery small text) is shown anyway,
 		// the longest read wins (it is usually the most complete)
+		if(oneRead && pendingKey.isEmpty() && key.split(' ').size >= 3)
+		{ shownKey = key; pendingText = ""; pendingReads = 0; return Action.Show(text) }
 		pendingReads++
 		if(text.length > pendingText.length || pendingKey.isEmpty()) pendingText = text
 		pendingKey = key
