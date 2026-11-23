@@ -82,6 +82,12 @@ class TranslatorController(
 	private var frame: Bitmap? = null
 
 	private val speechClear = Runnable { ui.clearSpeechText() }
+	private val librarySync: Runnable = object : Runnable { override fun run() {
+		if(!running.get()) return
+		val c = cloud
+		if(c != null) cloudPool.execute { GameLibrary.prepare(context, pickedGame, c) }
+		main.postDelayed(this, LIBRARY_SYNC_MS)
+	} }
 
 	fun start()
 	{
@@ -92,10 +98,13 @@ class TranslatorController(
 		translator = tr
 		cloud = prefs.serverUrl.takeIf { it.isNotBlank() }?.let { CloudTranslator(it, prefs.cloudCode, CloudTranslator.deviceId(context)) }
 		// the game picked in the app (GTA VI): subtitles from the first line of the game, no waiting to "see" it
-		pickedGame = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).getString("tv_game", "gta6") ?: "gta6"
+		pickedGame = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).getString("tv_game", "gta6").orEmpty().ifEmpty { "gta6" }
 		cloud?.game = pickedGame
 		// the game's translation library onto the TV (only what is new since last time): known lines show at once
 		cloudPool.execute { GameLibrary.prepare(context, pickedGame, cloud) }
+		// and again every few minutes while playing: lines other TVs translated (or the reviewer corrected) a moment
+		// ago show here with no waiting too (only the difference is downloaded)
+		main.postDelayed(librarySync, LIBRARY_SYNC_MS)
 		cloud?.let { c ->
 			cloudPool.execute {
 				val p = c.check()
@@ -148,6 +157,7 @@ class TranslatorController(
 			return
 		main.removeCallbacks(grabRunnable)
 		main.removeCallbacks(speechClear)
+		main.removeCallbacks(librarySync)
 		cloud = null
 		screenSeq.incrementAndGet()
 		speechSeq.incrementAndGet()
@@ -459,8 +469,8 @@ class TranslatorController(
 								val gone = seq != onScreenSeq
 								val t = SystemClock.elapsedRealtime()
 								if(gone && t - askedAt > LATE_MAX_MS) return@post
-								// never under someone else's line for long: the Thai must match the English on screen
-								if(gone && onScreenSeq > seq && t - lineChangedAt > LATE_OVER_NEWER_MS) return@post
+								// a late line is still the newest Thai there is (nothing newer is up: checked above), so it is
+								// shown; when the next line's Thai comes it moves up as the dim previous line, in order
 								shownSeq.set(seq)
 								ui.showScreenText(line, action.text, top, bottom)
 								// its English already left (fast talk): it stays its reading time, then goes
@@ -763,8 +773,7 @@ class TranslatorController(
 		private const val FRAME_H = 540
 		private const val SPEECH_SUPPRESS_MS = 3000L
 		private const val FAST_LANE = false // the small model's quick text was often literal/wrong: one good answer only
-		/** A late Thai line is still shown while a newer English line is up only this soon after the change. */
-		private const val LATE_OVER_NEWER_MS = 2500L
+		private const val LIBRARY_SYNC_MS = 180_000L
 		private const val LATE_MAX_MS = 9000L // a Thai line that comes back later than this after its English is dropped
 		private const val SPEECH_SHOW_MS = 6000L
 

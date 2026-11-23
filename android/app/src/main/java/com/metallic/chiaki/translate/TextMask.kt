@@ -13,7 +13,8 @@ import android.graphics.Bitmap
  */
 object TextMask
 {
-	private const val BRIGHT = 180
+	// 150, not white only: yellow / light-blue subtitle words with a dark edge are kept too
+	private const val BRIGHT = 150
 	private const val EDGE_DROP = 80
 
 	fun make(src: Bitmap): Bitmap

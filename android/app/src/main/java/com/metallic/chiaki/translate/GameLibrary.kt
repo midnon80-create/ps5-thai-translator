@@ -116,6 +116,18 @@ object GameLibrary
 
 	private fun file(c: Context, g: String) = File(c.filesDir, "library_$g.tsv")
 
+	/** Corrected lines are appended again: rewrite the file once it is much longer than the library itself. */
+	private fun compact(c: Context, g: String)
+	{
+		val f = file(c, g)
+		if(!f.exists() || f.length() < 200_000) return
+		val n = f.useLines { it.count() }
+		if(n < size * 1.5) return
+		val tmp = File(c.filesDir, "library_$g.tmp")
+		synchronized(lines) { tmp.bufferedWriter().use { w -> lines.forEach { (k, th) -> w.append(k).append('\t').append(th).append('\n') } } }
+		if(!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+	}
+
 	/** Loads the saved library, then downloads what is new (background thread). */
 	fun prepare(c: Context, g: String, cloud: CloudTranslator?)
 	{
@@ -158,6 +170,7 @@ object GameLibrary
 				if(!res.optBoolean("more", false)) return@repeat
 			}
 			Log.i(TAG, "library $g: +$added new, ${size} lines")
+			compact(c, g)
 		}
 		catch(e: Throwable) { Log.w(TAG, "library sync failed", e) }
 		finally { syncing = false }
