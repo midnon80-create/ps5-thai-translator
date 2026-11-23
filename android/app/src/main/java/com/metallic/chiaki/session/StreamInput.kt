@@ -217,6 +217,54 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		return true
 	}
 
+	/**
+	 * Per-controller self-calibration ("the camera keeps spinning by itself").
+	 *  - A stick that rests a little off centre (worn / drifting pads) turns the camera slowly forever: an axis that
+	 *    stays still near the centre for 2 s becomes the new zero.
+	 *  - Some pads / TVs declare their axes wrongly, so the right stick was read from the trigger axes, which rest at
+	 *    -1: the game saw the stick held full left/up all the time and the camera spun non-stop. Stick axes never rest
+	 *    pinned at an end; when the ones in use do (for 1.5 s, both of them) the other pair is used instead.
+	 */
+	private class StickCal
+	{
+		private val axes = intArrayOf(MotionEvent.AXIS_X, MotionEvent.AXIS_Y, MotionEvent.AXIS_Z, MotionEvent.AXIS_RZ, MotionEvent.AXIS_RX, MotionEvent.AXIS_RY)
+		private val last = FloatArray(6) { Float.NaN }
+		private val stillSince = LongArray(6)
+		private val centre = FloatArray(6)
+		/** 0 = no verdict, 1 = Z/RZ rest pinned (they are triggers), 2 = RX/RY rest pinned (they are triggers). */
+		var pinnedPair = 0
+			private set
+		private var pinnedSince = 0L
+		private var pinnedWhich = 0
+
+		fun watch(e: MotionEvent)
+		{
+			val now = android.os.SystemClock.elapsedRealtime()
+			for(i in axes.indices)
+			{
+				val v = e.getAxisValue(axes[i])
+				if(last[i].isNaN() || kotlin.math.abs(v - last[i]) > 0.02f) { stillSince[i] = now; last[i] = v; continue }
+				// still for 2 s close to the middle: that is where this stick rests
+				if(now - stillSince[i] > 2000 && kotlin.math.abs(v) < 0.3f) centre[i] = v
+			}
+			// the pair in use as the right stick both pinned at an end while the other pair rests near the middle
+			val zPinned = kotlin.math.abs(last[2]) > 0.9f && kotlin.math.abs(last[3]) > 0.9f
+			val rxPinned = kotlin.math.abs(last[4]) > 0.9f && kotlin.math.abs(last[5]) > 0.9f
+			val zMid = kotlin.math.abs(last[2]) < 0.3f && kotlin.math.abs(last[3]) < 0.3f
+			val rxMid = kotlin.math.abs(last[4]) < 0.3f && kotlin.math.abs(last[5]) < 0.3f
+			val which = if(zPinned && rxMid) 1 else if(rxPinned && zMid) 2 else 0
+			if(which == 0 || which != pinnedWhich) { pinnedWhich = which; pinnedSince = if(which == 0) 0L else now; return }
+			if(now - pinnedSince > 1500) pinnedPair = which
+		}
+
+		fun centred(axis: Int, v: Float): Float
+		{
+			val i = axes.indexOf(axis)
+			return if(i < 0) v else (v - centre[i]).coerceIn(-1f, 1f)
+		}
+	}
+	private val cals = HashMap<Int, StickCal>()
+
 	fun onGenericMotionEvent(event: MotionEvent): Boolean
 	{
 		if(onPointerEvent(event)) return true
@@ -225,15 +273,21 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		fun Float.signedAxis() = (this * Short.MAX_VALUE).toInt().toShort()
 		fun Float.unsignedAxis() = (this * UByte.MAX_VALUE.toFloat()).toUInt().toUByte()
 		// sticks with a dead zone (no drifting); the right stick / triggers come from other axes on some boxes
-		val rx = pad.rightStickOnRx(event.device)
-		motionControllerState.leftX = pad.stick(event.getAxisValue(MotionEvent.AXIS_X)).signedAxis()
-		motionControllerState.leftY = pad.stick(event.getAxisValue(MotionEvent.AXIS_Y)).signedAxis()
-		motionControllerState.rightX = pad.stick(event.getAxisValue(if(rx) MotionEvent.AXIS_RX else MotionEvent.AXIS_Z)).signedAxis()
-		motionControllerState.rightY = pad.stick(event.getAxisValue(if(rx) MotionEvent.AXIS_RY else MotionEvent.AXIS_RZ)).signedAxis()
+		val cal = cals.getOrPut(event.deviceId) { StickCal() }
+		cal.watch(event)
+		// the right stick's axes as declared, unless they turned out to be triggers (resting pinned at -1 / +1)
+		val auto = pad.sticks == PadConfig.Sticks.AUTO
+		val declared = pad.rightStickOnRx(event.device)
+		val rx = if(auto && cal.pinnedPair == 1) true else if(auto && cal.pinnedPair == 2) false else declared
+		fun axis(a: Int) = pad.stick(cal.centred(a, event.getAxisValue(a))).signedAxis()
+		motionControllerState.leftX = axis(MotionEvent.AXIS_X)
+		motionControllerState.leftY = axis(MotionEvent.AXIS_Y)
+		motionControllerState.rightX = axis(if(rx) MotionEvent.AXIS_RX else MotionEvent.AXIS_Z)
+		motionControllerState.rightY = axis(if(rx) MotionEvent.AXIS_RY else MotionEvent.AXIS_RZ)
 		val sonyGeneric = PadConfig.sonyGeneric(event.device)
 		fun trigger(main: Int, alt: Int, rxAxis: Int): Float
 		{
-			if(sonyGeneric && pad.sticks == PadConfig.Sticks.AUTO)
+			if((sonyGeneric && auto) || (auto && cal.pinnedPair == 2))
 			{
 				// PlayStation pad on the generic driver: triggers on RX (L2) / RY (R2), resting at -1
 				val v = event.getAxisValue(if(main == MotionEvent.AXIS_LTRIGGER) MotionEvent.AXIS_RX else MotionEvent.AXIS_RY)

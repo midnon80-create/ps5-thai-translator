@@ -128,6 +128,19 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 		screenHoldMs = (1500L + thai.length * 55L).coerceIn(2500L, 5000L)
 	}
 
+	override fun showLateLine(thai: String)
+	{
+		// above the current line, dimmed, for its reading time; the current line is not touched
+		if(!screenText.isVisible || curThai.isEmpty()) { showScreenText(thai, "late:" + thai, null, null); clearScreenText(); return }
+		prevThai = thai
+		screenText.removeCallbacks(dropPrevious)
+		setText(screenText, curThai, curEnglish, prevThai)
+		screenText.postDelayed(dropPrevious, maxOf(PREVIOUS_KEEP_MS, (1500L + thai.length * 55L).coerceAtMost(5000L)))
+		// keep the box up at least as long as the late line needs
+		val need = (1500L + thai.length * 55L).coerceIn(2500L, 5000L)
+		screenHoldMs = maxOf(screenHoldMs, SystemClock.elapsedRealtime() - screenShownAt + need)
+	}
+
 	override fun clearScreenText()
 	{
 		screenText.removeCallbacks(clearScreenNow)

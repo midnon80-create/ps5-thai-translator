@@ -269,7 +269,7 @@ class SubtitleTracker
 		{
 			shownKey = ""
 			// slow TV (one read takes ~0.6 s+): a clear, full line is shown on its first read, or short lines are missed
-			if(oneRead && key.split(' ').size >= 3) { shownKey = key; pendingKey = ""; pendingText = ""; pendingReads = 0; return Action.Show(text) }
+			if(oneRead && key.split(' ').isNotEmpty()) { shownKey = key; pendingKey = ""; pendingText = ""; pendingReads = 0; return Action.Show(text) }
 			pendingKey = key; pendingText = text; pendingReads = 1
 			return Action.Clear
 		}
@@ -282,7 +282,7 @@ class SubtitleTracker
 		}
 		// still changing: a line read 3 times in a row without settling (jittery small text) is shown anyway,
 		// the longest read wins (it is usually the most complete)
-		if(oneRead && pendingKey.isEmpty() && key.split(' ').size >= 3)
+		if(oneRead && pendingKey.isEmpty() && key.split(' ').isNotEmpty())
 		{ shownKey = key; pendingText = ""; pendingReads = 0; return Action.Show(text) }
 		pendingReads++
 		if(text.length > pendingText.length || pendingKey.isEmpty()) pendingText = text

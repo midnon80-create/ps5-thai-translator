@@ -42,6 +42,8 @@ class TranslatorController(
 		fun showLabel(id: Int, kind: TextKind, thai: String, box: android.graphics.RectF)
 		fun removeLabel(id: Int)
 		fun clearLabels()
+		/** A line whose Thai came after the next line's Thai: shown above the current line (dimmed), never dropped. */
+		fun showLateLine(thai: String) {}
 	}
 
 	private val prefs = TranslatorPrefs(context)
@@ -411,7 +413,7 @@ class TranslatorController(
 			// Reading that frame wastes the TV's time (and the fallback reads) on a washed-out picture: keep the last
 			// result instead, for at most 2 frames in a row
 			val sigMean = sig.average()
-			val flash = lastSigMean >= 0 && sigMean - lastSigMean > FLASH_JUMP && flashSkips < 2
+			val flash = lastSigMean >= 0 && sigMean - lastSigMean > FLASH_JUMP && flashSkips < 1
 			flashSkips = if(flash) flashSkips + 1 else 0
 			if(!flash) lastSigMean = sigMean
 			val blocks = if(flash) lastBlocks else if(prev != null && sameImage(prev, sig) && skippedInARow < MAX_SKIPS)
@@ -451,7 +453,10 @@ class TranslatorController(
 			quietFrames = if(blocks.isEmpty()) quietFrames + 1 else 0
 			if(english.isNotEmpty()) lastScreenTextAt = now
 			speech?.paused = prefs.mode == TranslatorPrefs.Mode.BOTH && now - lastScreenTextAt < SPEECH_SUPPRESS_MS
-			when(val action = tracker.update(english, now, oneRead = readMs > 550.0))
+			// one clean read is enough: a line that reads as real words (or any 3+ word line on a slow TV) is translated
+			// at once. Waiting for a 2nd identical read lost short lines and lines on slower TVs (a 10-line test lost 1-3)
+			val oneRead = english.isNotEmpty() && (WordRepair.quality(english) >= 0.8 || (readMs > 550.0 && english.split(' ').size >= 3))
+			when(val action = tracker.update(english, now, oneRead = oneRead))
 			{
 				is SubtitleTracker.Action.Show ->
 				{
@@ -474,13 +479,17 @@ class TranslatorController(
 					lineChangedAt = now
 					val askedAt = now
 					translateWorker.execute {
-						smartTranslate(listOf(prepared.text), TextKind.DIALOGUE, { running.get() && seq >= shownSeq.get() }) { thai ->
+						smartTranslate(listOf(prepared.text), TextKind.DIALOGUE, { running.get() }) { thai ->
 							val line = prepared.withSpeaker(thai)
 							main.post {
-								if(!running.get() || seq < shownSeq.get()) return@post // a newer line is already up
+								if(!running.get()) return@post
 								val gone = seq != onScreenSeq
 								val t = SystemClock.elapsedRealtime()
 								if(gone && t - askedAt > LATE_MAX_MS) return@post
+								// a newer line's Thai is already up (it came from the library at once while this one waited for
+								// the AI): never thrown away any more - shown above the current line, dimmed, in order; the
+								// current line stays where it is (this was the main reason ~4 of 10 lines never showed)
+								if(seq < shownSeq.get()) { ui.showLateLine(line); return@post }
 								// a late line is still the newest Thai there is (nothing newer is up: checked above), so it is
 								// shown; when the next line's Thai comes it moves up as the dim previous line, in order
 								shownSeq.set(seq)
