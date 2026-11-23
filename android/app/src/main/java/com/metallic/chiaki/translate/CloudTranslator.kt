@@ -57,9 +57,13 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		}
 		if(res.has("error")) { onError(res.optString("error")); return null }
 		problem = when(res.optString("note")) { "pool_empty" -> Problem.POOL_EMPTY; "daily_limit" -> Problem.DAILY_LIMIT; else -> Problem.NONE }
+		lastFrom.set(res.optString("from"))
 		val arr = res.optJSONArray("th") ?: return null
 		return List(lines.size) { i -> if(i < arr.length() && !arr.isNull(i)) arr.optString(i).trim().ifEmpty { null } else null }
 	}
+
+	/** "cache" when the server answered every line from the shared library (per thread: read right after translate). */
+	val lastFrom = ThreadLocal<String>()
 
 	/** AI is open for this TV (GTA-only lock): set by check() and by a successful unlock(). */
 	@Volatile var gameOkUntil = 0L

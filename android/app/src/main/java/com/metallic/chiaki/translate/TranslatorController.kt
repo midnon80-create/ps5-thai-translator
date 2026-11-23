@@ -277,11 +277,23 @@ class TranslatorController(
 	}
 
 	/** Counters for the end-of-game report since the last call (take it before [stop]). */
+	/** Where each subtitle's Thai came from in this game: TV library (instant), server cache, AI (with waits). */
+	private class Speed
+	{
+		val local = AtomicInteger(); val cloud = AtomicInteger(); val ai = AtomicInteger(); val late = AtomicInteger()
+		val cloudMs = java.util.concurrent.atomic.AtomicLong(); val aiMs = java.util.concurrent.atomic.AtomicLong()
+	}
+	private val speed = Speed()
+
 	fun stats(): SessionReport.Stats
 	{
+		val cl = speed.cloud.getAndSet(0); val ai = speed.ai.getAndSet(0)
+		val clMs = speed.cloudMs.getAndSet(0); val aiMs = speed.aiMs.getAndSet(0)
 		val s = SessionReport.Stats(
 			reads = st.getAndSet(3, 0), saw = st.getAndSet(4, 0), shown = st.get(5), ai = st.getAndSet(6, 0), copyFailed = st.getAndSet(1, 0),
-			readMs = readMs.toInt(), engine = screenReader?.engineName ?: engineSeen)
+			readMs = readMs.toInt(), engine = screenReader?.engineName ?: engineSeen,
+			localLines = speed.local.getAndSet(0), cloudLines = cl, aiLines = ai, lateLines = speed.late.getAndSet(0),
+			cloudMs = if(cl > 0) (clMs / cl).toInt() else 0, aiMs = if(ai > 0) (aiMs / ai).toInt() else 0)
 		shownBase.let { b -> shownBase = s.shown; return s.copy(shown = s.shown - b) }
 	}
 	@Volatile private var shownBase = 0 // st[5] stays (it tells the 90-second check that subtitles already showed)
@@ -416,7 +428,14 @@ class TranslatorController(
 			val flash = lastSigMean >= 0 && sigMean - lastSigMean > FLASH_JUMP && flashSkips < 1
 			flashSkips = if(flash) flashSkips + 1 else 0
 			if(!flash) lastSigMean = sigMean
-			val blocks = if(flash) lastBlocks else if(prev != null && sameImage(prev, sig) && skippedInARow < MAX_SKIPS)
+			// "nothing new on screen": judged by the letter edges in the middle of the subtitle area, not by brightness.
+			// White text appearing over a bright sky / wall / explosion hardly changes the brightness, so a new line was
+			// taken for the old picture for up to 6 reads and short lines vanished unread (measured: noise moves this
+			// check by <= 18, the smallest subtitle "Go!" over an explosion by >= 111; the line is drawn at 60)
+			val esig = edgeSignature(region)
+			val prevE = lastEdgeSig
+			lastEdgeSig = esig
+			val blocks = if(flash) lastBlocks else if(prev != null && prevE != null && sameEdges(prevE, esig) && skippedInARow < MAX_SKIPS)
 			{
 				skippedInARow++
 				lastBlocks
@@ -489,7 +508,7 @@ class TranslatorController(
 								// a newer line's Thai is already up (it came from the library at once while this one waited for
 								// the AI): never thrown away any more - shown above the current line, dimmed, in order; the
 								// current line stays where it is (this was the main reason ~4 of 10 lines never showed)
-								if(seq < shownSeq.get()) { ui.showLateLine(line); return@post }
+								if(seq < shownSeq.get()) { speed.late.incrementAndGet(); ui.showLateLine(line); return@post }
 								// a late line is still the newest Thai there is (nothing newer is up: checked above), so it is
 								// shown; when the next line's Thai comes it moves up as the dim previous line, in order
 								shownSeq.set(seq)
@@ -584,6 +603,34 @@ class TranslatorController(
 	private var lastSignature: IntArray? = null
 	private var lastBlocks: List<ScreenReader.Block> = emptyList()
 	private var skippedInARow = 0
+
+	private var lastEdgeSig: IntArray? = null
+
+	/** Letter-edge map of the middle 70 % of the area: horizontal brightness steps, 4x4 cells of a 192x48 copy. */
+	private fun edgeSignature(region: Bitmap): IntArray
+	{
+		val x0 = (region.width * 0.15f).toInt()
+		val crop = Bitmap.createBitmap(region, x0, 0, maxOf(1, (region.width * 0.7f).toInt()), region.height)
+		val small = Bitmap.createScaledBitmap(crop, 192, 48, true)
+		val px = IntArray(192 * 48)
+		small.getPixels(px, 0, 192, 0, 0, 192, 48)
+		small.recycle()
+		val out = IntArray(12 * 47)
+		for(y in 0 until 48) for(x in 0 until 188)
+		{
+			val a = px[y * 192 + x]; val b = px[y * 192 + x + 1]
+			val la = ((a shr 16 and 0xff) * 3 + (a shr 8 and 0xff) * 6 + (a and 0xff)) / 10
+			val lb = ((b shr 16 and 0xff) * 3 + (b shr 8 and 0xff) * 6 + (b and 0xff)) / 10
+			out[(y / 4) * 47 + x / 4] += minOf(60, kotlin.math.abs(la - lb))
+		}
+		return out
+	}
+
+	private fun sameEdges(a: IntArray, b: IntArray): Boolean
+	{
+		for(i in a.indices) if(kotlin.math.abs(a[i] - b[i]) >= EDGE_CHANGE) return false
+		return true
+	}
 
 	/** 64x16 grayscale thumbnail of the area being read. */
 	private fun signature(region: Bitmap): IntArray
@@ -703,7 +750,8 @@ class TranslatorController(
 			while(recentEnglish.size > 3) recentEnglish.removeFirst()
 			c
 		}
-		if(missing.isEmpty()) { show(known.filterNotNull().joinToString(" ")); return }
+		if(missing.isEmpty()) { if(kind == TextKind.DIALOGUE) speed.local.incrementAndGet(); show(known.filterNotNull().joinToString(" ")); return }
+		val askedAt = SystemClock.elapsedRealtime()
 		val c = cloud
 		val future: CompletableFuture<List<String?>?>? = if(c != null && c.usable)
 			CompletableFuture.supplyAsync({
@@ -711,6 +759,12 @@ class TranslatorController(
 				val src = missing.map { lines[it] }
 				val hints = src.map { l -> if(kind == TextKind.DIALOGUE) SlangRewriter.rewrite(l).takeIf { it != l } else null }
 				val first = c.translate(src, ctx, kind, hints)
+				if(kind == TextKind.DIALOGUE && first != null && first.any { it != null })
+				{
+					val ms = SystemClock.elapsedRealtime() - askedAt
+					if(c.lastFrom.get() == "cache") { speed.cloud.incrementAndGet(); speed.cloudMs.addAndGet(ms) }
+					else { speed.ai.incrementAndGet(); speed.aiMs.addAndGet(ms) }
+				}
 				// a failed answer (busy network, server hiccup) is asked once more instead of leaving the line blank
 				if((first == null || first.all { it == null }) && c.problem != CloudTranslator.Problem.OFFLINE && isCurrent())
 				{ Thread.sleep(300); c.translate(src, ctx, kind, hints) ?: first } else first
@@ -802,12 +856,12 @@ class TranslatorController(
 	{
 		private const val TAG = "Translator"
 		private const val FRAME_INTERVAL_MS = 250L // 4 reads a second
-		private const val FRAME_INTERVAL_IDLE_MS = 600L
+		private const val FRAME_INTERVAL_IDLE_MS = 400L // after a quiet second: a line right after a pause is caught sooner
 		/** A subtitle's centre is below this fraction of the picture (GTA: ~0.8-0.93; the in-game phone: ~0.55-0.75). */
 		private const val SUBTITLE_MIN_CENTER = 0.70f
 		private const val SIG_W = 64
 		private const val SIG_H = 16
-		private const val MAX_SKIPS = 6 // re-read at least every ~3 s anyway
+		private const val MAX_SKIPS = 4 // re-read at least every ~1-2 s anyway
 		private const val FRAME_W = 960
 		private const val FRAME_H = 540
 		private const val SPEECH_SUPPRESS_MS = 3000L
@@ -815,6 +869,7 @@ class TranslatorController(
 		private const val LIBRARY_SYNC_MS = 180_000L
 		/** A read whose words are at least this share real is taken at once (no fallback reads). */
 		private const val GOOD_READ = 0.6
+		private const val EDGE_CHANGE = 60
 		/** Mean brightness jump (0-255) of the subtitle area between two reads that counts as a flash. */
 		private const val FLASH_JUMP = 55.0
 		private const val LATE_MAX_MS = 9000L // a Thai line that comes back later than this after its English is dropped

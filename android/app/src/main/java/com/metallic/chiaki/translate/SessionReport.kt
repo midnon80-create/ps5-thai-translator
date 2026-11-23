@@ -11,7 +11,8 @@ import java.io.File
  */
 object SessionReport
 {
-	data class Stats(val reads: Int, val saw: Int, val shown: Int, val ai: Int, val copyFailed: Int, val readMs: Int, val engine: String)
+	data class Stats(val reads: Int, val saw: Int, val shown: Int, val ai: Int, val copyFailed: Int, val readMs: Int, val engine: String,
+		val localLines: Int = 0, val cloudLines: Int = 0, val aiLines: Int = 0, val lateLines: Int = 0, val cloudMs: Int = 0, val aiMs: Int = 0)
 
 	fun send(context: Context, mode: String, secs: Long, stats: Stats?, log: File?, quit: String?)
 	{
@@ -41,6 +42,10 @@ object SessionReport
 					.put("ai", stats?.ai ?: 0)
 					.put("copy_failed", stats?.copyFailed ?: 0)
 					.put("read_ms", stats?.readMs ?: 0)
+					// where each subtitle's Thai came from, and how long it took (TV library = instant)
+					.put("local_lines", stats?.localLines ?: 0).put("cloud_lines", stats?.cloudLines ?: 0)
+					.put("ai_lines", stats?.aiLines ?: 0).put("late_lines", stats?.lateLines ?: 0)
+					.put("cloud_ms", stats?.cloudMs ?: 0).put("ai_ms", stats?.aiMs ?: 0)
 					.put("corrupt_pm", if(secs > 0) broken * 60.0 / secs else 0.0)
 				if(!quit.isNullOrBlank()) body.put("quit", quit.take(160))
 				val c = java.net.URL(prefs.serverUrl.trimEnd('/') + "/v1/session").openConnection() as java.net.HttpURLConnection
