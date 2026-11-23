@@ -64,10 +64,14 @@ class TranslatorController(
 	@Volatile private var readMs = 150.0
 	private var cloud: CloudTranslator? = null
 	// network calls; idle threads end after 30 s so a closed stream leaves nothing running
-	private val cloudPool = java.util.concurrent.ThreadPoolExecutor(4, 4, 30, TimeUnit.SECONDS,
+	private val cloudPool = java.util.concurrent.ThreadPoolExecutor(6, 6, 30, TimeUnit.SECONDS,
 		java.util.concurrent.LinkedBlockingQueue(), lowPriority("translator-cloud")).apply { allowCoreThreadTimeOut(true) }
 	private val recentEnglish = ArrayDeque<String>()
 	private val screenSeq = AtomicInteger()
+	// the newest line whose Thai is on screen, and the line whose English is on screen now (0 = none): a Thai
+	// answer that comes back after its English left is still shown (for its reading time), never thrown away
+	private val shownSeq = AtomicInteger()
+	@Volatile private var onScreenSeq = 0
 	private val speechSeq = AtomicInteger()
 
 	private val running = AtomicBoolean(false)
@@ -423,14 +427,24 @@ class TranslatorController(
 					val bottom = dialogue?.let { (it.box.bottom + yOffset).toFloat() / bmp.height }
 					val prepared = GameText.fromScreen(action.text)
 					val seq = screenSeq.incrementAndGet()
+					onScreenSeq = seq
+					val askedAt = now
 					translateWorker.execute {
-						smartTranslate(listOf(prepared.text), TextKind.DIALOGUE, { seq == screenSeq.get() }) { thai ->
+						smartTranslate(listOf(prepared.text), TextKind.DIALOGUE, { running.get() && seq >= shownSeq.get() }) { thai ->
 							val line = prepared.withSpeaker(thai)
-							main.post { if(running.get() && seq == screenSeq.get()) ui.showScreenText(line, action.text, top, bottom) }
+							main.post {
+								if(!running.get() || seq < shownSeq.get()) return@post // a newer line is already up
+								val gone = seq != onScreenSeq
+								if(gone && SystemClock.elapsedRealtime() - askedAt > LATE_MAX_MS) return@post
+								shownSeq.set(seq)
+								ui.showScreenText(line, action.text, top, bottom)
+								// its English already left (fast talk): it stays its reading time, then goes
+								if(gone) ui.clearScreenText()
+							}
 						}
 					}
 				}
-				SubtitleTracker.Action.Clear -> { screenSeq.incrementAndGet(); main.post { ui.clearScreenText() } }
+				SubtitleTracker.Action.Clear -> { onScreenSeq = 0; main.post { ui.clearScreenText() } }
 				SubtitleTracker.Action.None -> {}
 			}
 			// prompts, hints, documents (only when the player turned it on: by default subtitles only)
@@ -588,7 +602,11 @@ class TranslatorController(
 			CompletableFuture.supplyAsync({
 				// plain-English "hint" for slangy lines helps Gemini get the meaning right
 				val src = missing.map { lines[it] }
-				c.translate(src, ctx, kind, src.map { l -> if(kind == TextKind.DIALOGUE) SlangRewriter.rewrite(l).takeIf { it != l } else null })
+				val hints = src.map { l -> if(kind == TextKind.DIALOGUE) SlangRewriter.rewrite(l).takeIf { it != l } else null }
+				val first = c.translate(src, ctx, kind, hints)
+				// a failed answer (busy network, server hiccup) is asked once more instead of leaving the line blank
+				if((first == null || first.all { it == null }) && c.problem != CloudTranslator.Problem.OFFLINE && isCurrent())
+				{ Thread.sleep(300); c.translate(src, ctx, kind, hints) ?: first } else first
 			}, cloudPool)
 		else null
 		// offline text only when it is really needed (no server, or the server failed this line)
@@ -686,6 +704,7 @@ class TranslatorController(
 		private const val FRAME_W = 960
 		private const val FRAME_H = 540
 		private const val SPEECH_SUPPRESS_MS = 3000L
+		private const val LATE_MAX_MS = 9000L // a Thai line that comes back later than this after its English is dropped
 		private const val SPEECH_SHOW_MS = 6000L
 
 	}

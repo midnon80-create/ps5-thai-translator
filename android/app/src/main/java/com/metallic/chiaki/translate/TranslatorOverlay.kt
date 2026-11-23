@@ -124,8 +124,8 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 		curThai = thai
 		setText(screenText, thai, english, prevThai)
 		place(subtitleTop, subtitleBottom)
-		// long enough to read even if the game's subtitle vanishes quickly: 1.8-3.5 s by length
-		screenHoldMs = (1300L + thai.length * 35L).coerceIn(1800L, 3500L)
+		// long enough to read even if the game's subtitle vanishes quickly: 2.5-5 s by length (Thai reads slower)
+		screenHoldMs = (1500L + thai.length * 55L).coerceIn(2500L, 5000L)
 	}
 
 	override fun clearScreenText()

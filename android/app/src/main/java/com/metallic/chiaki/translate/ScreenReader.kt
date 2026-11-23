@@ -195,10 +195,12 @@ class ScreenReader(context: android.content.Context)
 		} ?: return null
 
 		val text = best.joinToString(" ") { it.text }.replace(Regex("\\s+"), " ").trim()
-		if(wordCount(text) < 2 && text.count { it.isLetter() } < 8)
-			return null
 		val box = Rect(best.first().box)
 		best.forEach { box.union(it.box) }
+		// one-word replies ("Yeah.", "What?", "Okay.") are subtitles too when they sit in the middle like one
+		if(wordCount(text) < 2 && text.count { it.isLetter() } < 8 &&
+			!(abs(box.centerX() - width / 2.0) < width * 0.08 && text.count { it.isLetter() } >= 2 && text.first().isUpperCase()))
+			return null
 		return Found(text, box)
 	}
 
