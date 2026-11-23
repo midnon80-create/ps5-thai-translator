@@ -92,9 +92,10 @@ object GameLibrary
 		synchronized(lines)
 		{
 			lines[k]?.let { return it }
-			if(k.length < 12) return null
+			if(k.length < 9) return null
 			val sk = sketch(k) ?: return null
-			var best: String? = null; var bestS = NEAR_MIN
+			// short lines ("go to cals" read as "go to oals"): only one wrong letter allowed
+			var best: String? = null; var bestS = if(k.length < 12) maxOf(NEAR_MIN, 1 - 1.01 / k.length) else NEAR_MIN
 			val seen = HashSet<String>()
 			for(i in 0 until 4) for(c in bands[i][sk[i]].orEmpty())
 			{

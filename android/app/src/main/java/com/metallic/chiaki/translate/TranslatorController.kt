@@ -213,10 +213,20 @@ class TranslatorController(
 	// "Hook fish R2 Lure fish ○ Reset cast"): not dialogue, never translated as subtitles
 	private val buttonTokens = setOf("r1", "r2", "l1", "l2", "r3", "l3", "o", "x", "△", "□", "○", "✕", "×", "options", "touchpad")
 	private val menuWords = setOf("select", "back", "confirm", "cancel", "skip", "continue", "hold", "press", "tap", "zoom", "rotate", "exit")
+	// words of real sentences: a line with these is dialogue or an instruction ("Hold on, think about this",
+	// "Press ○ to threaten the teller", "Hold L2 to aim"), never a menu bar, even with a stray "o" read off an icon
+	private val sentenceWords = setOf("to", "the", "you", "your", "i", "im", "we", "is", "it", "on", "in", "me", "my", "he",
+		"she", "they", "him", "her", "what", "are", "this", "that", "of", "for", "and", "with", "dont", "cant", "lets", "now",
+		"here", "there", "be", "just", "got", "gotta", "know", "when", "like", "about", "minute", "if", "do", "can", "will",
+		"was", "not", "no", "yeah", "hey", "oh", "man", "us", "our", "at", "all", "need", "want", "come", "look", "see")
 	private fun isButtonPrompt(text: String): Boolean
 	{
-		val words = text.lowercase().split(Regex("""[\s,.:;!?()\[\]"]+""")).filter { it.isNotEmpty() }
+		val words = text.lowercase().replace("'", "").replace("’", "").split(Regex("""[\s,.:;!?()\[\]"]+""")).filter { it.isNotEmpty() }
 		if(words.isEmpty()) return false
+		val sentence = words.count { it in sentenceWords }
+		if(sentence >= 2) return false
+		if(sentence >= 1 && words.first() in setOf("press", "hold", "use", "tap", "release")) return false // a how-to line: translate
+		if(words.first() == "hold" && words.getOrNull(1) in setOf("up", "on", "it", "still", "tight")) return false
 		val buttons = words.count { it in buttonTokens }
 		val menu = words.count { it in menuWords }
 		if(buttons >= 1 && words.size <= 14) return true                 // a button symbol in a short line
