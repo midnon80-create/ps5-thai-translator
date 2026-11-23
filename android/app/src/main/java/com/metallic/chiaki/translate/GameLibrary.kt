@@ -30,6 +30,9 @@ object GameLibrary
 	private val vocab = java.util.concurrent.ConcurrentHashMap<String, Int>()
 	val vocabSize get() = vocab.size
 	fun wordFreq(w: String) = vocab[w] ?: 0
+	// how often two words follow each other in the library ("hold on", "all about"): context for WordRepair
+	private val pairs = java.util.concurrent.ConcurrentHashMap<String, Int>()
+	fun pairFreq(a: String?, b: String?) = if(a == null || b == null) 0 else pairs["$a $b"] ?: 0
 
 	/** Same as the server's key(): lower case, apostrophes dropped, everything but letters/digits = space. */
 	fun key(s: String): String
@@ -89,7 +92,9 @@ object GameLibrary
 		if(lines.put(k, th) == null)
 		{
 			sketch(k)?.forEachIndexed { i, v -> bands[i].getOrPut(v) { ArrayList(2) }.add(k) }
-			for(w in k.split(' ')) if(w.length >= 2) vocab.merge(w, 1, Int::plus)
+			val ws = k.split(' ')
+			for(w in ws) if(w.length >= 2) vocab.merge(w, 1, Int::plus)
+			for(i in 0 until ws.size - 1) pairs.merge(ws[i] + " " + ws[i + 1], 1, Int::plus)
 		}
 	}
 
@@ -141,7 +146,7 @@ object GameLibrary
 	fun prepare(c: Context, g: String, cloud: CloudTranslator?)
 	{
 		if(g.isEmpty()) return
-		if(game != g) { synchronized(lines) { lines.clear(); bands.forEach { it.clear() }; vocab.clear() }; loaded = false; game = g }
+		if(game != g) { synchronized(lines) { lines.clear(); bands.forEach { it.clear() }; vocab.clear(); pairs.clear() }; loaded = false; game = g }
 		val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(c)
 		if(!loaded) try
 		{

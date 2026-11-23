@@ -407,7 +407,14 @@ class TranslatorController(
 			val sig = signature(region)
 			if(sig.all { it < 12 }) st.incrementAndGet(2)
 			val prev = lastSignature
-			val blocks = if(prev != null && sameImage(prev, sig) && skippedInARow < MAX_SKIPS)
+			// explosion / muzzle flash / lightning: the subtitle area suddenly turns much brighter for a frame or two.
+			// Reading that frame wastes the TV's time (and the fallback reads) on a washed-out picture: keep the last
+			// result instead, for at most 2 frames in a row
+			val sigMean = sig.average()
+			val flash = lastSigMean >= 0 && sigMean - lastSigMean > FLASH_JUMP && flashSkips < 2
+			flashSkips = if(flash) flashSkips + 1 else 0
+			if(!flash) lastSigMean = sigMean
+			val blocks = if(flash) lastBlocks else if(prev != null && sameImage(prev, sig) && skippedInARow < MAX_SKIPS)
 			{
 				skippedInARow++
 				lastBlocks
@@ -437,7 +444,9 @@ class TranslatorController(
 			val readWide = b0 <= (H * 0.56f).toInt()
 			if(!full) bandMissed = dialogue == null && !readWide
 			if(!full && dialogue != null) learnBand(dialogue.box.top + yOffset, dialogue.box.bottom + yOffset, H)
-			val english = dialogue?.text ?: ""
+			// a blurred / half-lit frame read as scraps or mostly non-words: as if nothing was read, so it can neither
+			// take the subtitle down nor "change" it (the clean read a moment later carries on as before)
+			val english = dialogue?.text?.takeUnless { WordRepair.isGibberish(it) || WordRepair.quality(it) < 0.25 } ?: ""
 			val now = SystemClock.elapsedRealtime()
 			quietFrames = if(blocks.isEmpty()) quietFrames + 1 else 0
 			if(english.isNotEmpty()) lastScreenTextAt = now
@@ -561,6 +570,8 @@ class TranslatorController(
 	}
 	@Volatile private var adaptiveAt = 0L
 
+	private var lastSigMean = -1.0
+	private var flashSkips = 0
 	private var lastSignature: IntArray? = null
 	private var lastBlocks: List<ScreenReader.Block> = emptyList()
 	private var skippedInARow = 0
@@ -795,6 +806,8 @@ class TranslatorController(
 		private const val LIBRARY_SYNC_MS = 180_000L
 		/** A read whose words are at least this share real is taken at once (no fallback reads). */
 		private const val GOOD_READ = 0.6
+		/** Mean brightness jump (0-255) of the subtitle area between two reads that counts as a flash. */
+		private const val FLASH_JUMP = 55.0
 		private const val LATE_MAX_MS = 9000L // a Thai line that comes back later than this after its English is dropped
 		private const val SPEECH_SHOW_MS = 6000L
 
