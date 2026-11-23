@@ -166,7 +166,7 @@ class ScreenReader(context: android.content.Context)
 	{
 		val lines = raw.map { Line(cleanLine(it.text), it.box) }
 			.filter { looksLikeWords(it.text) }
-			.filter { it.box.height() >= height / 70 } // ignore tiny print
+			.filter { it.box.height() >= maxOf(height / 70, width / 140) } // ignore tiny print (shop labels, price tags)
 			.sortedBy { it.box.top }
 		if(lines.isEmpty())
 			return null
@@ -177,8 +177,11 @@ class ScreenReader(context: android.content.Context)
 		{
 			val g = groups.lastOrNull()
 			val prev = g?.last()
+			// (similar letter size only: a small shop label right above/below the subtitle, "COLLECTION", was glued
+			// onto the line, so the text changed every read and never settled)
 			if(prev != null &&
 				line.box.top - prev.box.bottom < prev.box.height() * 1.2 &&
+				abs(line.box.height() - prev.box.height()) < max(line.box.height(), prev.box.height()) * 0.4 &&
 				min(line.box.right, prev.box.right) > max(line.box.left, prev.box.left) - prev.box.height())
 				g.add(line)
 			else

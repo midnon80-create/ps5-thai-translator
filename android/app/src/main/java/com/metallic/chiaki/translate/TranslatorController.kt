@@ -344,12 +344,18 @@ class TranslatorController(
 		val holderSurface = surfaceView.holder.surface
 		if(holderSurface == null || !holderSurface.isValid || Build.VERSION.SDK_INT < Build.VERSION_CODES.N)
 			return
-		val bmp = frame ?: Bitmap.createBitmap(FRAME_W, FRAME_H, Bitmap.Config.ARGB_8888).also { frame = it }
+		// subtitles only: the lower half at the picture's own sharpness (up to 1920 wide). Before, the whole picture
+		// was shrunk to 960x540 and thin gameplay subtitles were too small to read.
+		val sw = surfaceView.width; val sh = surfaceView.height
+		val half = prefs.region != TranslatorPrefs.Region.FULL && sw > 0 && sh > 0
+		val tw = if(half) minOf(sw, 1920) else FRAME_W
+		val th = if(half) maxOf(1, (sh / 2) * tw / sw) else FRAME_H
+		val bmp = frame?.takeIf { it.width == tw && it.height == th } ?: Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888).also { frame = it }
 		busy.set(true)
 		st.incrementAndGet(0)
 		try
 		{
-			PixelCopy.request(surfaceView, bmp, { result ->
+			val listener = PixelCopy.OnPixelCopyFinishedListener { result ->
 				if(result == PixelCopy.SUCCESS && running.get())
 					worker.execute { processFrame(bmp) }
 				else
@@ -357,7 +363,9 @@ class TranslatorController(
 					if(result != PixelCopy.SUCCESS) { st.incrementAndGet(1); lastCopyResult = result }
 					busy.set(false)
 				}
-			}, Handler(handlerThread.looper))
+			}
+			if(half) PixelCopy.request(surfaceView, android.graphics.Rect(0, sh - sh / 2, sw, sh), bmp, listener, Handler(handlerThread.looper))
+			else PixelCopy.request(surfaceView, bmp, listener, Handler(handlerThread.looper))
 		}
 		catch(e: Exception)
 		{
@@ -372,10 +380,16 @@ class TranslatorController(
 		{
 			val reader = screenReader ?: return
 			val full = prefs.region == TranslatorPrefs.Region.FULL
-			val band = if(full) intArrayOf(0, bmp.height) else subtitleBand(bmp.height)
-			val yOffset = band[0]
-			val region = if(band[0] > 0 || band[1] < bmp.height)
-				Bitmap.createBitmap(bmp, 0, band[0], bmp.width, band[1] - band[0])
+			// the picture source may hand over only the lower half of the game picture, at full resolution
+			// (a 16:9 picture's lower half is twice as wide as it is tall): rows are counted in the whole picture
+			val lower = !full && bmp.width > bmp.height * 2.5f
+			val H = if(lower) bmp.height * 2 else bmp.height
+			val off = H - bmp.height
+			val band = if(full) intArrayOf(0, H) else subtitleBand(H)
+			val b0 = maxOf(band[0], off)
+			val yOffset = b0
+			val region = if(b0 - off > 0 || band[1] - off < bmp.height)
+				Bitmap.createBitmap(bmp, 0, b0 - off, bmp.width, minOf(bmp.height, band[1] - off) - (b0 - off))
 			else bmp
 			// Cheap check first: if the picture looks the same as last time, reuse the last result
 			// instead of running text recognition again (most of the CPU cost).
@@ -391,8 +405,7 @@ class TranslatorController(
 			{
 				skippedInARow = 0
 				val t0 = SystemClock.elapsedRealtime()
-				val read = if(full) reader.readAll(region)
-					else reader.find(region)?.let { listOf(ScreenReader.Block(it.text, it.box, 1, TextKind.DIALOGUE)) } ?: emptyList()
+				val read = readRegion(reader, region, full) { b -> (b.box.centerY() + yOffset).toFloat() / H >= SUBTITLE_MIN_CENTER }
 				readMs = readMs * 0.7 + (SystemClock.elapsedRealtime() - t0) * 0.3
 				st.incrementAndGet(3)
 				if(reader.lastTexts.isNotEmpty()) st.incrementAndGet(4)
@@ -409,10 +422,10 @@ class TranslatorController(
 			// subtitles sit low on the screen; text around the middle (the in-game phone, menus) is not a subtitle:
 			// it moved the Thai line up to the middle of the screen and taught the band the wrong height
 			val dialogue = blocks.firstOrNull { it.kind == TextKind.DIALOGUE &&
-				(it.box.centerY() + yOffset).toFloat() / bmp.height >= SUBTITLE_MIN_CENTER }
-			val readWide = band[0] <= (bmp.height * 0.56f).toInt()
+				(it.box.centerY() + yOffset).toFloat() / H >= SUBTITLE_MIN_CENTER }
+			val readWide = b0 <= (H * 0.56f).toInt()
 			if(!full) bandMissed = dialogue == null && !readWide
-			if(!full && dialogue != null) learnBand(dialogue.box.top + yOffset, dialogue.box.bottom + yOffset, bmp.height)
+			if(!full && dialogue != null) learnBand(dialogue.box.top + yOffset, dialogue.box.bottom + yOffset, H)
 			val english = dialogue?.text ?: ""
 			val now = SystemClock.elapsedRealtime()
 			quietFrames = if(blocks.isEmpty()) quietFrames + 1 else 0
@@ -430,8 +443,8 @@ class TranslatorController(
 					lastScreenTextAt = now
 					st.incrementAndGet(5)
 					Diag.mark(context, Diag.SUBTITLE_AT)
-					val top = dialogue?.let { (it.box.top + yOffset).toFloat() / bmp.height }
-					val bottom = dialogue?.let { (it.box.bottom + yOffset).toFloat() / bmp.height }
+					val top = dialogue?.let { (it.box.top + yOffset).toFloat() / H }
+					val bottom = dialogue?.let { (it.box.bottom + yOffset).toFloat() / H }
 					val prepared = GameText.fromScreen(action.text)
 					val seq = screenSeq.incrementAndGet()
 					onScreenSeq = seq
@@ -479,6 +492,39 @@ class TranslatorController(
 		{
 			busy.set(false)
 		}
+	}
+
+	// the last time the cleaned-up picture (TextMask) found the subtitle: busy gameplay scenes read it first
+	@Volatile private var maskWonAt = 0L
+
+	/**
+	 * Reads the subtitle area. Slow TVs read a smaller copy (still sharper than before). When the plain picture
+	 * gives no subtitle, the same area is read again with only the subtitle letters kept (TextMask): white
+	 * gameplay subtitles over a bright, busy scene. Boxes come back in [region] pixels.
+	 */
+	private fun readRegion(reader: ScreenReader, region: Bitmap, full: Boolean, isSubtitle: (ScreenReader.Block) -> Boolean): List<ScreenReader.Block>
+	{
+		val scale = if(region.width > 1280 && readMs > 650.0) 1280f / region.width else 1f
+		val img = if(scale < 1f) Bitmap.createScaledBitmap(region, 1280, maxOf(1, (region.height * scale).toInt()), true) else region
+		fun read(b: Bitmap) = if(full) reader.readAll(b)
+			else reader.find(b)?.let { listOf(ScreenReader.Block(it.text, it.box, 1, TextKind.DIALOGUE)) } ?: emptyList()
+		fun back(list: List<ScreenReader.Block>) = if(scale == 1f) list else list.map { b ->
+			ScreenReader.Block(b.text, android.graphics.Rect((b.box.left / scale).toInt(), (b.box.top / scale).toInt(),
+				(b.box.right / scale).toInt(), (b.box.bottom / scale).toInt()), b.lines, b.kind) }
+		fun found(list: List<ScreenReader.Block>) = list.any { it.kind == TextKind.DIALOGUE && isSubtitle(it) }
+		val now = SystemClock.elapsedRealtime()
+		val maskFirst = !full && now - maskWonAt < 8000L
+		if(maskFirst)
+		{
+			val m = back(read(TextMask.make(img)))
+			if(found(m)) { maskWonAt = now; return m }
+			return back(read(img))
+		}
+		val plain = back(read(img))
+		if(full || found(plain) || reader.timedOut) return plain
+		val m = back(read(TextMask.make(img)))
+		if(found(m)) { maskWonAt = now; return m }
+		return plain
 	}
 
 	private var lastSignature: IntArray? = null

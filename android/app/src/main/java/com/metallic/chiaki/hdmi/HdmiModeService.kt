@@ -341,6 +341,7 @@ class HdmiModeService : Service()
 	// Converting every frame pixel by pixel from the decoder buffer was slow enough on weaker TVs to make the
 	// subtitles late or skip lines in 4K mode.
 	private var yBytes: ByteArray? = null
+	private var lowerPixels: IntArray? = null
 	private var yW = 0; private var yH = 0; private var yStride = 0; private var yPix = 1
 
 	private fun onImage(r: ImageReader)
@@ -377,6 +378,29 @@ class HdmiModeService : Service()
 			takenAt = frameAt
 			val y = yBytes ?: return null
 			src = y.copyOf(); sw = yW; sh = yH; rs = yStride; ps = yPix
+		}
+		val fullRegion = com.metallic.chiaki.translate.TranslatorPrefs(this).region == com.metallic.chiaki.translate.TranslatorPrefs.Region.FULL
+		if(!fullRegion && sw > 0 && sh > 1)
+		{
+			// subtitles only: the lower half of the picture at its own sharpness (up to 1920 wide). Shrinking the
+			// whole 1080p picture to 960x540 made gameplay subtitles (thin white letters over the scene) unreadable.
+			val ow = minOf(sw, 1920)
+			val y0 = sh / 2
+			val oh = maxOf(1, (sh - y0) * ow / sw)
+			val lp = lowerPixels?.takeIf { it.size == ow * oh } ?: IntArray(ow * oh).also { lowerPixels = it }
+			val lim2 = src.size
+			for(y in 0 until oh)
+			{
+				val r0 = (y0 + y * (sh - y0) / oh) * rs
+				val o0 = y * ow
+				for(x in 0 until ow)
+				{
+					val i = r0 + (x * sw / ow) * ps
+					val v = if(i < lim2) src[i].toInt() and 0xff else 0
+					lp[o0 + x] = (0xff shl 24) or (v shl 16) or (v shl 8) or v
+				}
+			}
+			return Bitmap.createBitmap(lp, ow, oh, Bitmap.Config.ARGB_8888)
 		}
 		// 2x2 average (like the app mode's scaled copy): thin subtitle letters stay whole
 		val px = pixels ?: IntArray(dw * dh).also { pixels = it }
