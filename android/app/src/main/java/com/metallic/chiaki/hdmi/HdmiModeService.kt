@@ -232,7 +232,7 @@ class HdmiModeService : Service()
 		when(ev)
 		{
 			is ConnectedEvent -> { translator?.setStreamConnected(true); connectedAt = SystemClock.elapsedRealtime()
-				ui?.showStatus("✔ ซับไทยพร้อม · จอยที่ต่อทีวีใช้เล่นได้เลย · เลิกเล่น: กดย้อนกลับที่รีโมท 2 ครั้ง")
+				ui?.showStatus(if(tipsHidden()) "✔ ซับไทยพร้อม" else "✔ ซับไทยพร้อม · จอยที่ต่อทีวีใช้เล่นได้เลย · เลิกเล่น: กดย้อนกลับที่รีโมท 2 ครั้ง")
 				main.postDelayed({ ui?.showStatus(null) }, 9000) }
 			// PS5 gone / asks for a PIN: everything stops at once (no message left on the TV, no reconnecting);
 			// the reason is shown next time the app is opened
@@ -285,6 +285,8 @@ class HdmiModeService : Service()
 			true
 		}
 		root.setOnGenericMotionListener { _, e -> input.onGenericMotionEvent(e) || true }
+		// DualSense touchpad click (a pointer click on Android TV) = PS5 touchpad button
+		root.setOnTouchListener { _, e -> input.onPointerEvent(e); true }
 		// mouse / touchpad pointer over the window: swallowed (no arrow, nothing clicked behind)
 		root.setOnHoverListener { _, _ -> true }
 		root.post { root.requestFocus() }
@@ -311,12 +313,14 @@ class HdmiModeService : Service()
 
 	// no Thai line for a long time (PS5 left on its home screen, TV switched to something else): stop by itself
 	private var connectedAt = 0L
+	private fun tipsHidden() = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+		.getBoolean(com.metallic.chiaki.tv.TvActivity.KEY_HIDE_TIPS, false)
 	private var noSubTipShown = false
 
 	private val idleCheck = object : Runnable { override fun run() {
 		val tr = translator ?: return
 		// connected 2 minutes and not one Thai line yet: almost always the game's own subtitles are off
-		if(!noSubTipShown && connectedAt > 0 && tr.lastShownAt == 0L && SystemClock.elapsedRealtime() - connectedAt > 120_000L)
+		if(!noSubTipShown && !tipsHidden() && connectedAt > 0 && tr.lastShownAt == 0L && SystemClock.elapsedRealtime() - connectedAt > 120_000L)
 		{
 			noSubTipShown = true
 			ui?.showStatus("ยังไม่เห็นซับอังกฤษในเกม · เปิดในเกม: Settings › Subtitles › On (ซับไทยจะขึ้นเอง)")
@@ -332,37 +336,29 @@ class HdmiModeService : Service()
 	} }
 
 	/** Keeps the newest picture as a 960x540 grey bitmap (only the brightness plane: all the text reader needs). */
+	// newest brightness plane, copied in one go (memcpy) while the decoder's image is held as briefly as possible;
+	// it is turned into the reader's 960x540 picture only when the reader asks for it (on its own thread).
+	// Converting every frame pixel by pixel from the decoder buffer was slow enough on weaker TVs to make the
+	// subtitles late or skip lines in 4K mode.
+	private var yBytes: ByteArray? = null
+	private var yW = 0; private var yH = 0; private var yStride = 0; private var yPix = 1
+
 	private fun onImage(r: ImageReader)
 	{
 		val img = try { r.acquireLatestImage() } catch(_: Throwable) { null } ?: return
 		try
 		{
 			val now = SystemClock.elapsedRealtime()
-			if(now - frameAt < 200) return // at most 5 a second: the reader takes 4
+			if(now - frameAt < 120) return // the reader reads at most ~5 a second; never copy more than that
 			val plane = img.planes[0]
-			val buf = plane.buffer
-			val rs = plane.rowStride; val ps = plane.pixelStride
-			val sw = img.width; val sh = img.height
-			val dw = 960; val dh = 540
-			val px = pixels ?: IntArray(dw * dh).also { pixels = it }
-			val lim = buf.limit()
-			for(y in 0 until dh)
-			{
-				val r0 = (y * sh / dh) * rs
-				val r1 = minOf(sh - 1, y * sh / dh + 1) * rs
-				for(x in 0 until dw)
-				{
-					val c0 = (x * sw / dw) * ps
-					val c1 = minOf(sw - 1, x * sw / dw + 1) * ps
-					fun at(i: Int) = if(i < lim) buf.get(i).toInt() and 0xff else 0
-					val v = (at(r0 + c0) + at(r0 + c1) + at(r1 + c0) + at(r1 + c1)) shr 2
-					px[y * dw + x] = (0xff shl 24) or (v shl 16) or (v shl 8) or v
-				}
-			}
+			val buf = plane.buffer.duplicate()
+			buf.rewind()
+			val n = buf.remaining()
 			synchronized(frameLock)
 			{
-				val bmp = frame ?: Bitmap.createBitmap(dw, dh, Bitmap.Config.ARGB_8888).also { frame = it }
-				bmp.setPixels(px, 0, dw, 0, 0, dw, dh)
+				val dst = yBytes?.takeIf { it.size >= n } ?: ByteArray(n).also { yBytes = it }
+				buf.get(dst, 0, n)
+				yW = img.width; yH = img.height; yStride = plane.rowStride; yPix = plane.pixelStride
 				frameAt = now
 			}
 		}
@@ -373,13 +369,35 @@ class HdmiModeService : Service()
 	/** A copy of the newest picture, or null when nothing new arrived since the last call. */
 	private fun latestFrame(): Bitmap?
 	{
+		val dw = 960; val dh = 540
+		val src: ByteArray; val sw: Int; val sh: Int; val rs: Int; val ps: Int
 		synchronized(frameLock)
 		{
-			val f = frame ?: return null
 			if(frameAt == takenAt) return null
 			takenAt = frameAt
-			return f.copy(Bitmap.Config.ARGB_8888, false)
+			val y = yBytes ?: return null
+			src = y.copyOf(); sw = yW; sh = yH; rs = yStride; ps = yPix
 		}
+		// 2x2 average (like the app mode's scaled copy): thin subtitle letters stay whole
+		val px = pixels ?: IntArray(dw * dh).also { pixels = it }
+		val lim = src.size
+		for(y in 0 until dh)
+		{
+			val sy = y * sh / dh
+			val r0 = sy * rs
+			val r1 = minOf(sh - 1, sy + 1) * rs
+			for(x in 0 until dw)
+			{
+				val sx = x * sw / dw
+				val c0 = sx * ps
+				val c1 = minOf(sw - 1, sx + 1) * ps
+				val i00 = r0 + c0; val i01 = r0 + c1; val i10 = r1 + c0; val i11 = r1 + c1
+				val v = ((if(i00 < lim) src[i00].toInt() and 0xff else 0) + (if(i01 < lim) src[i01].toInt() and 0xff else 0) +
+					(if(i10 < lim) src[i10].toInt() and 0xff else 0) + (if(i11 < lim) src[i11].toInt() and 0xff else 0)) shr 2
+				px[y * dw + x] = (0xff shl 24) or (v shl 16) or (v shl 8) or v
+			}
+		}
+		return Bitmap.createBitmap(px, dw, dh, Bitmap.Config.ARGB_8888)
 	}
 
 	private fun stopEverything()

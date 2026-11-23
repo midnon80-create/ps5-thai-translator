@@ -86,6 +86,9 @@ class TranslatorController(
 		val tr = TextTranslator(prefs.geminiKey, prefs.geminiModel)
 		translator = tr
 		cloud = prefs.serverUrl.takeIf { it.isNotBlank() }?.let { CloudTranslator(it, prefs.cloudCode, CloudTranslator.deviceId(context)) }
+		// the game picked in the app (GTA VI): subtitles from the first line of the game, no waiting to "see" it
+		pickedGame = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).getString("tv_game", "gta6") ?: "gta6"
+		cloud?.game = pickedGame
 		cloud?.let { c ->
 			cloudPool.execute {
 				val p = c.check()
@@ -204,14 +207,33 @@ class TranslatorController(
 	private val ps5MenuSigns = Regex("""\b(game library|playstation store|playstation plus|game base|all games|media gallery|remastered|ps4\s*&\s*ps5|ps5\s*&\s*ps4)\b""", RegexOption.IGNORE_CASE)
 	@Volatile private var menuUntil = 0L
 
+	// controller prompts / menu bars read in the subtitle area ("Photo Studio  Select  Back ○",
+	// "Hook fish R2 Lure fish ○ Reset cast"): not dialogue, never translated as subtitles
+	private val buttonTokens = setOf("r1", "r2", "l1", "l2", "r3", "l3", "o", "x", "△", "□", "○", "✕", "×", "options", "touchpad")
+	private val menuWords = setOf("select", "back", "confirm", "cancel", "skip", "continue", "hold", "press", "tap", "zoom", "rotate", "exit")
+	private fun isButtonPrompt(text: String): Boolean
+	{
+		val words = text.lowercase().split(Regex("""[\s,.:;!?()\[\]"]+""")).filter { it.isNotEmpty() }
+		if(words.isEmpty()) return false
+		val buttons = words.count { it in buttonTokens }
+		val menu = words.count { it in menuWords }
+		if(buttons >= 1 && words.size <= 14) return true                 // a button symbol in a short line
+		if(menu >= 2 && words.size <= 8) return true                     // "Select Back", "Skip Hold"
+		if(words.first() in setOf("press", "hold", "tap") && words.size <= 10) return true
+		return false
+	}
+
 	// ---- in the game yet? Thai shows only after GTA VI is recognised (Rockstar / GTA screens, GTA place names,
 	// or the server already knows this TV is in GTA). Fallback for a player who resumes straight into the game:
 	// subtitle-like lines in the subtitle band keep coming for 25 s after the stream started.
 	@Volatile private var subtitleLikeSince = 0L
 	@Volatile private var subtitleLikeCount = 0
 
+	@Volatile private var pickedGame = ""
+
 	private fun inGame(now: Long): Boolean
 	{
+		if(pickedGame.isNotEmpty() && connectedSince != 0L) return true
 		if((cloud?.gameOkUntil ?: 0L) > System.currentTimeMillis()) return true
 		if(connectedSince == 0L || now - connectedSince < 20_000L) return false
 		if(subtitleLikeSince == 0L) subtitleLikeSince = now
@@ -379,6 +401,7 @@ class TranslatorController(
 				is SubtitleTracker.Action.Show ->
 				{
 					if(ps5MenuSigns.containsMatchIn(action.text)) { menuUntil = now + 15_000L; main.post { ui.clearScreenText() }; return }
+					if(isButtonPrompt(action.text)) return
 					if(now < menuUntil || !inGame(now)) return
 					lastShownAt = now
 					lastScreenTextAt = now
@@ -509,7 +532,7 @@ class TranslatorController(
 			SystemClock.elapsedRealtime() - lastScreenTextAt < SPEECH_SUPPRESS_MS)
 			return
 		// speech before the game (PS5 menus, videos) is not translated either
-		if((cloud?.gameOkUntil ?: 0L) <= System.currentTimeMillis() && subtitleLikeCount < 4) return
+		if(pickedGame.isEmpty() && (cloud?.gameOkUntil ?: 0L) <= System.currentTimeMillis() && subtitleLikeCount < 4) return
 		val prepared = sentences.map { GameText.fromSpeech(it).text }
 		val english = prepared.joinToString(" ")
 		val seq = speechSeq.incrementAndGet()

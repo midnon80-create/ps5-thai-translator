@@ -48,6 +48,7 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 			.put("kind", kind.name.lowercase())
 			.put("hints", JSONArray(hints.map { it ?: JSONObject.NULL }))
 		if(fast) body.put("fast", true)
+		if(game.isNotEmpty()) body.put("game", game)
 		val res = post("/v1/translate", body) ?: return null
 		if(fast) // quick first text only: never changes the licence/pool state
 		{
@@ -62,6 +63,9 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 
 	/** AI is open for this TV (GTA-only lock): set by check() and by a successful unlock(). */
 	@Volatile var gameOkUntil = 0L
+
+	/** Game picked in the app's game list (e.g. "gta6"): the server translates it from the first line. */
+	@Volatile var game = ""
 
 	/** The screen showed GTA VI (Rockstar/title screens, GTA names): ask the server to open AI for this TV. */
 	fun unlock(texts: List<String>): Boolean

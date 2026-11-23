@@ -73,6 +73,8 @@ class TvActivity : AppCompatActivity()
 	private val pages = ArrayList<View>()
 	private val openPanels = LinkedHashMap<View, () -> Unit>()
 
+	private fun tipsHidden() = sp.getBoolean(KEY_HIDE_TIPS, false)
+
 	private fun closePanels() { openPanels.values.toList().forEach { try { it() } catch(_: Throwable) { } }; openPanels.clear() }
 
 	/** Removes a panel now when nothing is drawn, else after a short fade. */
@@ -336,62 +338,146 @@ class TvActivity : AppCompatActivity()
 	private fun freeBadge(): View = text(this, "เล่นฟรี", 26f, Ui.TEXT, W.BOLD, Gravity.CENTER).apply {
 		background = Ui.gradient(intArrayOf(Ui.VIOLET, Ui.GLOW), 30f); setPadding(28, 6, 28, 8) }
 
-	// ------------------------------------------------------------------ game picker
+	// ------------------------------------------------------------------ game picker (cover row, like the PS5 library)
 
-	/** GTA VI cover drawn by the app (game screenshot + our own lettering, not the official logo). */
-	private fun gtaCover(): View
+	private enum class GameState { NEW, AVAILABLE, SOON }
+	private class Game(val id: String, val title: String, val poster: Int, val state: GameState)
+
+	/** Order on the row: new releases first, then games available now, then coming soon. */
+	private val games = listOf(
+		Game("gta6", "Grand Theft Auto VI", R.drawable.poster_gta6, GameState.NEW),
+		Game("aot3", "Attack on Titan 3", R.drawable.poster_aot3, GameState.SOON),
+		Game("tombraider", "Tomb Raider: Legacy of Atlantis", R.drawable.poster_tombraider, GameState.SOON),
+		Game("ff7", "Final Fantasy VII Revelation", R.drawable.poster_ff7, GameState.SOON),
+		Game("edge", "Edge of Memories", R.drawable.poster_edge, GameState.SOON))
+
+	private fun posterCard(g: Game): FrameLayout
 	{
 		val f = FrameLayout(this)
-		val img = Ui.topImage(this, R.drawable.gta_shot2, 1f)
-		(img as? android.widget.ImageView)?.scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+		val img = android.widget.ImageView(this).apply {
+			setImageResource(g.poster); scaleType = android.widget.ImageView.ScaleType.CENTER_CROP }
 		f.addView(img, FrameLayout.LayoutParams(MATCH, MATCH))
-		f.addView(View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-			intArrayOf(0x22000000, 0x55100018, 0xF0100018.toInt())) }, FrameLayout.LayoutParams(MATCH, MATCH))
-		val c = Ui.col(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
-		c.addView(text(this, "GTA", 140f, 0xFFFFFFFF.toInt(), W.EXTRABOLD, Gravity.CENTER).apply {
-			setShadowLayer(40f, 0f, 0f, 0xCCFF4FA3.toInt()); includeFontPadding = false })
-		c.addView(text(this, "VI", 180f, 0xFFFFFFFF.toInt(), W.EXTRABOLD, Gravity.CENTER).apply {
-			includeFontPadding = false
-			paint.shader = android.graphics.LinearGradient(0f, 20f, 0f, 200f, 0xFFFFC46B.toInt(), 0xFFFF4FA3.toInt(), android.graphics.Shader.TileMode.CLAMP)
-			setShadowLayer(50f, 0f, 0f, 0x99FF4FA3.toInt()) })
-		f.addView(c, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER).apply { topMargin = -40 })
+		if(g.state == GameState.SOON) f.addView(View(this).apply { setBackgroundColor(0x80000000.toInt()) }, FrameLayout.LayoutParams(MATCH, MATCH))
+		// ribbon at the top: NEW RELEASE / COMING SOON
+		val ribbon = text(this, when(g.state) { GameState.NEW -> "NEW RELEASE"; GameState.AVAILABLE -> "พร้อมเล่น"; GameState.SOON -> "COMING SOON" },
+			24f, if(g.state == GameState.SOON) 0xFFE9E3FF.toInt() else 0xFF1A0B2E.toInt(), W.BOLD, Gravity.CENTER).apply {
+			background = if(g.state == GameState.SOON) Ui.round(0xCC1B1435.toInt(), 0f) else Ui.gradient(intArrayOf(0xFFFFE14D.toInt(), 0xFFFFB020.toInt()), 0f)
+			setPadding(0, 8, 0, 8) }
+		f.addView(ribbon, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.TOP))
+		f.background = Ui.round(0, 18f, 4, 0xFF5B4BFF.toInt())
+		Ui.clipRound(f, 18f)
 		return f
 	}
 
-	private fun gameCard(onPick: () -> Unit): Card
+	/** Mirror of the cover under it, fading out (the "floor" of the PS5 library). */
+	private fun reflection(g: Game): View
 	{
-		val card = Card(this, 30f, Ui.PANEL) { true }
-		card.grow = 1.05f
-		val cover = gtaCover()
-		Ui.clipRound(cover, 28f)
-		card.addView(cover, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(4, 4, 4, 4) })
-		val c = Ui.col(this)
-		c.addView(text(this, "Grand Theft Auto VI", 34f, Ui.TEXT, W.BOLD))
-		c.addView(text(this, "ซับไทยพร้อม ✔", 24f, Ui.OK, W.MEDIUM), llp(WRAP, WRAP, t = 2))
-		card.addView(c, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { setMargins(34, 0, 34, 30) })
-		card.setOnClickListener { onPick() }
-		return card
+		val f = FrameLayout(this)
+		val img = android.widget.ImageView(this).apply {
+			setImageResource(g.poster); scaleType = android.widget.ImageView.ScaleType.CENTER_CROP; scaleY = -1f; alpha = 0.32f }
+		f.addView(img, FrameLayout.LayoutParams(MATCH, MATCH))
+		f.addView(View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+			intArrayOf(0x3307050C, 0xF207050C.toInt())) }, FrameLayout.LayoutParams(MATCH, MATCH))
+		return f
 	}
 
 	private fun gamesContent(onboarding: Boolean): View
 	{
 		val v = FrameLayout(this)
-		val top = if(onboarding) 150 else 140
-		v.addView(text(this, "เลือกเกม", 46f, Ui.TEXT, W.BOLD), lp(WRAP, WRAP, 90, top))
-		v.addView(text(this, "เกมแรกที่แปลไทยได้ · เกมอื่นจะเพิ่มเข้ามาเรื่อย ๆ", 27f, Ui.MUTED), lp(WRAP, WRAP, 90, top + 66))
-		val card = gameCard {
-			sp.edit().putString(KEY_GAME, "gta6").apply()
-			if(onboarding) { sp.edit().putBoolean(KEY_ONBOARDED, true).apply(); showTab(0, Trans.LEFT) }
-			else { toast("เลือก GTA VI แล้ว ✔"); showTab(0, Trans.RIGHT) }
+		val top = if(onboarding) 140 else 120
+		v.addView(text(this, "เลือกเกม", 44f, Ui.TEXT, W.BOLD), lp(WRAP, WRAP, 90, top))
+		// three sections on one row; the buttons jump to each part
+		val sections = listOf(GameState.NEW to "ใหม่ล่าสุด", GameState.AVAILABLE to "มีให้เล่นแล้ว", GameState.SOON to "เร็ว ๆ นี้")
+		val chips = Ui.row(this)
+		var focus = 0
+		lateinit var layoutRow: (Boolean) -> Unit
+		val chipCards = ArrayList<Card>()
+		sections.forEachIndexed { k, (state, label) ->
+			val c = Card(this, 26f) {
+				val g = games[focus].state
+				state == g || (state == GameState.AVAILABLE && g == GameState.NEW && games.none { it.state == GameState.AVAILABLE })
+			}
+			c.grow = 1.05f
+			c.addView(text(this, label, 24f, Ui.TEXT, W.MEDIUM, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
+			c.setOnClickListener {
+				val i = games.indexOfFirst { it.state == state }.let { if(it < 0) 0 else it }
+				focus = i; layoutRow(true)
+			}
+			chips.addView(c, llp(220, 60, l = if(k == 0) 0 else 16))
+			chipCards += c
 		}
-		v.addView(card, lp(480, 640, 90, top + 140))
-		// the next games: "coming soon", not selectable
-		for(k in 0 until 2)
+		v.addView(chips, lp(WRAP, WRAP, 1920 - 90 - 3 * 220 - 2 * 16, top + 8))
+
+		// the row
+		val stage = FrameLayout(this).apply { clipChildren = false; clipToPadding = false }
+		val cw = 400; val ch = 500
+		val cards = games.map { g -> posterCard(g) }
+		val refl = games.map { g -> reflection(g) }
+		val rowTop = top + 130
+		games.indices.forEach { i ->
+			stage.addView(refl[i], FrameLayout.LayoutParams(cw, 170).apply { topMargin = rowTop + ch + 10 })
+			stage.addView(cards[i], FrameLayout.LayoutParams(cw, ch).apply { topMargin = rowTop })
+			cards[i].cameraDistance = 9000f * resources.displayMetrics.density
+			refl[i].cameraDistance = 9000f * resources.displayMetrics.density
+		}
+		v.addView(stage, FrameLayout.LayoutParams(1920, 1080))
+		val title = text(this, "", 40f, Ui.TEXT, W.BOLD, Gravity.CENTER)
+		val sub = text(this, "", 26f, Ui.MUTED, gravity = Gravity.CENTER)
+		v.addView(title, lp(1920, WRAP, 0, rowTop + ch + 60))
+		v.addView(sub, lp(1920, WRAP, 0, rowTop + ch + 116))
+
+		layoutRow = { animate ->
+			games.indices.forEach { i ->
+				val d = i - focus
+				val sel = d == 0
+				val x = 960 - cw / 2 + d * 330 + (if(d > 0) 90 else if(d < 0) -90 else 0)
+				val rot = if(sel) 0f else if(d > 0) -38f else 38f
+				val sc = if(sel) 1.08f else 0.86f
+				val a = if(kotlin.math.abs(d) > 3) 0f else 1f
+				for((view, extraY) in listOf(cards[i] to 0f, refl[i] to 0f))
+				{
+					view.pivotX = cw / 2f; view.pivotY = if(view === cards[i]) ch / 2f else 0f
+					if(animate) view.animate().translationX(x.toFloat()).rotationY(rot).scaleX(sc).scaleY(if(view === cards[i]) sc else sc).alpha(a)
+						.translationY(extraY).setDuration(320).setInterpolator(Ui.ease()).start()
+					else { view.translationX = x.toFloat(); view.rotationY = rot; view.scaleX = sc; view.scaleY = sc; view.alpha = a }
+				}
+				cards[i].elevation = if(sel) 40f else 10f - kotlin.math.abs(d)
+				cards[i].background = Ui.round(0, 18f, if(sel) 6 else 3, if(sel) 0xFFC4B5FD.toInt() else 0xFF4338CA.toInt())
+			}
+			val g = games[focus]
+			title.text = g.title
+			sub.text = when(g.state) { GameState.SOON -> "COMING SOON · ซับไทยกำลังจะมา"; else -> "ซับไทยพร้อม ✔ · กด ✕ เพื่อเลือก" }
+			sub.setTextColor(if(g.state == GameState.SOON) Ui.MUTED else Ui.OK)
+			chipCards.forEach { it.refresh() }
+		}
+		layoutRow(false)
+
+		fun pick()
 		{
-			val soon = FrameLayout(this).apply { background = Ui.round(Ui.PANEL, 30f, 2, Ui.LINE); alpha = 0.5f }
-			soon.addView(text(this, "เกมถัดไป\nเร็ว ๆ นี้", 32f, Ui.MUTED, W.SEMIBOLD, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
-			v.addView(soon, lp(480, 640, 90 + (k + 1) * 530, top + 140))
+			val g = games[focus]
+			if(g.state == GameState.SOON) { toast("${g.title} · เร็ว ๆ นี้"); return }
+			sp.edit().putString(KEY_GAME, g.id).apply()
+			if(onboarding) { sp.edit().putBoolean(KEY_ONBOARDED, true).apply(); showTab(0, Trans.LEFT) }
+			else { toast("เลือก ${g.title} แล้ว ✔"); showTab(0, Trans.RIGHT) }
 		}
+		// one focusable strip: ◀ ▶ move, ✕ picks, ▲ goes to the section buttons, ▼ to the tab bar
+		val focusStrip = View(this).apply { isFocusable = true; isClickable = true }
+		v.addView(focusStrip, lp(cw, ch, 960 - cw / 2, rowTop))
+		focusStrip.setOnClickListener { pick() }
+		focusStrip.setOnKeyListener { _, k, e ->
+			if(e.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+			when(k)
+			{
+				KeyEvent.KEYCODE_DPAD_LEFT -> { if(focus > 0) { focus--; layoutRow(true) }; true }
+				KeyEvent.KEYCODE_DPAD_RIGHT -> { if(focus < games.size - 1) { focus++; layoutRow(true) }; true }
+				KeyEvent.KEYCODE_DPAD_UP -> { chipCards[sections.indexOfFirst { it.first == games[focus].state }.coerceAtLeast(0)].requestFocus(); true }
+				KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A -> { pick(); true }
+				else -> false
+			}
+		}
+		// mouse wheel / touch: tap a side cover to bring it to the front
+		cards.forEachIndexed { i, c -> c.setOnClickListener { if(i == focus) pick() else { focus = i; layoutRow(true) } } }
+		v.post { focusStrip.requestFocus() }
 		return v
 	}
 
@@ -400,7 +486,7 @@ class TvActivity : AppCompatActivity()
 		keyCatcher = null
 		val v = gamesContent(true) as FrameLayout
 		v.addView(Ui.brand(this), lp(WRAP, WRAP, 64, 44))
-		v.addView(Ui.hint(this, listOf("✕" to "เลือก")), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
+		v.addView(Ui.hint(this, listOf("◀ ▶" to "เลื่อน", "✕" to "เลือก")), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
 		go(v, t)
 		keyCatcher = { e ->
 			if(e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B)
@@ -700,6 +786,7 @@ class TvActivity : AppCompatActivity()
 	/** "เลิกเล่นแล้ว" box: how to switch the controller off without touching the TV's Bluetooth. */
 	private fun showPadOff(done: () -> Unit)
 	{
+		if(tipsHidden()) { toast("เลิกเล่นแล้ว ✔"); main.postDelayed({ done() }, 900); return }
 		if(Diag.gamepads().isEmpty()) { toast("เลิกเล่นแล้ว ✔"); main.postDelayed({ done() }, 900); return }
 		val d = android.app.AlertDialog.Builder(this)
 			.setTitle("เลิกเล่นแล้ว ✔")
@@ -926,7 +1013,8 @@ class TvActivity : AppCompatActivity()
 		val panel = FrameLayout(this).apply { setBackgroundColor(0xEE07050C.toInt()); isClickable = true }
 		val box = Ui.col(this).apply { background = Ui.round(Ui.PANEL2, 36f, 3, Ui.VIOLET2); setPadding(64, 48, 64, 48) }
 		box.addView(text(this, "เช็กก่อนเข้าเกม", 46f, Ui.TEXT, W.BOLD))
-		box.addView(text(this, "ต้องผ่านครบ 4 ข้อ ซับไทยถึงจะขึ้น · ข้อไหนยังไม่ผ่าน กดที่ข้อนั้นเพื่อแก้", 24f, Ui.MUTED), llp(WRAP, WRAP, t = 6))
+		val intro = text(this, "ต้องผ่านครบ 4 ข้อ ซับไทยถึงจะขึ้น · ข้อไหนยังไม่ผ่าน กดที่ข้อนั้นเพื่อแก้", 24f, Ui.MUTED)
+		box.addView(intro, llp(WRAP, WRAP, t = 6))
 		// play mode (link build): through the app (stream) or on the TV's HDMI input with Thai drawn on top
 		val hdmiAllowed = true
 		fun hdmi() = hdmiAllowed && sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
@@ -976,7 +1064,13 @@ class TvActivity : AppCompatActivity()
 		val goRow = Ui.row(this)
 		val cancel = Card(this, 30f); cancel.grow = 1.04f
 		cancel.addView(text(this, "← ย้อนกลับ", 30f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
-		goRow.addView(cancel, llp(320, 100))
+		goRow.addView(cancel, llp(260, 100))
+		val tipsBtn = Card(this, 30f); tipsBtn.grow = 1.04f
+		val tipsText = text(this, "", 24f, Ui.MUTED, W.MEDIUM, Gravity.CENTER)
+		tipsBtn.addView(tipsText, FrameLayout.LayoutParams(MATCH, MATCH))
+		fun paintTips() { tipsText.text = if(tipsHidden()) "แสดงคำแนะนำ" else "ซ่อนคำแนะนำ" }
+		paintTips()
+		goRow.addView(tipsBtn, llp(260, 100, l = 20))
 		goRow.addView(go, llp(0, 100, 1f, l = 20))
 		box.addView(goRow, llp(1100, WRAP, t = 26))
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
@@ -993,9 +1087,13 @@ class TvActivity : AppCompatActivity()
 			r.mark.text = when(good) { true -> "✔"; false -> "✕"; null -> "…" }
 			r.mark.setTextColor(when(good) { true -> Ui.OK; false -> Ui.WARN; null -> Ui.MUTED })
 			r.title.text = title; r.sub.text = sub
+			// tips hidden: only lines that still need fixing keep their explanation
+			r.sub.visibility = if(tipsHidden() && good != false) View.GONE else View.VISIBLE
+			intro.visibility = if(tipsHidden()) View.GONE else View.VISIBLE
 		}
 		var allOk = false
 		cancel.setOnClickListener { close() }
+		tipsBtn.setOnClickListener { sp.edit().putBoolean(KEY_HIDE_TIPS, !tipsHidden()).apply(); paintTips(); tick.run() }
 		go.setOnClickListener {
 			if(!allOk) { toast("ยังไม่ครบ · กดที่ข้อที่มี ✕ เพื่อแก้ก่อน"); return@setOnClickListener }
 			close()
@@ -1369,6 +1467,9 @@ class TvActivity : AppCompatActivity()
 			add(Triple("ตรวจปัญหา", "บอกทีละขั้นว่าติดตรงไหน พร้อมวิธีแก้") { startActivity(Intent(this@TvActivity, TranslatorTestActivity::class.java)) })
 			add(Triple("จับคู่ PS5 ใหม่", "พิมพ์ชื่อออนไลน์ไอดี แล้วใส่รหัส 8 หลักจาก PS5") { startActivity(Intent(this@TvActivity, RegistActivity::class.java)) })
 			add(Triple("เพิ่ม PS5 ด้วยเลข IP", "ถ้าแอปหา PS5 ไม่เจอเอง") { startActivity(Intent(this@TvActivity, EditManualConsoleActivity::class.java)) })
+			add(Triple("คำแนะนำบนจอ", if(tipsHidden()) "ซ่อนอยู่ · กดเพื่อแสดง" else "แสดงอยู่ · กดเพื่อซ่อน (สำหรับคนที่รู้วิธีแล้ว)") {
+				sp.edit().putBoolean(KEY_HIDE_TIPS, !tipsHidden()).apply()
+				toast(if(tipsHidden()) "ซ่อนคำแนะนำแล้ว" else "แสดงคำแนะนำแล้ว"); showTab(4, Trans.NONE) })
 			add(Triple("ตั้งค่าขั้นสูง", "ภาพ เสียง และตัวเลือกทั้งหมด") { startActivity(Intent(this@TvActivity, SettingsActivity::class.java)) })
 			add(Triple("ดูหน้าแนะนำอีกครั้ง", "ฟีเจอร์ และวิธีเริ่มใช้งาน") { showFeature(0, Trans.LEFT); tab = -1 })
 		}
@@ -1433,6 +1534,8 @@ class TvActivity : AppCompatActivity()
 	{
 		const val KEY_ONBOARDED = "tv_onboarded"
 		const val KEY_GAME = "tv_game"
+		/** "ซ่อนคำแนะนำ": the player knows the steps; explanations under each line / on the game picture are hidden. */
+		const val KEY_HIDE_TIPS = "tv_hide_tips"
 		/** Set by the game screen after "เลิกเล่น": the home screen shows how to switch the controller off. */
 		const val KEY_SHOW_PAD_OFF = "tv_show_pad_off"
 		/** Set by the pairing screen: address of the PS5 just paired, so the next step (checklist) opens by itself. */

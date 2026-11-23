@@ -187,8 +187,39 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		return true
 	}
 
+	/**
+	 * The DualSense touchpad: Android TV makes it a separate pointer ("mouse") device, so pressing it moved an arrow
+	 * instead of reaching the game. A click on a Sony controller's pointer device = the PS5 touchpad button.
+	 * Returns true when the event was the controller's touchpad (it is then never used as a mouse).
+	 */
+	fun onPointerEvent(event: MotionEvent): Boolean
+	{
+		val pointer = event.isFromSource(InputDevice.SOURCE_MOUSE) || event.isFromSource(InputDevice.SOURCE_TOUCHPAD) ||
+			event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)
+		if(!pointer || event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) return false
+		val d = event.device ?: return false
+		val name = d.name.orEmpty().lowercase()
+		val sony = d.vendorId == 0x054C || "dualsense" in name || "wireless controller" in name || "dualshock" in name
+		if(!sony) return false
+		val pressed = when(event.actionMasked)
+		{
+			MotionEvent.ACTION_BUTTON_PRESS, MotionEvent.ACTION_DOWN -> true
+			MotionEvent.ACTION_BUTTON_RELEASE, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> false
+			else -> (event.buttonState and MotionEvent.BUTTON_PRIMARY) != 0
+		}
+		val was = (keyControllerState.buttons and ControllerState.BUTTON_TOUCHPAD) != 0U
+		if(pressed != was)
+		{
+			keyControllerState.buttons = if(pressed) keyControllerState.buttons or ControllerState.BUTTON_TOUCHPAD
+				else keyControllerState.buttons and ControllerState.BUTTON_TOUCHPAD.inv()
+			controllerStateUpdated()
+		}
+		return true
+	}
+
 	fun onGenericMotionEvent(event: MotionEvent): Boolean
 	{
+		if(onPointerEvent(event)) return true
 		if(event.source and InputDevice.SOURCE_CLASS_JOYSTICK != InputDevice.SOURCE_CLASS_JOYSTICK)
 			return false
 		fun Float.signedAxis() = (this * Short.MAX_VALUE).toInt().toShort()

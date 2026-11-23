@@ -367,7 +367,8 @@ class StreamActivity : AppCompatActivity()
 			retryBox?.dismiss(); retryBox = null
 			autoRetries = 0
 			connectedAt = System.currentTimeMillis()
-			if(!padWarned && com.metallic.chiaki.translate.Diag.gamepads().isEmpty())
+			if(!padWarned && com.metallic.chiaki.translate.Diag.gamepads().isEmpty() &&
+				!androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).getBoolean(com.metallic.chiaki.tv.TvActivity.KEY_HIDE_TIPS, false))
 			{
 				padWarned = true
 				com.metallic.chiaki.translate.Diag.mark(this, com.metallic.chiaki.translate.Diag.NO_PAD_AT)
@@ -594,6 +595,13 @@ class StreamActivity : AppCompatActivity()
 		if(exitApp) finishAffinity() else finish()
 	}
 	override fun onGenericMotionEvent(event: MotionEvent) = viewModel.input.onGenericMotionEvent(event) || super.onGenericMotionEvent(event)
+
+	// the DualSense touchpad click arrives as a pointer click: it goes to the game as the touchpad button
+	override fun dispatchTouchEvent(ev: MotionEvent): Boolean =
+		if(viewModel.input.onPointerEvent(ev)) true else super.dispatchTouchEvent(ev)
+
+	override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean =
+		if(viewModel.input.onPointerEvent(ev)) true else super.dispatchGenericMotionEvent(ev)
 }
 
 enum class TransformMode
