@@ -120,7 +120,7 @@ class TranslatorController(
 				}
 			}
 		}
-		translateWorker.execute { PhraseBank.load(context); SlangRewriter.load(context); ThaiPhrases.load(context) }
+		translateWorker.execute { PhraseBank.load(context); SlangRewriter.load(context); ThaiPhrases.load(context); WordRepair.load(context) }
 		translateWorker.execute {
 			if(!tr.offlineReady)
 			{
@@ -456,7 +456,10 @@ class TranslatorController(
 					Diag.mark(context, Diag.SUBTITLE_AT)
 					val top = dialogue?.let { (it.box.top + yOffset).toFloat() / H }
 					val bottom = dialogue?.let { (it.box.bottom + yOffset).toFloat() / H }
-					val prepared = GameText.fromScreen(action.text)
+					// scraps of the background read as letters: never translated, never stored
+					if(WordRepair.isGibberish(action.text)) return
+					// misread words repaired against the library + dictionary (only clear-cut cases) before lookup / AI
+					val prepared = GameText.fromScreen(action.text).let { p -> GameText.Prepared(p.speaker, WordRepair.fix(p.text)) }
 					val seq = screenSeq.incrementAndGet()
 					onScreenSeq = seq
 					lineChangedAt = now
@@ -527,20 +530,36 @@ class TranslatorController(
 			ScreenReader.Block(b.text, android.graphics.Rect((b.box.left / scale).toInt(), (b.box.top / scale).toInt(),
 				(b.box.right / scale).toInt(), (b.box.bottom / scale).toInt()), b.lines, b.kind) }
 		fun found(list: List<ScreenReader.Block>) = list.any { it.kind == TextKind.DIALOGUE && isSubtitle(it) }
+		// how sure the read is: share of real words in the subtitle found (-1 = no subtitle at all)
+		fun score(list: List<ScreenReader.Block>) =
+			list.firstOrNull { it.kind == TextKind.DIALOGUE && isSubtitle(it) }?.let { WordRepair.quality(it.text) } ?: -1.0
+		if(full) return back(read(img))
 		val now = SystemClock.elapsedRealtime()
-		val maskFirst = !full && now - maskWonAt < 8000L
-		if(maskFirst)
+		// Fast path: the plain picture (or, right after it worked, the edge mask first). A clear read ends here,
+		// so ordinary scenes cost one read as before.
+		val edgeFirst = now - maskWonAt < 8000L
+		var best: List<ScreenReader.Block> = emptyList(); var bestQ = -1.0
+		for(edge in if(edgeFirst) listOf(true, false) else listOf(false, true))
 		{
-			val m = back(read(TextMask.make(img)))
-			if(found(m)) { maskWonAt = now; return m }
-			return back(read(img))
+			val r = back(read(if(edge) TextMask.make(img) else img))
+			val q = score(r)
+			if(q > bestQ) { best = r; bestQ = q }
+			if(q >= GOOD_READ) { if(edge) maskWonAt = now; return r }
+			if(reader.timedOut) return best
 		}
-		val plain = back(read(img))
-		if(full || found(plain) || reader.timedOut) return plain
-		val m = back(read(TextMask.make(img)))
-		if(found(m)) { maskWonAt = now; return m }
-		return plain
+		// Smart fallback: bright scene, flash, faint letter edges, or a misread ("Cash is gocd, rtght"): the
+		// brightness-relative mask. Only when something unclear was seen, or (nothing at all) once a second; never on
+		// a TV that is already slow, so the game and the reading pace are never held up.
+		if(readMs <= 650.0 && (bestQ >= 0.0 || now - adaptiveAt > 1000L))
+		{
+			adaptiveAt = now
+			val r = back(read(TextMask.adaptive(img)))
+			val q = score(r)
+			if(q > bestQ) { best = r; bestQ = q }
+		}
+		return best
 	}
+	@Volatile private var adaptiveAt = 0L
 
 	private var lastSignature: IntArray? = null
 	private var lastBlocks: List<ScreenReader.Block> = emptyList()
@@ -774,6 +793,8 @@ class TranslatorController(
 		private const val SPEECH_SUPPRESS_MS = 3000L
 		private const val FAST_LANE = false // the small model's quick text was often literal/wrong: one good answer only
 		private const val LIBRARY_SYNC_MS = 180_000L
+		/** A read whose words are at least this share real is taken at once (no fallback reads). */
+		private const val GOOD_READ = 0.6
 		private const val LATE_MAX_MS = 9000L // a Thai line that comes back later than this after its English is dropped
 		private const val SPEECH_SHOW_MS = 6000L
 

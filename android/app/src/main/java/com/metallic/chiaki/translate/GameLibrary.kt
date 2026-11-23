@@ -26,6 +26,11 @@ object GameLibrary
 
 	val size get() = synchronized(lines) { lines.size }
 
+	// every word of the library and how many lines use it: WordRepair's reference for real vs misread words
+	private val vocab = java.util.concurrent.ConcurrentHashMap<String, Int>()
+	val vocabSize get() = vocab.size
+	fun wordFreq(w: String) = vocab[w] ?: 0
+
 	/** Same as the server's key(): lower case, apostrophes dropped, everything but letters/digits = space. */
 	fun key(s: String): String
 	{
@@ -81,7 +86,11 @@ object GameLibrary
 
 	private fun addLocked(k: String, th: String)
 	{
-		if(lines.put(k, th) == null) sketch(k)?.forEachIndexed { i, v -> bands[i].getOrPut(v) { ArrayList(2) }.add(k) }
+		if(lines.put(k, th) == null)
+		{
+			sketch(k)?.forEachIndexed { i, v -> bands[i].getOrPut(v) { ArrayList(2) }.add(k) }
+			for(w in k.split(' ')) if(w.length >= 2) vocab.merge(w, 1, Int::plus)
+		}
 	}
 
 	/** Thai for an English subtitle, or null. Exact first, then the closest near spelling. */
@@ -132,7 +141,7 @@ object GameLibrary
 	fun prepare(c: Context, g: String, cloud: CloudTranslator?)
 	{
 		if(g.isEmpty()) return
-		if(game != g) { synchronized(lines) { lines.clear(); bands.forEach { it.clear() } }; loaded = false; game = g }
+		if(game != g) { synchronized(lines) { lines.clear(); bands.forEach { it.clear() }; vocab.clear() }; loaded = false; game = g }
 		val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(c)
 		if(!loaded) try
 		{

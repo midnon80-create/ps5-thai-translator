@@ -41,6 +41,49 @@ object TextMask
 		return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
 	}
 
+	/**
+	 * Second fallback, for bright scenes, flashes and faint letter edges (where [make] finds no dark edge): a pixel
+	 * is text when it is clearly brighter than its surroundings (window about twice a subtitle's height). Letters
+	 * come out solid; flat bright areas do not (they are not brighter than themselves). Black on white.
+	 */
+	fun adaptive(src: Bitmap): Bitmap
+	{
+		val w = src.width; val h = src.height
+		val px = IntArray(w * h)
+		src.getPixels(px, 0, w, 0, 0, w, h)
+		val lum = IntArray(w * h)
+		for(i in px.indices)
+		{
+			val c = px[i]
+			lum[i] = ((c shr 16 and 0xff) * 3 + (c shr 8 and 0xff) * 6 + (c and 0xff)) / 10
+		}
+		// integral image: the mean of any window in four look-ups
+		val ii = LongArray((w + 1) * (h + 1))
+		for(y in 0 until h)
+		{
+			var row = 0L
+			for(x in 0 until w)
+			{
+				row += lum[y * w + x]
+				ii[(y + 1) * (w + 1) + x + 1] = ii[y * (w + 1) + x + 1] + row
+			}
+		}
+		val r = maxOf(4, Math.round(24f * w / 1920f))
+		for(y in 0 until h)
+		{
+			val y0 = maxOf(0, y - r); val y1 = minOf(h, y + r + 1)
+			for(x in 0 until w)
+			{
+				val x0 = maxOf(0, x - r); val x1 = minOf(w, x + r + 1)
+				val sum = ii[y1 * (w + 1) + x1] - ii[y0 * (w + 1) + x1] - ii[y1 * (w + 1) + x0] + ii[y0 * (w + 1) + x0]
+				val mean = sum / ((y1 - y0) * (x1 - x0))
+				val v = lum[y * w + x]
+				px[y * w + x] = if(v >= 110 && v >= mean + 30) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+			}
+		}
+		return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
+	}
+
 	private fun minFilter(a: IntArray, w: Int, h: Int, r: Int): IntArray
 	{
 		val t = IntArray(a.size)
