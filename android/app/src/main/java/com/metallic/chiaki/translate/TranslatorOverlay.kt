@@ -47,8 +47,18 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 	private var screenHoldMs = 0L
 	private val clearScreenNow = Runnable { screenText.isGone = true; curEnglish = ""; curThai = ""; prevThai = null }
 
+	// the "previous line" switch (settings): turned off while playing = the dim line goes at once, never comes back
+	private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+		if(key == TranslatorPrefs.KEY_SHOW_PREVIOUS && !prefs.showPrevious) screenText.post {
+			screenText.removeCallbacks(dropPrevious)
+			prevThai = null
+			if(screenText.isVisible && curThai.isNotEmpty()) setText(screenText, curThai, curEnglish)
+		}
+	}
+
 	init
 	{
+		androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).registerOnSharedPreferenceChangeListener(prefListener)
 		val metrics = context.resources.displayMetrics
 		textPx = metrics.heightPixels * prefs.textHeightFraction
 		for(v in listOf(screenText, speechText))
@@ -126,10 +136,15 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 		place(subtitleTop, subtitleBottom)
 		// long enough to read even if the game's subtitle vanishes quickly: 2.5-5 s by length (Thai reads slower)
 		screenHoldMs = (1500L + thai.length * 55L).coerceIn(2500L, 5000L)
+		// and never stuck: no game line stays this long, so the Thai goes even if the English is still being "seen"
+		screenText.removeCallbacks(clearScreenNow)
+		screenText.postDelayed(clearScreenNow, MAX_LINE_MS)
 	}
 
 	override fun showLateLine(thai: String)
 	{
+		// the switch "previous line" off = no dim lines at all (late ones included)
+		if(!prefs.showPrevious) return
 		// above the current line, dimmed, for its reading time; the current line is not touched
 		if(!screenText.isVisible || curThai.isEmpty()) { showScreenText(thai, "late:" + thai, null, null); clearScreenText(); return }
 		prevThai = thai
@@ -423,6 +438,8 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 	{
 		const val PREVIOUS_IF_SHOWN_UNDER_MS = 3000L
 		const val PREVIOUS_KEEP_MS = 2500L
+		/** The longest a Thai line can stay up (game subtitles change well before this). */
+		const val MAX_LINE_MS = 10_000L
 		/** The line before, shown in front of the new one on the same line. */
 		const val PREVIOUS_COLOR = 0xFF9FB4FF.toInt()
 	}

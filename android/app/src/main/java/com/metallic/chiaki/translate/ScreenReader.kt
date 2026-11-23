@@ -188,8 +188,26 @@ class ScreenReader(context: android.content.Context)
 				groups.add(mutableListOf(line))
 		}
 
+		// Only character dialogue: game subtitles are centred and written in sentence case. Text off to the side (HUD,
+		// street names, the "ANDREW" prompt, shop shelves) or a short ALL-CAPS label with no punctuation ("COLLECTION",
+		// "AMMU-NATION", "GOODWIN") is never taken for a subtitle - it was translated as dialogue or glued onto it.
+		val speakerLabel = Regex("""^[A-Z][A-Za-z.'\- ]{1,22}:\s""")
+		fun dialogueLike(g: List<Line>): Boolean
+		{
+			val text = g.joinToString(" ") { it.text }
+			val left = g.minOf { it.box.left }; val right = g.maxOf { it.box.right }
+			val cx = (left + right) / 2.0
+			val centred = abs(cx - width / 2.0) < width * 0.22
+			if(!centred && !speakerLabel.containsMatchIn(text)) return false
+			val letters = text.filter { it.isLetter() }
+			val caps = letters.count { it.isUpperCase() }
+			val label = (letters.length >= 4 && caps >= letters.length * 0.8 && text.none { it in ".!?,'’" } && text.split(' ').size <= 4) ||
+				// one long ALL-CAPS word is a sign even with "!" ("GONE FISHIN'!" read as "GONEFISHIN!"); "NO!" / "STOP!" stay dialogue
+				(text.trim().split(' ').size == 1 && letters.length >= 6 && caps == letters.length)
+			return !label
+		}
 		// Score: lots of real words, near the horizontal centre, lower on screen (subtitles live at the bottom).
-		val best = groups.maxByOrNull { g ->
+		val best = groups.filter { dialogueLike(it) }.maxByOrNull { g ->
 			val words = g.sumOf { wordCount(it.text) }
 			val cx = g.map { it.box.centerX() }.average()
 			val centred = 1.0 - min(1.0, abs(cx - width / 2.0) / (width / 2.0))
