@@ -30,7 +30,7 @@ object GameLibrary
 	fun key(s: String): String
 	{
 		val b = StringBuilder(s.length)
-		for(ch in s.lowercase()) when
+		for(ch in java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC).lowercase()) when
 		{
 			ch == '\'' || ch == '’' -> {}
 			Character.isLetterOrDigit(ch) -> b.append(ch)
@@ -139,7 +139,8 @@ object GameLibrary
 			var since = prefs.getLong("library_since_$g", 0L)
 			var added = 0
 			repeat(5) {
-				val res = cloud.library(g, since) ?: return@repeat
+				// a failed download (slow Wi-Fi, TV just woke up) is tried again a little later, not given up
+				val res = cloud.library(g, since) ?: run { Thread.sleep(3000); return@repeat }
 				val arr = res.optJSONArray("lines") ?: return@repeat
 				val out = StringBuilder()
 				synchronized(lines) {

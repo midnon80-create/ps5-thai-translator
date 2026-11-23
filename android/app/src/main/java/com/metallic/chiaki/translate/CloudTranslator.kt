@@ -118,8 +118,10 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		{
 			conn = (URL(serverUrl.trimEnd('/') + path).openConnection() as HttpURLConnection).apply {
 				requestMethod = "POST"
-				connectTimeout = 2500
-				readTimeout = 6000
+				connectTimeout = 3000
+				// the whole library (thousands of lines) needs time on slow Wi-Fi; a new line may wait for another
+				// TV's answer (~3 s) plus the AI (~2-4 s): 6 s cut those off and the line was lost
+				readTimeout = if(path == "/v1/library") 30000 else 11000
 				doOutput = true
 				setRequestProperty("Content-Type", "application/json")
 			}

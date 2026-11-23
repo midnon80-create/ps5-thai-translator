@@ -72,6 +72,7 @@ class TranslatorController(
 	// answer that comes back after its English left is still shown (for its reading time), never thrown away
 	private val shownSeq = AtomicInteger()
 	@Volatile private var onScreenSeq = 0
+	@Volatile private var lineChangedAt = 0L
 	private val speechSeq = AtomicInteger()
 
 	private val running = AtomicBoolean(false)
@@ -448,6 +449,7 @@ class TranslatorController(
 					val prepared = GameText.fromScreen(action.text)
 					val seq = screenSeq.incrementAndGet()
 					onScreenSeq = seq
+					lineChangedAt = now
 					val askedAt = now
 					translateWorker.execute {
 						smartTranslate(listOf(prepared.text), TextKind.DIALOGUE, { running.get() && seq >= shownSeq.get() }) { thai ->
@@ -455,7 +457,10 @@ class TranslatorController(
 							main.post {
 								if(!running.get() || seq < shownSeq.get()) return@post // a newer line is already up
 								val gone = seq != onScreenSeq
-								if(gone && SystemClock.elapsedRealtime() - askedAt > LATE_MAX_MS) return@post
+								val t = SystemClock.elapsedRealtime()
+								if(gone && t - askedAt > LATE_MAX_MS) return@post
+								// never under someone else's line for long: the Thai must match the English on screen
+								if(gone && onScreenSeq > seq && t - lineChangedAt > LATE_OVER_NEWER_MS) return@post
 								shownSeq.set(seq)
 								ui.showScreenText(line, action.text, top, bottom)
 								// its English already left (fast talk): it stays its reading time, then goes
@@ -680,7 +685,7 @@ class TranslatorController(
 		// first; the stronger model's line replaces it when it arrives. Fast text is never cached or remembered.
 		val mainDone = java.util.concurrent.atomic.AtomicBoolean(false)
 		val fastShown = java.util.concurrent.atomic.AtomicBoolean(false)
-		if(kind == TextKind.DIALOGUE && c != null)
+		if(FAST_LANE && kind == TextKind.DIALOGUE && c != null)
 			CompletableFuture.supplyAsync({
 				val src = missing.map { lines[it] }
 				c.translate(src, ctx, kind, src.map { l -> SlangRewriter.rewrite(l).takeIf { it != l } }, fast = true)
@@ -757,6 +762,9 @@ class TranslatorController(
 		private const val FRAME_W = 960
 		private const val FRAME_H = 540
 		private const val SPEECH_SUPPRESS_MS = 3000L
+		private const val FAST_LANE = false // the small model's quick text was often literal/wrong: one good answer only
+		/** A late Thai line is still shown while a newer English line is up only this soon after the change. */
+		private const val LATE_OVER_NEWER_MS = 2500L
 		private const val LATE_MAX_MS = 9000L // a Thai line that comes back later than this after its English is dropped
 		private const val SPEECH_SHOW_MS = 6000L
 
