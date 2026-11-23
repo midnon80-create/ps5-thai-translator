@@ -107,6 +107,10 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		if(problem == Problem.DAILY_LIMIT) pausedUntil = System.currentTimeMillis() + 10 * 60_000
 	}
 
+	/** The picked game's shared library lines added after [since] (signed request; see GameLibrary). */
+	fun library(game: String, since: Long): JSONObject? =
+		post("/v1/library", JSONObject().put("device", device).put("game", game).put("since", since))
+
 	private fun post(path: String, body: JSONObject): JSONObject?
 	{
 		var conn: HttpURLConnection? = null

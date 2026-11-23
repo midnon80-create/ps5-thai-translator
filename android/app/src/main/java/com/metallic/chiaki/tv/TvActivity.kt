@@ -1236,106 +1236,184 @@ class TvActivity : AppCompatActivity()
 	}
 
 	// ---- tab 1: ตั้งค่าซับ
-	// Two columns: left = how the Thai looks (size, colour, band, font); right = live preview, where it sits,
-	// the line before, and how to play (through the app / 4K HDMI). Everything else is in ตั้งค่าขั้นสูง.
+	// Left: the topics (yellow headings, current choice beside them). Pressing a topic opens its choices in the same
+	// place (← กลับ to go back). Right: only the preview; it follows the choice the remote is on before it is picked.
+	private class Opt(val label: String, val sub: String?, val value: String)
+	private class Topic(val title: String, val key: String, val def: String, val opts: List<Opt>, val about: String)
+
 	private fun settingsContent(): View
 	{
 		val v = FrameLayout(this)
-		val groups = ArrayList<Card>()
-		lateinit var refreshPreview: () -> Unit
-		fun option(title: CharSequence, sub: String?, isSel: () -> Boolean, pick: () -> Unit, font: android.graphics.Typeface? = null, size: Float = 24f,
-			color: Int = Ui.TEXT): Card
+		val draft = HashMap<String, String>() // choice the remote is on (preview only)
+		fun cur(t: Topic) = draft[t.key] ?: when(t.key)
 		{
-			val card = Card(this, 18f, Ui.PANEL, isSel)
-			card.grow = 1.05f
-			val c = Ui.col(this).apply { setPadding(12, 6, 12, 6); gravity = Gravity.CENTER }
-			c.addView(text(this, title, size, color, W.MEDIUM, Gravity.CENTER).apply { if(font != null) typeface = font; maxLines = 1 })
-			if(sub != null) c.addView(text(this, sub, 17f, Ui.MUTED, gravity = Gravity.CENTER).apply { maxLines = 1 }, llp(WRAP, WRAP, t = 1))
-			card.addView(c, FrameLayout.LayoutParams(MATCH, MATCH))
-			card.setOnClickListener { pick(); groups.forEach { it.refresh() }; refreshPreview() }
-			groups += card
-			return card
+			TranslatorPrefs.KEY_SHOW_PREVIOUS -> if(sp.getBoolean(t.key, true)) "1" else "0"
+			TranslatorPrefs.KEY_MODE -> when(TranslatorPrefs(this).mode) { TranslatorPrefs.Mode.BOTH -> "both"; TranslatorPrefs.Mode.SPEECH -> "speech"; else -> "screen" }
+			KEY_PLAY_MODE -> sp.getString(KEY_PLAY_MODE, "stream") ?: "stream"
+			else -> sp.getString(t.key, t.def) ?: t.def
 		}
-		fun section(parent: LinearLayout, title: String, cells: List<Card>, h: Int, top: Int = 22)
+		val topics = listOf(
+			Topic("แปลจาก", TranslatorPrefs.KEY_MODE, "screen", listOf(
+				Opt("อ่านซับบนจอ", "แนะนำ · ลื่นสุด · ต้องเปิด Subtitles ในเกม", "screen"),
+				Opt("ฟังเสียง + อ่านซับ", "ได้ทุกบทพูด · ใช้เครื่องหนักขึ้น", "both"),
+				Opt("ฟังเสียงอย่างเดียว", "ไม่ต้องเปิดซับในเกม", "speech")), "แอปเอาภาษาอังกฤษมาจากไหน"),
+			Topic("ขนาดตัวอักษร", "tr_text_size", "medium", listOf(
+				Opt("เท่าซับอังกฤษ", "เล็กที่สุด", "english"), Opt("เล็ก", null, "small"), Opt("กลาง", null, "medium"),
+				Opt("ใหญ่", null, "large"), Opt("ใหญ่มาก", null, "xlarge")), "ขนาดซับไทยบนจอ"),
+			Topic("สีตัวอักษร", TranslatorPrefs.KEY_COLOR, "white", listOf(
+				Opt("ขาว ขอบดำ", null, "white"), Opt("เหลือง ขอบดำ", null, "yellow"), Opt("เขียวสว่าง ขอบดำ", null, "green")), "สีซับไทย"),
+			Topic("แถบดำด้านหลังซับ", TranslatorPrefs.KEY_BG, "medium", listOf(
+				Opt("ปิด", "ตัวหนังสืออย่างเดียว", "off"), Opt("จาง", null, "light"), Opt("ปานกลาง", null, "medium")), "พื้นหลังใต้ซับไทย"),
+			Topic("ตำแหน่งซับไทย", TranslatorPrefs.KEY_POSITION, "above", listOf(
+				Opt("เหนือซับอังกฤษ", null, "above"), Opt("ใต้ซับอังกฤษ", "ไม่ทับกัน", "below"), Opt("บนสุดของจอ", null, "top")), "ซับไทยอยู่ตรงไหนของจอ"),
+			Topic("ประโยคก่อนหน้า", TranslatorPrefs.KEY_SHOW_PREVIOUS, "1", listOf(
+				Opt("แสดง", "ประโยคเก่าสีฟ้าอยู่หน้าประโยคใหม่สักครู่", "1"), Opt("ไม่แสดง", "เฉพาะประโยคล่าสุด", "0")), "ประโยคที่อ่านไม่ทัน"),
+			Topic("ฟอนต์", "tr_font", "kanit", TranslatorPrefs.Font.values().filter { it != TranslatorPrefs.Font.NOTO }.map { Opt(it.title, null, it.value) }, "แบบตัวอักษร"),
+			Topic("เล่นแบบ", KEY_PLAY_MODE, "stream", listOf(
+				Opt("ผ่านแอป · 1080p", "ทีวีทุกรุ่น กล่อง ดองเกิล · ปรับภาพอัตโนมัติ", "stream"),
+				Opt("4K · HDMI", "PS5 เสียบทีวีเครื่องนี้ · ภาพ 4K จาก PS5 ตรง ๆ", "hdmi")), "ภาพเกมมาจากไหน"))
+		fun labelOf(t: Topic) = t.opts.firstOrNull { it.value == cur(t) }?.label ?: ""
+
+		fun save(t: Topic, value: String)
 		{
-			parent.addView(text(this, title, 24f, Ui.VIOLET2, W.MEDIUM), llp(WRAP, WRAP, t = top))
-			val r = Ui.row(this)
-			cells.forEachIndexed { k, c -> r.addView(c, llp(0, h, 1f, l = if(k == 0) 0 else 12)) }
-			parent.addView(r, llp(MATCH, WRAP, t = 8))
+			when(t.key)
+			{
+				TranslatorPrefs.KEY_MODE -> { TranslatorPrefs(this).setMode(when(value) { "both" -> TranslatorPrefs.Mode.BOTH; "speech" -> TranslatorPrefs.Mode.SPEECH; else -> TranslatorPrefs.Mode.SCREEN }); clearAutoMode() }
+				TranslatorPrefs.KEY_SHOW_PREVIOUS -> sp.edit().putBoolean(t.key, value == "1").apply()
+				KEY_PLAY_MODE -> {
+					sp.edit().putString(KEY_PLAY_MODE, value).apply()
+					if(value == "stream") { DeviceCaps.apply(this, "auto"); if(com.metallic.chiaki.hdmi.HdmiModeService.running) com.metallic.chiaki.hdmi.HdmiModeService.stop(this) }
+					else toast("โหมด 4K: กดการ์ด PS5 ในหน้าเล่น แล้วเลือกช่อง HDMI ที่เสียบ PS5")
+				}
+				else -> sp.edit().putString(t.key, value).apply()
+			}
 		}
-		val prefs = { TranslatorPrefs(this) }
-		fun str(k: String, d: String) = sp.getString(k, d) ?: d
-		fun put(k: String, value: String) = sp.edit().putString(k, value).apply()
 
-		// ---- left: the look
-		val left = Ui.col(this)
-		left.addView(text(this, "ตั้งค่าซับไทย", 44f, Ui.TEXT, W.BOLD))
-		left.addView(text(this, "เลือกแล้วดูผลได้ทันทีในภาพตัวอย่างด้านขวา", 22f, Ui.MUTED), llp(WRAP, WRAP, t = 2))
-		section(left, "แปลจาก", listOf(
-			option("อ่านซับบนจอ", "แนะนำ · ลื่นสุด", { prefs().mode == TranslatorPrefs.Mode.SCREEN }, { prefs().setMode(TranslatorPrefs.Mode.SCREEN); clearAutoMode() }, size = 22f),
-			option("ฟังเสียง + อ่านซับ", "ได้ทุกบทพูด", { prefs().mode == TranslatorPrefs.Mode.BOTH }, { prefs().setMode(TranslatorPrefs.Mode.BOTH); clearAutoMode() }, size = 22f),
-			option("ฟังเสียงอย่างเดียว", "ไม่ต้องเปิดซับในเกม", { prefs().mode == TranslatorPrefs.Mode.SPEECH }, { prefs().setMode(TranslatorPrefs.Mode.SPEECH); clearAutoMode() }, size = 22f)), 76)
-		section(left, "ขนาดตัวอักษร", listOf("english" to "เท่าซับอังกฤษ", "small" to "เล็ก", "medium" to "กลาง", "large" to "ใหญ่", "xlarge" to "ใหญ่มาก").map { (value, label) ->
-			option(label, null, { str("tr_text_size", "medium") == value }, { put("tr_text_size", value) }, size = 22f) }, 66)
-		section(left, "สีตัวอักษร (ขอบดำทุกสี)", listOf(Triple("white", "ขาว", 0xFFFFFFFF.toInt()), Triple("yellow", "เหลือง", 0xFFFFE14D.toInt()),
-			Triple("green", "เขียวสว่าง", 0xFF5CFF7A.toInt())).map { (value, label, col) ->
-			option(label, null, { str(TranslatorPrefs.KEY_COLOR, "white") == value }, { put(TranslatorPrefs.KEY_COLOR, value) }, size = 26f, color = col) }, 66)
-		section(left, "แถบดำด้านหลังซับ", listOf("off" to "ปิด", "light" to "จาง", "medium" to "ปานกลาง").map { (value, label) ->
-			option(label, null, { str(TranslatorPrefs.KEY_BG, "medium") == value }, { put(TranslatorPrefs.KEY_BG, value) }, size = 24f) }, 66)
-		section(left, "ฟอนต์", TranslatorPrefs.Font.values().filter { it != TranslatorPrefs.Font.NOTO }.map { f ->
-			option("สวัสดี", f.title, { prefs().font == f }, { put("tr_font", f.value) }, ResourcesCompat.getFont(this, f.res), 26f) }, 84)
-		v.addView(left, lp(940, WRAP, 90, 128))
-
-		// ---- right: preview + placement + how to play
-		val right = Ui.col(this)
-		right.addView(text(this, "ตัวอย่างบนจอ", 24f, Ui.VIOLET2, W.MEDIUM), llp(WRAP, WRAP, t = 12))
+		// ---- right: the preview (and what the choice the remote is on means)
+		v.addView(text(this, "ตัวอย่างบนจอ", 26f, Ui.MUTED, W.MEDIUM), lp(WRAP, WRAP, 1040, 136))
 		val prev = FrameLayout(this).apply { background = Ui.round(0, 26f, 2, Ui.LINE) }
 		prev.addView(Ui.topImage(this, R.drawable.gta_shot3, 0.7f), FrameLayout.LayoutParams(MATCH, MATCH))
 		Ui.clipRound(prev, 26f)
-		val prevH = 280
+		val prevW = 790; val prevH = 444
 		val thai = com.metallic.chiaki.translate.SubtitleTextView(this).apply { gravity = Gravity.CENTER; setPadding(14, 2, 14, 4) }
-		val eng = text(this, "Okay, you're wound up a little tight. What's up?", 15f, 0xFFDDDDDD.toInt(), gravity = Gravity.CENTER).apply {
+		val eng = text(this, "Okay, you're wound up a little tight. What's up?", 17f, 0xFFDDDDDD.toInt(), gravity = Gravity.CENTER).apply {
 			typeface = android.graphics.Typeface.SANS_SERIF; setShadowLayer(4f, 0f, 1f, 0xFF000000.toInt()) }
-		prev.addView(eng, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 16 })
-		prev.addView(thai, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = 44 })
-		right.addView(prev, llp(MATCH, prevH, t = 8))
-		refreshPreview = {
-			val p = prefs()
-			thai.typeface = ResourcesCompat.getFont(this, p.font.res)
-			val px = p.textHeightFraction * prevH * 1.45f
+		prev.addView(eng, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 18 })
+		prev.addView(thai, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = 50 })
+		val badge = text(this, "", 22f, Ui.TEXT, W.MEDIUM, Gravity.CENTER).apply {
+			background = Ui.round(0xCC07050C.toInt(), 18f, 2, Ui.VIOLET2); setPadding(20, 8, 20, 8) }
+		prev.addView(badge, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(18, 18, 0, 0) })
+		v.addView(prev, lp(prevW, prevH, 1040, 186))
+		val about = text(this, "", 26f, Ui.TEXT, W.MEDIUM).apply { setLineSpacing(0f, 1.25f) }
+		v.addView(about, lp(prevW, WRAP, 1040, 186 + prevH + 26))
+		fun preview()
+		{
+			fun c(key: String, def: String) = topics.first { it.key == key }.let { cur(it) }.ifEmpty { def }
+			val size = when(c("tr_text_size", "medium")) { "english" -> 0.034f; "small" -> 0.040f; "large" -> 0.052f; "xlarge" -> 0.060f; else -> 0.046f }
+			val color = when(c(TranslatorPrefs.KEY_COLOR, "white")) { "yellow" -> 0xFFFFE14D.toInt(); "green" -> 0xFF5CFF7A.toInt(); else -> 0xFFFFFFFF.toInt() }
+			val bgA = when(c(TranslatorPrefs.KEY_BG, "medium")) { "off" -> 0; "light" -> 0x40; else -> 0x73 }
+			val font = TranslatorPrefs.Font.values().firstOrNull { it.value == c("tr_font", "kanit") } ?: TranslatorPrefs.Font.KANIT
+			val px = size * prevH * 1.45f
+			thai.typeface = ResourcesCompat.getFont(this, font.res)
 			thai.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px)
-			thai.setTextColor(p.textColor)
+			thai.setTextColor(color)
 			thai.outlineColor = 0xFF000000.toInt()
-			thai.outlineWidthPx = px * (if(p.backgroundAlpha == 0) 0.11f else 0.07f)
-			thai.background = if(p.backgroundAlpha == 0) null else android.graphics.drawable.ColorDrawable(p.backgroundAlpha shl 24)
-			thai.text = if(p.showPrevious) android.text.SpannableStringBuilder("ใจเย็น ๆ  ›  ").apply {
+			thai.outlineWidthPx = px * (if(bgA == 0) 0.11f else 0.07f)
+			thai.background = if(bgA == 0) null else android.graphics.drawable.ColorDrawable(bgA shl 24)
+			thai.text = if(c(TranslatorPrefs.KEY_SHOW_PREVIOUS, "1") == "1") android.text.SpannableStringBuilder("ใจเย็น ๆ  ›  ").apply {
 				setSpan(com.metallic.chiaki.translate.FillColorSpan(0xFF9FB4FF.toInt()), 0, length, 0); append("เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า") }
 				else "เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า"
+			val pos = c(TranslatorPrefs.KEY_POSITION, "above")
 			val tl = thai.layoutParams as FrameLayout.LayoutParams
-			when(p.position)
+			when(pos)
 			{
-				TranslatorPrefs.Position.TOP -> { tl.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; tl.topMargin = 14; tl.bottomMargin = 0 }
-				TranslatorPrefs.Position.BELOW_SUBTITLE -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 6 }
-				else -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 44 }
+				"top" -> { tl.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; tl.topMargin = 70; tl.bottomMargin = 0 }
+				"below" -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 8 }
+				else -> { tl.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; tl.topMargin = 0; tl.bottomMargin = 50 }
 			}
-			(eng.layoutParams as FrameLayout.LayoutParams).bottomMargin = if(p.position == TranslatorPrefs.Position.BELOW_SUBTITLE) (px * 1.6f).toInt() + 10 else 16
+			(eng.layoutParams as FrameLayout.LayoutParams).bottomMargin = if(pos == "below") (px * 1.6f).toInt() + 12 else 18
 			thai.layoutParams = tl; eng.requestLayout()
+			badge.text = when
+			{
+				c(KEY_PLAY_MODE, "stream") == "hdmi" -> "4K · HDMI"
+				else -> "ผ่านแอป · 1080p"
+			} + " · " + when(c(TranslatorPrefs.KEY_MODE, "screen")) { "both" -> "ฟังเสียง + อ่านซับ"; "speech" -> "ฟังเสียง"; else -> "อ่านซับบนจอ" }
 		}
-		section(right, "ตำแหน่งซับไทย", listOf("above" to "เหนือซับอังกฤษ", "below" to "ใต้ซับอังกฤษ", "top" to "บนสุดของจอ").map { (value, label) ->
-			option(label, null, { str(TranslatorPrefs.KEY_POSITION, "above") == value }, { put(TranslatorPrefs.KEY_POSITION, value) }, size = 22f) }, 66)
-		fun prevOn() = sp.getBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, true)
-		section(right, "ประโยคก่อนหน้า (สีฟ้า)", listOf(
-			option("แสดง", null, { prevOn() }, { sp.edit().putBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, true).apply() }, size = 22f),
-			option("ไม่แสดง · เฉพาะประโยคล่าสุด", null, { !prevOn() }, { sp.edit().putBoolean(TranslatorPrefs.KEY_SHOW_PREVIOUS, false).apply() }, size = 22f)), 66)
-		fun hdmiMode() = sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
-		section(right, "เล่นแบบ", listOf(
-			option("ผ่านแอป · 1080p", "ทีวีทุกรุ่น · ปรับภาพอัตโนมัติ", { !hdmiMode() }, {
-				sp.edit().putString(KEY_PLAY_MODE, "stream").apply(); DeviceCaps.apply(this, "auto")
-				if(com.metallic.chiaki.hdmi.HdmiModeService.running) { com.metallic.chiaki.hdmi.HdmiModeService.stop(this); toast("หยุดโหมด 4K แล้ว") } }),
-			option("4K · HDMI", "PS5 เสียบทีวีเครื่องนี้", { hdmiMode() },
-				{ sp.edit().putString(KEY_PLAY_MODE, "hdmi").apply(); toast("โหมด 4K: กดการ์ด PS5 ในหน้าเล่น แล้วเลือกช่อง HDMI ที่เสียบ PS5") })), 84)
-		v.addView(right, lp(760, WRAP, 1070, 128))
-		refreshPreview()
+
+		// ---- left: topics / the choices of one topic
+		val left = FrameLayout(this)
+		v.addView(left, lp(900, 820, 90, 120))
+		fun heading(s: String, size: Float) = com.metallic.chiaki.translate.SubtitleTextView(this).apply {
+			text = s; setTextColor(0xFFFFE14D.toInt()); outlineColor = 0xFF000000.toInt(); outlineWidthPx = size * 0.16f
+			setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, size); typeface = ResourcesCompat.getFont(this@TvActivity, R.font.kanit_bold) }
+		lateinit var showTopics: (Int) -> Unit
+
+		fun showChoices(ti: Int)
+		{
+			val t = topics[ti]
+			left.removeAllViews()
+			val col = Ui.col(this)
+			col.addView(heading(t.title, 46f))
+			col.addView(text(this, t.about, 24f, Ui.MUTED), llp(WRAP, WRAP, t = 2))
+			var focus: View? = null
+			t.opts.forEachIndexed { k, o ->
+				val card = Card(this, 20f, Ui.PANEL) { cur(t) == o.value && draft[t.key] == null }
+				card.grow = 1.03f
+				val r = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(28, 0, 28, 0) }
+				val cc = Ui.col(this)
+				cc.addView(text(this, o.label, 30f, Ui.TEXT, W.SEMIBOLD).apply {
+					if(t.key == "tr_font") typeface = ResourcesCompat.getFont(this@TvActivity, TranslatorPrefs.Font.values().first { it.value == o.value }.res) })
+				if(o.sub != null) cc.addView(text(this, o.sub, 20f, Ui.MUTED), llp(WRAP, WRAP, t = 2))
+				r.addView(cc, llp(0, WRAP, 1f))
+				r.addView(text(this, if(cur(t) == o.value) "✔" else "", 32f, Ui.OK, W.BOLD))
+				card.addView(r, FrameLayout.LayoutParams(MATCH, MATCH))
+				card.setOnFocusChangeListener { _, f ->
+					card.refresh(); Ui.glow(card, f)
+					card.animate().scaleX(if(f) card.grow else 1f).scaleY(if(f) card.grow else 1f).setDuration(200).start()
+					if(f) { draft[t.key] = o.value; about.text = o.label + (o.sub?.let { " · $it" } ?: ""); preview() }
+				}
+				card.setOnClickListener { draft.clear(); save(t, o.value); toast("${t.title}: ${o.label} ✔"); showTopics(ti) }
+				col.addView(card, llp(MATCH, if(o.sub != null) 92 else 76, t = if(k == 0) 22 else 12))
+				if(cur(t) == o.value && focus == null) focus = card
+			}
+			val back = Card(this, 20f); back.grow = 1.03f
+			back.addView(text(this, "← กลับ", 26f, Ui.MUTED, W.MEDIUM, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
+			back.setOnClickListener { draft.clear(); preview(); showTopics(ti) }
+			col.addView(back, llp(260, 70, t = 20))
+			left.addView(col, FrameLayout.LayoutParams(MATCH, WRAP))
+			keyCatcher = { e -> if((e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B) && !PadConfig.fromPad(e)) {
+				if(e.action == KeyEvent.ACTION_UP) { draft.clear(); preview(); showTopics(ti) }; true } else false }
+			val f = focus ?: col.getChildAt(2)
+			left.post { f?.requestFocus() }
+		}
+
+		showTopics = { focusTopic ->
+			keyCatcher = null
+			left.removeAllViews()
+			val col = Ui.col(this)
+			col.addView(text(this, "ตั้งค่าซับไทย", 40f, Ui.TEXT, W.BOLD))
+			var focus: View? = null
+			topics.forEachIndexed { k, t ->
+				val card = Card(this, 18f, Ui.PANEL); card.grow = 1.03f
+				val r = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(26, 0, 26, 0) }
+				r.addView(heading(t.title, 32f), llp(0, WRAP, 1f))
+				r.addView(text(this, labelOf(t) + "  ›", 24f, Ui.TEXT, W.MEDIUM))
+				card.addView(r, FrameLayout.LayoutParams(MATCH, MATCH))
+				card.setOnFocusChangeListener { _, f ->
+					card.refresh(); Ui.glow(card, f)
+					card.animate().scaleX(if(f) card.grow else 1f).scaleY(if(f) card.grow else 1f).setDuration(200).start()
+					if(f) about.text = t.about + " · ตอนนี้: " + labelOf(t)
+				}
+				card.setOnClickListener { showChoices(k) }
+				col.addView(card, llp(MATCH, 74, t = if(k == 0) 16 else 10))
+				if(k == focusTopic) focus = card
+			}
+			left.addView(col, FrameLayout.LayoutParams(MATCH, WRAP))
+			preview()
+			focus?.let { f -> left.post { f.requestFocus() } }
+		}
+		showTopics(-1)
+		about.text = "เลือกหัวข้อด้านซ้าย · ภาพตัวอย่างจะเปลี่ยนตามตัวเลือกที่เลื่อนไป"
 		return v
 	}
 

@@ -89,6 +89,8 @@ class TranslatorController(
 		// the game picked in the app (GTA VI): subtitles from the first line of the game, no waiting to "see" it
 		pickedGame = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).getString("tv_game", "gta6") ?: "gta6"
 		cloud?.game = pickedGame
+		// the game's translation library onto the TV (only what is new since last time): known lines show at once
+		cloudPool.execute { GameLibrary.prepare(context, pickedGame, cloud) }
 		cloud?.let { c ->
 			cloudPool.execute {
 				val p = c.check()
@@ -561,7 +563,8 @@ class TranslatorController(
 	{
 		val tr = translator ?: return
 		if(lines.isEmpty()) return
-		val known = lines.map { tr.best(it, kind) }
+		// phrase bank, then the game's library on this TV (no network): every subtitle anyone has seen before
+		val known = lines.map { tr.best(it, kind) ?: if(kind == TextKind.DIALOGUE) GameLibrary.find(it) else null }
 		val missing = lines.indices.filter { known[it] == null }
 		val ctx = if(kind != TextKind.DIALOGUE) emptyList() else synchronized(recentEnglish) {
 			val c = recentEnglish.toList()
@@ -583,7 +586,7 @@ class TranslatorController(
 		fun merge(fromCloud: List<String?>?): String?
 		{
 			val out = lines.indices.map { i ->
-				known[i] ?: fromCloud?.getOrNull(missing.indexOf(i))?.also { tr.remember(lines[i], it, kind) } ?: offline.getOrNull(i)
+				known[i] ?: fromCloud?.getOrNull(missing.indexOf(i))?.also { tr.remember(lines[i], it, kind); if(kind == TextKind.DIALOGUE) GameLibrary.put(lines[i], it) } ?: offline.getOrNull(i)
 			}.filterNotNull()
 			return if(out.isEmpty()) null else out.joinToString(" ")
 		}
@@ -639,6 +642,8 @@ class TranslatorController(
 	private fun maybePeekWholeScreen(reader: ScreenReader, frame: Bitmap)
 	{
 		val c = cloud ?: return
+		// the game was picked in the app: no extra whole-screen reads to spot it (half the work on slow TVs)
+		if(pickedGame.isNotEmpty()) return
 		val now = SystemClock.elapsedRealtime()
 		if(c.gameOkUntil > System.currentTimeMillis() + 600_000L || now - lastPeekAt < 3000L) return
 		// slow TV (reads take long, or timed out): skip the extra whole-screen read, the game comes first

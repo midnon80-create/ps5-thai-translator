@@ -381,7 +381,10 @@ class HdmiModeService : Service()
 		// 2x2 average (like the app mode's scaled copy): thin subtitle letters stay whole
 		val px = pixels ?: IntArray(dw * dh).also { pixels = it }
 		val lim = src.size
-		for(y in 0 until dh)
+		// only the lower part (where subtitles are; the reader never looks above 55 %) is prepared: less work per
+		// read, so weaker TVs keep up like strong ones
+		val fromY = if(com.metallic.chiaki.translate.TranslatorPrefs(this).region == com.metallic.chiaki.translate.TranslatorPrefs.Region.FULL) 0 else (dh * 0.5f).toInt()
+		for(y in fromY until dh)
 		{
 			val sy = y * sh / dh
 			val r0 = sy * rs
