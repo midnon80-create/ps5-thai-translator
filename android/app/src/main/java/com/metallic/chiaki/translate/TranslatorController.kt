@@ -93,6 +93,9 @@ class TranslatorController(
 
 	fun start()
 	{
+		// this TV's speed tier from its last games (a weak TV starts light at once, no slow first minute)
+		frameWidth = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).getInt(KEY_TIER, 1280)
+		plainMs = -1.0; plainReads = 0; tierRaised = false
 		if(!prefs.enabled || running.getAndSet(true))
 			return
 		val mode = prefs.mode
@@ -373,7 +376,7 @@ class TranslatorController(
 		// was shrunk to 960x540 and thin gameplay subtitles were too small to read.
 		val sw = surfaceView.width; val sh = surfaceView.height
 		val half = prefs.region != TranslatorPrefs.Region.FULL && sw > 0 && sh > 0
-		val tw = if(half) minOf(sw, 1920) else FRAME_W
+		val tw = if(half) minOf(sw, frameWidth) else FRAME_W
 		val th = if(half) maxOf(1, (sh / 2) * tw / sw) else FRAME_H
 		val bmp = frame?.takeIf { it.width == tw && it.height == th } ?: Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888).also { frame = it }
 		busy.set(true)
@@ -559,7 +562,8 @@ class TranslatorController(
 	 */
 	private fun readRegion(reader: ScreenReader, region: Bitmap, full: Boolean, isSubtitle: (ScreenReader.Block) -> Boolean): List<ScreenReader.Block>
 	{
-		val scale = if(region.width > 1280 && readMs > 650.0) 1280f / region.width else 1f
+		// the picture already comes at this TV's tier width (frameWidth); a bigger one is scaled down to it
+		val scale = if(region.width > frameWidth) frameWidth.toFloat() / region.width else 1f
 		val img = if(scale < 1f) Bitmap.createScaledBitmap(region, 1280, maxOf(1, (region.height * scale).toInt()), true) else region
 		fun read(b: Bitmap) = if(full) reader.readAll(b)
 			else reader.find(b)?.let { listOf(ScreenReader.Block(it.text, it.box, 1, TextKind.DIALOGUE)) } ?: emptyList()
@@ -576,9 +580,13 @@ class TranslatorController(
 		// so ordinary scenes cost one read as before.
 		val edgeFirst = now - maskWonAt < 8000L
 		var best: List<ScreenReader.Block> = emptyList(); var bestQ = -1.0
-		for(edge in if(edgeFirst) listOf(true, false) else listOf(false, true))
+		// slow TVs (tier 960): the plain read only, as in 1.9.x - extra reads there cost more subtitles than they save
+		val order = if(frameWidth <= 960) listOf(false) else if(edgeFirst) listOf(true, false) else listOf(false, true)
+		for(edge in order)
 		{
+			val t0 = SystemClock.elapsedRealtime()
 			val r = back(read(if(edge) TextMask.make(img) else img))
+			if(!edge) notePlainRead(SystemClock.elapsedRealtime() - t0)
 			val q = score(r)
 			if(q > bestQ) { best = r; bestQ = q }
 			if(q >= GOOD_READ) { if(edge) maskWonAt = now; return r }
@@ -587,7 +595,7 @@ class TranslatorController(
 		// Smart fallback: bright scene, flash, faint letter edges, or a misread ("Cash is gocd, rtght"): the
 		// brightness-relative mask. Only when something unclear was seen, or (nothing at all) once a second; never on
 		// a TV that is already slow, so the game and the reading pace are never held up.
-		if(readMs <= 650.0 && (bestQ >= 0.0 || now - adaptiveAt > 1000L))
+		if(frameWidth >= 1920 && (bestQ >= 0.0 || now - adaptiveAt > 1000L))
 		{
 			adaptiveAt = now
 			val r = back(read(TextMask.adaptive(img)))
@@ -597,6 +605,29 @@ class TranslatorController(
 		return best
 	}
 	@Volatile private var adaptiveAt = 0L
+
+	/**
+	 * Speed tier of this TV, from how long one plain read takes (smoothed). Reports from real TVs: the full-size
+	 * picture plus fallback reads made weak TVs (TCL G08/G10, BeyondTV4, Xiaomi MiTV) read only every 2-3 s instead
+	 * of ~0.9 s, so short lines were missed. Tiers: 1920 + all fallbacks (strong TVs), 1280 + edge fallback, 960 +
+	 * plain read only. A TV only moves down during a game (no flip-flopping), and may move up once early if it is
+	 * clearly fast.
+	 */
+	private var plainMs = -1.0
+	private var plainReads = 0
+	private var tierRaised = false
+	private fun notePlainRead(ms: Long)
+	{
+		plainMs = if(plainMs < 0) ms.toDouble() else plainMs * 0.75 + ms * 0.25
+		plainReads++
+		if(plainReads < 4) return
+		val want = when { plainMs > 650 -> 960; plainMs > 330 -> 1280; else -> 1920 }
+		val before = frameWidth
+		if(want < frameWidth) frameWidth = want
+		else if(want > frameWidth && !tierRaised && plainReads in 8..40 && plainMs < 200) { frameWidth = want; tierRaised = true }
+		if(frameWidth != before)
+			androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).edit().putInt(KEY_TIER, frameWidth).apply()
+	}
 
 	private var lastSigMean = -1.0
 	private var flashSkips = 0
@@ -855,6 +886,9 @@ class TranslatorController(
 	companion object
 	{
 		private const val TAG = "Translator"
+		/** Width of the picture the reader gets (this TV's speed tier); the 4K-mode frame source reads it too. */
+		@Volatile @JvmStatic var frameWidth = 1280
+		private const val KEY_TIER = "tr_read_tier"
 		private const val FRAME_INTERVAL_MS = 250L // 4 reads a second
 		private const val FRAME_INTERVAL_IDLE_MS = 400L // after a quiet second: a line right after a pause is caught sooner
 		/** A subtitle's centre is below this fraction of the picture (GTA: ~0.8-0.93; the in-game phone: ~0.55-0.75). */

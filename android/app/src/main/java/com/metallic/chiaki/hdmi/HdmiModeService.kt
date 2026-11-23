@@ -380,11 +380,12 @@ class HdmiModeService : Service()
 			src = y.copyOf(); sw = yW; sh = yH; rs = yStride; ps = yPix
 		}
 		val fullRegion = com.metallic.chiaki.translate.TranslatorPrefs(this).region == com.metallic.chiaki.translate.TranslatorPrefs.Region.FULL
-		if(!fullRegion && sw > 0 && sh > 1)
+		// weak TVs (tier 960): the averaged 960x540 picture as in 1.9.x; faster ones get the sharp lower half
+		if(!fullRegion && sw > 0 && sh > 1 && com.metallic.chiaki.translate.TranslatorController.frameWidth > 960)
 		{
 			// subtitles only: the lower half of the picture at its own sharpness (up to 1920 wide). Shrinking the
 			// whole 1080p picture to 960x540 made gameplay subtitles (thin white letters over the scene) unreadable.
-			val ow = minOf(sw, 1920)
+			val ow = minOf(sw, com.metallic.chiaki.translate.TranslatorController.frameWidth)
 			val y0 = sh / 2
 			val oh = maxOf(1, (sh - y0) * ow / sw)
 			val lp = lowerPixels?.takeIf { it.size == ow * oh } ?: IntArray(ow * oh).also { lowerPixels = it }
