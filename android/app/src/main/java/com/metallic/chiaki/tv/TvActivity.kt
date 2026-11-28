@@ -181,6 +181,14 @@ class TvActivity : AppCompatActivity()
 		root.addView(v, FrameLayout.LayoutParams(1920, 1080))
 		// anything older than the page being replaced goes now
 		pages.filter { it !== old && it !== v }.forEach { it.animate().cancel(); root.removeView(it) }
+		// and every other leftover on the screen (a panel still fading out, a page whose fade never finished):
+		// only the new page, the one fading out, open panels and toasts may stay
+		for(k in root.childCount - 1 downTo 0)
+		{
+			val c = root.getChildAt(k)
+			if(c === v || c === old || c.tag == TOAST_TAG || openPanels.containsKey(c)) continue
+			c.animate().cancel(); root.removeView(c)
+		}
 		pages.clear(); if(old != null) pages.add(old); pages.add(v)
 		when(t)
 		{
@@ -207,6 +215,7 @@ class TvActivity : AppCompatActivity()
 		val t = text(this, msg, 26f, Ui.TEXT, W.MEDIUM, Gravity.CENTER).apply {
 			background = Ui.round(0xE6120D1F.toInt(), 40f, 2, 0x99A78BFA.toInt())
 			setPadding(36, 14, 36, 14)
+			tag = TOAST_TAG
 		}
 		root.addView(t, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = 40 })
 		t.alpha = 0f; t.translationY = -20f
@@ -759,7 +768,7 @@ class TvActivity : AppCompatActivity()
 				val ready = h.registeredHost != null
 				val standby = h is DiscoveredDisplayHost && h.discoveredHost.state == DiscoveryHost.State.STANDBY
 				val sub = when { !ready -> "ยังไม่ได้จับคู่ · กดเพื่อจับคู่ (ทำครั้งเดียว)"; standby -> "โหมดพัก · กด ✕ เพื่อปลุกและเล่น"; else -> "พร้อมเชื่อมต่อ · กด ✕ เพื่อเล่น" }
-				hostsBox.addView(hostCard(h.name ?: "PS5", sub, if(h.isPS5) "PS5" else "PS4") { hostTriggered(h) },
+				hostsBox.addView(hostCard(h.name ?: "PS5", sub, "PS5") { hostTriggered(h) },
 					llp(MATCH, if(shown.size > 1) 150 else 180, t = if(k == 0) 0 else 16))
 			}
 		}
@@ -782,6 +791,30 @@ class TvActivity : AppCompatActivity()
 			main.postDelayed(this, 1500) } }
 		startRefresh(tick)
 		return v
+	}
+
+	/**
+	 * "รีเซ็ตแอป": wipes every saved thing (paired PS5s, PS5s added by IP, names, settings) like a fresh install,
+	 * then Android closes the app; the next start is clean.
+	 */
+	private fun askReset()
+	{
+		android.app.AlertDialog.Builder(this)
+			.setTitle("รีเซ็ตแอปใช่ไหม?")
+			.setMessage("ล้าง PS5 ที่จับคู่ไว้ เลข IP ที่เพิ่มเอง ชื่อไอดี และการตั้งค่าทั้งหมด เหมือนลงแอปใหม่\n\nแอปจะปิดเอง แล้วเปิดใหม่ได้เลย · ต้องจับคู่ PS5 ใหม่ (ใส่รหัส 8 หลัก)")
+			.setPositiveButton("รีเซ็ต") { _, _ ->
+				try { if(com.metallic.chiaki.hdmi.HdmiModeService.running) com.metallic.chiaki.hdmi.HdmiModeService.stop(this, "user:รีเซ็ตแอป") } catch(_: Throwable) { }
+				val ok = try { getSystemService(android.app.ActivityManager::class.java).clearApplicationUserData() } catch(_: Throwable) { false }
+				if(!ok)
+				{
+					// fallback: what makes pairing and the screens go wrong
+					try { getDatabase(this).clearAllTables() } catch(_: Throwable) { }
+					sp.edit().clear().commit()
+					finishAffinity()
+				}
+			}
+			.setNegativeButton("ยกเลิก", null)
+			.show()
 	}
 
 	/** Stops everything that talks to the PS5 (HDMI mode too) and closes the app. */
@@ -1719,6 +1752,7 @@ class TvActivity : AppCompatActivity()
 				sp.edit().putBoolean(KEY_HIDE_TIPS, !tipsHidden()).apply()
 				toast(if(tipsHidden()) "ซ่อนคำแนะนำแล้ว" else "แสดงคำแนะนำแล้ว"); showTab(4, Trans.NONE) })
 			add(Triple("ตั้งค่าขั้นสูง", "ภาพ เสียง และตัวเลือกทั้งหมด") { startActivity(Intent(this@TvActivity, SettingsActivity::class.java)) })
+			add(Triple("รีเซ็ตแอป", "ล้างทุกอย่างเหมือนลงแอปใหม่ · แก้จับคู่ไม่ได้ / หน้าจอแปลก") { askReset() })
 		}
 		var row: LinearLayout? = null
 		items.forEachIndexed { k, (title, sub, action) ->
@@ -1791,6 +1825,7 @@ class TvActivity : AppCompatActivity()
 	companion object
 	{
 		const val KEY_ONBOARDED = "tv_onboarded"
+		private const val TOAST_TAG = "toast"
 		const val KEY_GAME = "tv_game"
 		/** Display name of the picked game ("connecting to …" messages, the in-game status line). */
 		const val KEY_GAME_NAME = "tv_game_name"
