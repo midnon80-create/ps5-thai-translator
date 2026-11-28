@@ -42,6 +42,11 @@ class RegistExecuteViewModel(val database: AppDatabase): ViewModel()
 		private set
 
 	private var assignManualHostId: Long? = null
+	private var info: RegistInfo? = null
+	/** The PS5's address that was tried first (shown when nothing answers). */
+	var firstHost: String? = null
+		private set
+	private var triedWholeNetwork = false
 
 	fun start(info: RegistInfo, assignManualHostId: Long?)
 	{
@@ -50,6 +55,8 @@ class RegistExecuteViewModel(val database: AppDatabase): ViewModel()
 		try
 		{
 			regist = Regist(info, log.log, this::registEvent)
+			this.info = info
+			if(firstHost == null) firstHost = info.host
 			this.assignManualHostId = assignManualHostId
 			_state.value = State.RUNNING
 		}
@@ -70,8 +77,36 @@ class RegistExecuteViewModel(val database: AppDatabase): ViewModel()
 		when(event)
 		{
 			is RegistEventCanceled -> _state.postValue(State.STOPPED)
-			is RegistEventFailed -> _state.postValue(State.FAILED)
+			is RegistEventFailed -> viewModelScope.launch(Dispatchers.Main) { onFailed() }
 			is RegistEventSuccess -> registSuccess(event.host)
+		}
+	}
+
+	/**
+	 * The PS5 never answered at the address the app had (old / wrong address, or the TV could not even send to it):
+	 * once, look for it on the whole home network instead (broadcast); it answers from its real address.
+	 */
+	private fun onFailed()
+	{
+		val i = info
+		val answered = logNow().contains("Regist received HTTP code")
+		if(i == null || answered || triedWholeNetwork || (i.broadcast && i.host == "255.255.255.255"))
+		{
+			_state.value = State.FAILED
+			return
+		}
+		triedWholeNetwork = true
+		log.log.i("PS5 did not answer at ${i.host}: searching the whole home network")
+		regist?.dispose()
+		regist = null
+		try
+		{
+			regist = Regist(RegistInfo(i.target, "255.255.255.255", true, i.psnOnlineId, i.psnAccountId, i.pin), log.log, this::registEvent)
+		}
+		catch(error: CreateError)
+		{
+			log.log.e("Failed to create Regist: ${error.errorCode}")
+			_state.value = State.FAILED
 		}
 	}
 
