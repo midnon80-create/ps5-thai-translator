@@ -1369,7 +1369,7 @@ class TvActivity : AppCompatActivity()
 		goRow.addView(go, llp(0, 100, 1f, l = 20))
 		box.addView(goRow, llp(1100, WRAP, t = 22))
 		// the PS5 draws this banner itself (on its HDMI picture), the app cannot remove it: the PS5 setting can
-		box.addView(text(this, "แถบ \"เชื่อมต่อกับการเล่นระยะไกลแล้ว\" ค้างบนจอ = ข้อความของ PS5 เอง · ปิดได้ที่ PS5: ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"ซ่อนป๊อปอัปสถานะการเชื่อมต่อการเล่นระยะไกล\"",
+		box.addView(text(this, "แถบ \"เชื่อมต่อกับการเล่นระยะไกลแล้ว\" ค้างบนจอ = ข้อความของ PS5 เอง · ปิดได้ที่ PS5: เข้าทีละไอดี › ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"ซ่อนป๊อปอัปสถานะการเชื่อมต่อการเล่นระยะไกล\" · ต้องเปิดให้ครบทุกไอดีที่มีในเครื่อง",
 			20f, Ui.DIM).apply { setLineSpacing(0f, 1.2f) }, llp(1100, WRAP, t = 14))
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
 		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))

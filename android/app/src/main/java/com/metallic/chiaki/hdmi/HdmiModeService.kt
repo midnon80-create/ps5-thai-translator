@@ -358,11 +358,11 @@ class HdmiModeService : Service()
 	private fun bannerTip()
 	{
 		val sp = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-		val n = sp.getInt("ps5_banner_tip_n", 0)
+		val n = sp.getInt("ps5_banner_tip2_n", 0)
 		if(n >= 5) return
-		sp.edit().putInt("ps5_banner_tip_n", n + 1).apply()
+		sp.edit().putInt("ps5_banner_tip2_n", n + 1).apply()
 		main.postDelayed({
-			ui?.showStatus("แถบ \"เชื่อมต่อกับการเล่นระยะไกลแล้ว\" ด้านบนเป็นของ PS5 · ปิดถาวร: PS5 › ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"ซ่อนป๊อปอัปสถานะการเชื่อมต่อการเล่นระยะไกล\"")
+			ui?.showStatus("แถบ \"เชื่อมต่อกับการเล่นระยะไกลแล้ว\" ด้านบนเป็นของ PS5 · ปิดถาวร: เข้าทีละไอดีบน PS5 › ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"ซ่อนป๊อปอัปสถานะการเชื่อมต่อการเล่นระยะไกล\" · ต้องเปิดให้ครบทุกไอดีที่มีในเครื่อง")
 			main.postDelayed({ ui?.showStatus(null) }, 15_000)
 		}, 9500)
 	}
