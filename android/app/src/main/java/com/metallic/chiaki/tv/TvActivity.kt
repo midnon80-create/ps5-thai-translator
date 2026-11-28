@@ -386,12 +386,51 @@ class TvActivity : AppCompatActivity()
 			var s = 1
 			while(o.outWidth / (s * 2) >= px) s *= 2
 			val full = android.graphics.BitmapFactory.decodeResource(resources, res, android.graphics.BitmapFactory.Options().apply { inSampleSize = s })
-			val b = if(full.width > px) android.graphics.Bitmap.createScaledBitmap(full, px, (full.height * px.toFloat() / full.width).toInt(), true)
+			val scaled = if(full.width > px) android.graphics.Bitmap.createScaledBitmap(full, px, (full.height * px.toFloat() / full.width).toInt(), true)
 				.also { if(it !== full) full.recycle() } else full
+			val b = try { vivid(scaled).also { if(it !== scaled) scaled.recycle() } } catch(_: Throwable) { scaled }
 			artCache[key] = b
 			b
 		}
 		catch(_: Throwable) { null }
+	}
+
+	/**
+	 * TVs show apps with duller, warmer picture settings than their HDMI game input: the art is baked a little
+	 * more colourful (saturation, contrast) and crisper (light unsharp mask) once, when it is decoded. No cost later.
+	 */
+	private fun vivid(src: android.graphics.Bitmap): android.graphics.Bitmap
+	{
+		val w = src.width; val h = src.height
+		val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+		val cm = android.graphics.ColorMatrix().apply { setSaturation(1.18f) }
+		val c = 1.08f; val t = 128f * (1f - c)
+		cm.postConcat(android.graphics.ColorMatrix(floatArrayOf(c, 0f, 0f, 0f, t, 0f, c, 0f, 0f, t, 0f, 0f, c, 0f, t, 0f, 0f, 0f, 1f, 0f)))
+		android.graphics.Canvas(out).drawBitmap(src, 0f, 0f, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
+			colorFilter = android.graphics.ColorMatrixColorFilter(cm) })
+		// unsharp mask: pixel + 0.45 * (pixel - 3x3 average)
+		val p = IntArray(w * h); out.getPixels(p, 0, w, 0, 0, w, h)
+		val q = p.copyOf()
+		for(y in 1 until h - 1)
+		{
+			val row = y * w
+			for(x in 1 until w - 1)
+			{
+				val i = row + x
+				var r = 0; var g = 0; var bl = 0
+				var o = i - w - 1
+				for(k in 0 until 9)
+				{
+					val v = p[o]; r += (v shr 16) and 255; g += (v shr 8) and 255; bl += v and 255
+					o = if(k % 3 == 2) o + w - 2 else o + 1
+				}
+				val v = p[i]
+				fun sh(cur: Int, sum: Int): Int { val d = cur - sum / 9; return if(d in -2..2) cur else (cur + d * 45 / 100).coerceIn(0, 255) }
+				q[i] = (v and -0x1000000) or (sh((v shr 16) and 255, r) shl 16) or (sh((v shr 8) and 255, g) shl 8) or sh(v and 255, bl)
+			}
+		}
+		out.setPixels(q, 0, w, 0, 0, w, h)
+		return out
 	}
 
 	private fun artView(res: Int, designW: Int): android.widget.ImageView = android.widget.ImageView(this).apply {
@@ -771,10 +810,11 @@ class TvActivity : AppCompatActivity()
 			else -> posterArt(picked)
 		}
 		val imgBox = FrameLayout(this); imgBox.addView(img, FrameLayout.LayoutParams(MATCH, MATCH))
-		imgBox.alpha = 0.9f
 		Ui.clipRound(imgBox, 38f)
 		toggle.addView(imgBox, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(4, 4, 4, 4) })
-		val shade = View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0, 0xEB07050C.toInt())).apply { cornerRadius = 38f } }
+		// dark only behind the words at the bottom: the top half of the art stays at full colour
+		val shade = View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+			intArrayOf(0, 0, 0, 0x7307050C, 0xCC07050C.toInt())).apply { cornerRadius = 38f } }
 		toggle.addView(shade, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(4, 4, 4, 4) })
 		val sw = FrameLayout(this)
 		val knob = View(this).apply { background = Ui.round(0xFFFFFFFF.toInt(), 38f) }
