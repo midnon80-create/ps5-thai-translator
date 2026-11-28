@@ -263,6 +263,8 @@ class StreamActivity : AppCompatActivity()
 	private var padWarned = false
 	private var connectedAt = 0L
 	private var shutdownRetries = 0
+	/** Mid-game drops (Wi-Fi lost packets until the link died) reconnected by themselves; reset after 2 min of play. */
+	private var dropRetries = 0
 
 	/** Sends the end of this session's log to the server, so connection problems on customers' TVs can be seen. */
 	private val NL = System.lineSeparator()
@@ -403,6 +405,19 @@ class StreamActivity : AppCompatActivity()
 						// wait and reconnect by itself a few times before bothering the player.
 						if(autoRetries == 0) reportSession("หลุด: $reasonText · ${reasonStr ?: ""}")
 						if(userQuit) { finish(); return }
+						viewModel.input.releaseAll() // the PS5 must not keep the last stick / button held while we reconnect
+						// dropped in the middle of a game (home Wi-Fi lost packets): reconnect by itself, up to 3 times
+						val midGame = connectedAt > 0 && reasonText.contains("Stream Connection", true)
+						if(midGame && System.currentTimeMillis() - connectedAt > 120_000L) dropRetries = 0
+						if(midGame && dropRetries < 3)
+						{
+							dropRetries++
+							dialog?.dismiss()
+							showRetrying("เน็ตกระตุก การเชื่อมต่อหลุด กำลังเชื่อมต่อใหม่ให้อัตโนมัติ… ($dropRetries/3)\nแนะนำ: ใช้สาย LAN หรือ Wi-Fi 5GHz")
+							binding.progressBar.visibility = View.VISIBLE
+							retryHandler.postDelayed({ if(!isFinishing && !userQuit) reconnect() }, 2500L)
+							return
+						}
 						if(isRetryable(reasonText) && autoRetries < MAX_AUTO_RETRIES)
 						{
 							autoRetries++

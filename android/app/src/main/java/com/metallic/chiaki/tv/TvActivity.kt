@@ -341,22 +341,107 @@ class TvActivity : AppCompatActivity()
 	// ------------------------------------------------------------------ game picker (cover row, like the PS5 library)
 
 	private enum class GameState { NEW, AVAILABLE, SOON }
+	/** [poster] 0 = no bundled cover art: a generic purple/black cover with the name is drawn instead. */
 	private class Game(val id: String, val title: String, val poster: Int, val state: GameState)
 
-	/** Order on the row: new releases first, then games available now, then coming soon. */
-	private val games = listOf(
-		Game("gta6", "Grand Theft Auto VI", R.drawable.poster_gta6, GameState.NEW),
+	/** Bundled cover art for game ids the server may send (anything else gets the generic cover). */
+	private val bundledPosters = mapOf("gta6" to R.drawable.poster_gta6, "aot3" to R.drawable.poster_aot3,
+		"tombraider" to R.drawable.poster_tombraider, "ff7" to R.drawable.poster_ff7, "edge" to R.drawable.poster_edge,
+		"007" to R.drawable.poster_007, "requiem" to R.drawable.poster_requiem)
+
+	/** "Coming soon" teasers shown while the server doesn't list them as playable. */
+	private val soonGames = listOf(
 		Game("aot3", "Attack on Titan 3", R.drawable.poster_aot3, GameState.SOON),
 		Game("tombraider", "Tomb Raider: Legacy of Atlantis", R.drawable.poster_tombraider, GameState.SOON),
 		Game("ff7", "Final Fantasy VII Revelation", R.drawable.poster_ff7, GameState.SOON),
 		Game("edge", "Edge of Memories", R.drawable.poster_edge, GameState.SOON))
 
+	/**
+	 * Order on the row: new releases first, then games available now, then coming soon.
+	 * GTA VI is built in (works offline); the other playable games come from the server's GET /v1/games
+	 * (last answer cached in [KEY_GAMES_CACHE]), so games the owner adds in the admin page show without an update.
+	 */
+	private fun buildGames(server: List<Pair<String, String>>): List<Game>
+	{
+		val extra = server.filter { it.first != DEFAULT_GAME }
+		val ids = extra.map { it.first }.toSet()
+		return listOf(Game(DEFAULT_GAME, "Grand Theft Auto VI", R.drawable.poster_gta6, GameState.NEW)) +
+			extra.map { (id, name) -> Game(id, name, bundledPosters[id] ?: 0, GameState.AVAILABLE) } +
+			soonGames.filter { it.id !in ids }
+	}
+
+	private fun cachedServerGames(): List<Pair<String, String>> = try
+	{
+		val arr = org.json.JSONArray(sp.getString(KEY_GAMES_CACHE, "[]"))
+		(0 until arr.length()).map { i -> arr.getJSONObject(i).let { it.getString("id") to it.getString("name") } }
+	}
+	catch(_: Exception) { emptyList() }
+
+	private var gameList: List<Game>? = null
+	private val games: List<Game> get() = gameList ?: buildGames(cachedServerGames()).also { gameList = it }
+
+	/** The picker on screen right now (to redraw it when a fresher list arrives) and whether it is the first-launch one. */
+	private var gamesPage: View? = null
+	private var gamesPageOnboarding = false
+	@Volatile private var gamesFetchedAt = 0L
+
+	/** Asks the server for its game list (at most once a minute); redraws the picker if the list changed. */
+	private fun refreshGames()
+	{
+		val now = System.currentTimeMillis()
+		if(now - gamesFetchedAt < 60_000) return
+		gamesFetchedAt = now
+		val url = TranslatorPrefs(this).serverUrl
+		Thread {
+			val list = CloudTranslator.games(url)
+			// offline: keep the cached list / GTA VI, try again next time; an empty answer may be a server hiccup
+			if(list.isNullOrEmpty()) { gamesFetchedAt = 0L; return@Thread }
+			main.post {
+				if(isFinishing || isDestroyed) return@post
+				val arr = org.json.JSONArray()
+				list.forEach { (id, name) -> arr.put(org.json.JSONObject().put("id", id).put("name", name)) }
+				sp.edit().putString(KEY_GAMES_CACHE, arr.toString()).apply()
+				// the picked game was switched off by the owner: back to GTA VI (the server would block it from AI)
+				val picked = sp.getString(KEY_GAME, DEFAULT_GAME).orEmpty()
+				if(picked != DEFAULT_GAME && list.none { it.first == picked }) sp.edit().putString(KEY_GAME, DEFAULT_GAME).apply()
+				val fresh = buildGames(list)
+				val changed = fresh.map { Triple(it.id, it.title, it.state) } != games.map { Triple(it.id, it.title, it.state) }
+				gameList = fresh
+				val gp = gamesPage
+				if(changed && gp != null && gp.isAttachedToWindow && (page === gp || gp.parent === page))
+				{
+					if(gamesPageOnboarding) showGamePicker(Trans.NONE) else showTab(3, Trans.NONE)
+				}
+			}
+		}.start()
+	}
+
+	/** Cover art: the bundled poster, or a generic purple/black cover with the game's name. */
+	private fun posterArt(g: Game): View
+	{
+		if(g.poster != 0) return android.widget.ImageView(this).apply {
+			setImageResource(g.poster); scaleType = android.widget.ImageView.ScaleType.CENTER_CROP }
+		val f = FrameLayout(this)
+		f.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF3B1E78.toInt(), 0xFF1A0B2E.toInt(), Ui.BG))
+		// soft violet glow behind the name
+		f.addView(View(this).apply { background = GradientDrawable().apply {
+			gradientType = GradientDrawable.RADIAL_GRADIENT; gradientRadius = 260f
+			colors = intArrayOf(0x668B5CF6, 0x008B5CF6) } }, FrameLayout.LayoutParams(MATCH, MATCH))
+		val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(30, 70, 30, 30) }
+		col.addView(text(this, g.title, 44f, Ui.TEXT, W.BOLD, Gravity.CENTER).apply {
+			maxLines = 4; ellipsize = android.text.TextUtils.TruncateAt.END
+			setShadowLayer(18f, 0f, 0f, Ui.GLOW) }, LinearLayout.LayoutParams(MATCH, WRAP))
+		col.addView(View(this).apply { background = Ui.gradient(intArrayOf(Ui.VIOLET, Ui.GLOW), 3f) },
+			LinearLayout.LayoutParams(120, 6).apply { topMargin = 26; gravity = Gravity.CENTER_HORIZONTAL })
+		col.addView(text(this, "ซับไทย", 26f, Ui.VIOLET2, W.MEDIUM, Gravity.CENTER), LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = 18 })
+		f.addView(col, FrameLayout.LayoutParams(MATCH, MATCH))
+		return f
+	}
+
 	private fun posterCard(g: Game): FrameLayout
 	{
 		val f = FrameLayout(this)
-		val img = android.widget.ImageView(this).apply {
-			setImageResource(g.poster); scaleType = android.widget.ImageView.ScaleType.CENTER_CROP }
-		f.addView(img, FrameLayout.LayoutParams(MATCH, MATCH))
+		f.addView(posterArt(g), FrameLayout.LayoutParams(MATCH, MATCH))
 		if(g.state == GameState.SOON) f.addView(View(this).apply { setBackgroundColor(0x80000000.toInt()) }, FrameLayout.LayoutParams(MATCH, MATCH))
 		// ribbon at the top: NEW RELEASE / COMING SOON
 		val ribbon = text(this, when(g.state) { GameState.NEW -> "NEW RELEASE"; GameState.AVAILABLE -> "พร้อมเล่น"; GameState.SOON -> "COMING SOON" },
@@ -373,9 +458,7 @@ class TvActivity : AppCompatActivity()
 	private fun reflection(g: Game): View
 	{
 		val f = FrameLayout(this)
-		val img = android.widget.ImageView(this).apply {
-			setImageResource(g.poster); scaleType = android.widget.ImageView.ScaleType.CENTER_CROP; scaleY = -1f; alpha = 0.32f }
-		f.addView(img, FrameLayout.LayoutParams(MATCH, MATCH))
+		f.addView(posterArt(g).apply { scaleY = -1f; alpha = 0.32f }, FrameLayout.LayoutParams(MATCH, MATCH))
 		f.addView(View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
 			intArrayOf(0x3307050C, 0xF207050C.toInt())) }, FrameLayout.LayoutParams(MATCH, MATCH))
 		return f
@@ -384,12 +467,16 @@ class TvActivity : AppCompatActivity()
 	private fun gamesContent(onboarding: Boolean): View
 	{
 		val v = FrameLayout(this)
+		gamesPage = v; gamesPageOnboarding = onboarding
+		refreshGames()
+		val games = games // one list for this screen (a fresher list redraws the screen)
 		val top = if(onboarding) 140 else 120
 		v.addView(text(this, "เลือกเกม", 44f, Ui.TEXT, W.BOLD), lp(WRAP, WRAP, 90, top))
 		// three sections on one row; the buttons jump to each part
 		val sections = listOf(GameState.NEW to "ใหม่ล่าสุด", GameState.AVAILABLE to "มีให้เล่นแล้ว", GameState.SOON to "เร็ว ๆ นี้")
 		val chips = Ui.row(this)
-		var focus = 0
+		// start on the game picked last time
+		var focus = games.indexOfFirst { it.id == sp.getString(KEY_GAME, DEFAULT_GAME) }.coerceAtLeast(0)
 		lateinit var layoutRow: (Boolean) -> Unit
 		val chipCards = ArrayList<Card>()
 		sections.forEachIndexed { k, (state, label) ->
@@ -1621,6 +1708,10 @@ class TvActivity : AppCompatActivity()
 	{
 		const val KEY_ONBOARDED = "tv_onboarded"
 		const val KEY_GAME = "tv_game"
+		/** Built-in game (works offline); the id the server knows GTA VI by. */
+		const val DEFAULT_GAME = "gta6"
+		/** Last game list from the server's GET /v1/games, JSON [{id,name}]. */
+		const val KEY_GAMES_CACHE = "tv_games_cache"
 		/** "ซ่อนคำแนะนำ": the player knows the steps; explanations under each line / on the game picture are hidden. */
 		const val KEY_HIDE_TIPS = "tv_hide_tips"
 		/** Set by the game screen after "เลิกเล่น": the home screen shows how to switch the controller off. */

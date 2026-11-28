@@ -244,12 +244,17 @@ class StreamInput(val context: Context, val preferences: Preferences)
 			{
 				val v = e.getAxisValue(axes[i])
 				if(last[i].isNaN() || kotlin.math.abs(v - last[i]) > 0.02f) { stillSince[i] = now; last[i] = v; continue }
-				// still for 2 s close to the middle: that is where this stick rests
-				if(now - stillSince[i] > 2000 && kotlin.math.abs(v) < 0.3f) centre[i] = v
+				// still for 3 s very close to the middle: that is where this (worn) stick rests. Only small offsets
+				// (real drift is < 0.15): a stick the player holds gently for a while (slow walk, careful aim) must never
+				// become the new centre, or letting go of it made the character walk / the camera turn by itself.
+				if(now - stillSince[i] > 3000 && kotlin.math.abs(v) < 0.15f) centre[i] = v
 			}
 			// the pair in use as the right stick both pinned at an end while the other pair rests near the middle
-			val zPinned = kotlin.math.abs(last[2]) > 0.9f && kotlin.math.abs(last[3]) > 0.9f
-			val rxPinned = kotlin.math.abs(last[4]) > 0.9f && kotlin.math.abs(last[5]) > 0.9f
+			// (a trigger rests exactly at the end and does not move; a stick pushed into a corner is never that still)
+			fun pinned(a: Int, b: Int) = kotlin.math.abs(last[a]) > 0.98f && kotlin.math.abs(last[b]) > 0.98f &&
+				now - stillSince[a] > 1500 && now - stillSince[b] > 1500
+			val zPinned = pinned(2, 3)
+			val rxPinned = pinned(4, 5)
 			val zMid = kotlin.math.abs(last[2]) < 0.3f && kotlin.math.abs(last[3]) < 0.3f
 			val rxMid = kotlin.math.abs(last[4]) < 0.3f && kotlin.math.abs(last[5]) < 0.3f
 			val which = if(zPinned && rxMid) 1 else if(rxPinned && zMid) 2 else 0
@@ -261,6 +266,13 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		{
 			val i = axes.indexOf(axis)
 			return if(i < 0) v else (v - centre[i]).coerceIn(-1f, 1f)
+		}
+
+		/** Stick let go: inside the dead zone around the real middle OR around the learned rest point = no movement. */
+		fun atRest(axis: Int, v: Float, dz: Float): Boolean
+		{
+			val i = axes.indexOf(axis)
+			return kotlin.math.abs(v) <= dz || (i >= 0 && kotlin.math.abs(v - centre[i]) <= dz)
 		}
 	}
 	private val cals = HashMap<Int, StickCal>()
@@ -279,7 +291,7 @@ class StreamInput(val context: Context, val preferences: Preferences)
 		val auto = pad.sticks == PadConfig.Sticks.AUTO
 		val declared = pad.rightStickOnRx(event.device)
 		val rx = if(auto && cal.pinnedPair == 1) true else if(auto && cal.pinnedPair == 2) false else declared
-		fun axis(a: Int) = pad.stick(cal.centred(a, event.getAxisValue(a))).signedAxis()
+		fun axis(a: Int): Short { val v = event.getAxisValue(a); return if(cal.atRest(a, v, pad.deadzone)) 0 else pad.stick(cal.centred(a, v)).signedAxis() }
 		motionControllerState.leftX = axis(MotionEvent.AXIS_X)
 		motionControllerState.leftY = axis(MotionEvent.AXIS_Y)
 		motionControllerState.rightX = axis(if(rx) MotionEvent.AXIS_RX else MotionEvent.AXIS_Z)

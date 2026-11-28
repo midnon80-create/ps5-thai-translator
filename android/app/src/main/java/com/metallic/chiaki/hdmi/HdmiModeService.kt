@@ -91,6 +91,9 @@ class HdmiModeService : Service()
 
 	private val main = Handler(Looper.getMainLooper())
 	private var session: Session? = null
+	private var connInfo: ConnectInfo? = null
+	/** Mid-game drops (home Wi-Fi lost packets) reconnected by themselves; reset after 2 min of play. */
+	private var dropRetries = 0
 	private var reader: ImageReader? = null
 	private var readerThread: HandlerThread? = null
 	private var overlay: View? = null
@@ -216,12 +219,9 @@ class HdmiModeService : Service()
 		reader = ir
 
 		Session.setAudioMuted(true)
-		val s = Session(info, null, false)
+		connInfo = info
 		input.controllerStateChangedCallback = { st -> try { session?.setControllerState(st) } catch(_: Throwable) { } }
-		s.eventCallback = { ev -> main.post { onEvent(ev) } }
-		s.start()
-		s.setSurface(ir.surface)
-		session = s
+		openSession()
 
 		// 3. the same subtitle reader / translator as the normal mode, fed from the hidden stream
 		val tr = TranslatorController(this, null, overlayUi) { latestFrame() }
@@ -229,6 +229,17 @@ class HdmiModeService : Service()
 		tr.start()
 		startedAt = SystemClock.elapsedRealtime()
 		main.postDelayed(idleCheck, 60_000L)
+	}
+
+	private fun openSession()
+	{
+		val info = connInfo ?: return
+		val ir = reader ?: return
+		val s = Session(info, null, false)
+		s.eventCallback = { ev -> if(session === s) main.post { if(session === s) onEvent(ev) } }
+		s.start()
+		s.setSurface(ir.surface)
+		session = s
 	}
 
 	private fun onEvent(ev: Event)
@@ -241,7 +252,25 @@ class HdmiModeService : Service()
 			// PS5 gone / asks for a PIN: everything stops at once (no message left on the TV, no reconnecting);
 			// the reason is shown next time the app is opened
 			is LoginPinRequestEvent -> { lastProblem = "PS5 ขอรหัส PIN ผู้ใช้ · ปิดรหัสล็อกผู้ใช้ใน PS5 หรือใช้โหมดเล่นผ่านแอป"; shutDown() }
-			is QuitEvent -> { lastProblem = "การเชื่อมต่อกับ PS5 หลุด" + (ev.reasonString?.let { " ($it)" } ?: ""); shutDown() }
+			is QuitEvent -> {
+				// dropped in the middle of a game (Wi-Fi lost packets / PS5 reset the stream): reconnect by itself,
+				// up to 3 times, instead of ending 4K mode. The PS5 must not keep the last stick held meanwhile.
+				try { input.releaseAll() } catch(_: Throwable) { }
+				val why = ev.reason.toString()
+				val midGame = connectedAt > 0 && (why.contains("Stream Connection", true) || why.contains("shut down", true))
+				if(midGame && SystemClock.elapsedRealtime() - connectedAt > 120_000L) dropRetries = 0
+				if(midGame && dropRetries < 3 && session != null)
+				{
+					dropRetries++
+					translator?.setStreamConnected(false)
+					ui?.showStatus("เน็ตกระตุก การเชื่อมต่อหลุด · กำลังต่อใหม่อัตโนมัติ ($dropRetries/3)")
+					val old = session
+					session = null
+					Thread { try { old?.stop(); old?.dispose() } catch(_: Throwable) { } }.start()
+					main.postDelayed({ if(connInfo != null && reader != null && session == null) try { openSession() } catch(_: Throwable) { shutDown() } }, 2500L)
+				}
+				else { lastProblem = "การเชื่อมต่อกับ PS5 หลุด" + (ev.reasonString?.let { " ($it)" } ?: ""); shutDown() }
+			}
 			else -> {}
 		}
 	}
@@ -450,6 +479,7 @@ class HdmiModeService : Service()
 		translator = null
 		try { session?.stop(); session?.dispose() } catch(_: Throwable) { }
 		session = null
+		connInfo = null
 		Session.setAudioMuted(false)
 		try { reader?.close() } catch(_: Throwable) { }
 		reader = null
