@@ -140,7 +140,7 @@ class TvActivity : AppCompatActivity()
 			main.postDelayed({
 				val h = vm.displayHosts.value?.firstOrNull { it.host == addr && it.registeredHost != null }
 					?: vm.displayHosts.value?.firstOrNull { it.registeredHost != null }
-				if(h != null) hostTriggered(h) else toast("จับคู่ PS5 สำเร็จ ✔ กดการ์ด PS5 เพื่อเล่น")
+				if(h != null) preflight(h, h.registeredHost) else toast("จับคู่ PS5 สำเร็จ ✔ กดการ์ด PS5 เพื่อเล่น")
 			}, 700)
 		}
 	}
@@ -342,19 +342,62 @@ class TvActivity : AppCompatActivity()
 
 	private enum class GameState { NEW, AVAILABLE, SOON }
 	/** [poster] 0 = no bundled cover art: a generic purple/black cover with the name is drawn instead. */
-	private class Game(val id: String, val title: String, val poster: Int, val state: GameState)
+	/** [date] = release day of a "coming soon" game, shown on its label (Thai date, Buddhist year). */
+	private class Game(val id: String, val title: String, val poster: Int, val state: GameState, val date: String? = null)
 
-	/** Bundled cover art for game ids the server may send (anything else gets the generic cover). */
+	/** Bundled cover art (official key art, high resolution) for game ids the server may send (anything else gets the generic cover). */
 	private val bundledPosters = mapOf("gta6" to R.drawable.poster_gta6, "aot3" to R.drawable.poster_aot3,
 		"tombraider" to R.drawable.poster_tombraider, "ff7" to R.drawable.poster_ff7, "edge" to R.drawable.poster_edge,
-		"007" to R.drawable.poster_007, "requiem" to R.drawable.poster_requiem)
+		"007" to R.drawable.poster_007, "requiem" to R.drawable.poster_requiem, "mw4" to R.drawable.poster_mw4,
+		"dawnwalker" to R.drawable.poster_dawnwalker, "crimson" to R.drawable.poster_crimson,
+		"blackflag" to R.drawable.poster_blackflag, "onimusha" to R.drawable.poster_onimusha)
 
-	/** "Coming soon" teasers shown while the server doesn't list them as playable. */
+	/** Wide art without the logo, behind the ซับไทย card on the home page (the picked game). */
+	private val heroArt = mapOf("gta6" to R.drawable.hero_gta6, "007" to R.drawable.hero_007, "requiem" to R.drawable.hero_requiem,
+		"mw4" to R.drawable.hero_mw4, "dawnwalker" to R.drawable.hero_dawnwalker, "crimson" to R.drawable.hero_crimson,
+		"blackflag" to R.drawable.hero_blackflag, "onimusha" to R.drawable.hero_onimusha)
+
+	/** "Coming soon" teasers shown while the server doesn't list them as playable (soonest first). */
 	private val soonGames = listOf(
-		Game("aot3", "Attack on Titan 3", R.drawable.poster_aot3, GameState.SOON),
-		Game("tombraider", "Tomb Raider: Legacy of Atlantis", R.drawable.poster_tombraider, GameState.SOON),
-		Game("ff7", "Final Fantasy VII Revelation", R.drawable.poster_ff7, GameState.SOON),
-		Game("edge", "Edge of Memories", R.drawable.poster_edge, GameState.SOON))
+		Game("edge", "Edge of Memories", R.drawable.poster_edge, GameState.SOON, "3 ธ.ค. 2569"),
+		Game("aot3", "Attack on Titan 3", R.drawable.poster_aot3, GameState.SOON, "10 ธ.ค. 2569"),
+		Game("tombraider", "Tomb Raider: Legacy of Atlantis", R.drawable.poster_tombraider, GameState.SOON, "12 ก.พ. 2570"),
+		Game("ff7", "Final Fantasy VII Revelation", R.drawable.poster_ff7, GameState.SOON, "8 เม.ย. 2570"))
+
+	/** The game picked in the picker (GTA VI if none / no longer listed). */
+	private fun pickedGame(): Game = games.firstOrNull { it.id == sp.getString(KEY_GAME, DEFAULT_GAME) && it.state != GameState.SOON } ?: games.first()
+
+	private val artCache = HashMap<String, android.graphics.Bitmap>()
+
+	/**
+	 * Big cover art decoded once, scaled to about [designW] (in the 1920-wide layout) times the real screen size:
+	 * sharp on 4K screens, and light on memory for weak TVs (the full pictures are 1000+ px).
+	 */
+	private fun art(res: Int, designW: Int): android.graphics.Bitmap?
+	{
+		val px = (designW * resources.displayMetrics.widthPixels / 1920f * 1.15f).toInt().coerceIn(200, 1600)
+		val key = "$res:$px"
+		artCache[key]?.let { return it }
+		return try
+		{
+			val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+			android.graphics.BitmapFactory.decodeResource(resources, res, o)
+			var s = 1
+			while(o.outWidth / (s * 2) >= px) s *= 2
+			val full = android.graphics.BitmapFactory.decodeResource(resources, res, android.graphics.BitmapFactory.Options().apply { inSampleSize = s })
+			val b = if(full.width > px) android.graphics.Bitmap.createScaledBitmap(full, px, (full.height * px.toFloat() / full.width).toInt(), true)
+				.also { if(it !== full) full.recycle() } else full
+			artCache[key] = b
+			b
+		}
+		catch(_: Throwable) { null }
+	}
+
+	private fun artView(res: Int, designW: Int): android.widget.ImageView = android.widget.ImageView(this).apply {
+		val b = art(res, designW)
+		if(b != null) setImageBitmap(b) else setImageResource(res)
+		scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+	}
 
 	/**
 	 * Order on the row: new releases first, then games available now, then coming soon.
@@ -419,8 +462,7 @@ class TvActivity : AppCompatActivity()
 	/** Cover art: the bundled poster, or a generic purple/black cover with the game's name. */
 	private fun posterArt(g: Game): View
 	{
-		if(g.poster != 0) return android.widget.ImageView(this).apply {
-			setImageResource(g.poster); scaleType = android.widget.ImageView.ScaleType.CENTER_CROP }
+		if(g.poster != 0) return artView(g.poster, 440)
 		val f = FrameLayout(this)
 		f.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xFF3B1E78.toInt(), 0xFF1A0B2E.toInt(), Ui.BG))
 		// soft violet glow behind the name
@@ -438,19 +480,33 @@ class TvActivity : AppCompatActivity()
 		return f
 	}
 
+	private fun ribbonText(g: Game) = when(g.state)
+	{
+		GameState.NEW -> "NEW RELEASE"
+		GameState.AVAILABLE -> "พร้อมเล่น"
+		GameState.SOON -> if(g.date != null) "เข้า ${g.date}" else "COMING SOON"
+	}
+
+	/** Height of the label row above each cover. */
+	private val ribbonH = 62
+
+	/** Status label (NEW RELEASE / พร้อมเล่น / release date) ABOVE the cover, never on top of the art. [tag] = the cover. */
 	private fun posterCard(g: Game): FrameLayout
 	{
-		val f = FrameLayout(this)
-		f.addView(posterArt(g), FrameLayout.LayoutParams(MATCH, MATCH))
-		if(g.state == GameState.SOON) f.addView(View(this).apply { setBackgroundColor(0x80000000.toInt()) }, FrameLayout.LayoutParams(MATCH, MATCH))
-		// ribbon at the top: NEW RELEASE / COMING SOON
-		val ribbon = text(this, when(g.state) { GameState.NEW -> "NEW RELEASE"; GameState.AVAILABLE -> "พร้อมเล่น"; GameState.SOON -> "COMING SOON" },
-			24f, if(g.state == GameState.SOON) 0xFFE9E3FF.toInt() else 0xFF1A0B2E.toInt(), W.BOLD, Gravity.CENTER).apply {
-			background = if(g.state == GameState.SOON) Ui.round(0xCC1B1435.toInt(), 0f) else Ui.gradient(intArrayOf(0xFFFFE14D.toInt(), 0xFFFFB020.toInt()), 0f)
-			setPadding(0, 8, 0, 8) }
-		f.addView(ribbon, FrameLayout.LayoutParams(MATCH, WRAP, Gravity.TOP))
-		f.background = Ui.round(0, 18f, 4, 0xFF5B4BFF.toInt())
-		Ui.clipRound(f, 18f)
+		val f = FrameLayout(this).apply { clipChildren = false; clipToPadding = false }
+		val cover = FrameLayout(this)
+		cover.addView(posterArt(g), FrameLayout.LayoutParams(MATCH, MATCH))
+		if(g.state == GameState.SOON) cover.addView(View(this).apply { setBackgroundColor(0x4D000000) }, FrameLayout.LayoutParams(MATCH, MATCH))
+		cover.foreground = Ui.round(0, 18f, 3, 0xFF4338CA.toInt())
+		Ui.clipRound(cover, 18f)
+		f.addView(cover, FrameLayout.LayoutParams(MATCH, MATCH).apply { topMargin = ribbonH })
+		val soon = g.state == GameState.SOON
+		val ribbon = text(this, ribbonText(g), 23f, if(soon) 0xFFE9E3FF.toInt() else 0xFF1A0B2E.toInt(), W.BOLD, Gravity.CENTER).apply {
+			background = if(soon) Ui.round(0xFF2A1F4D.toInt(), 24f, 2, 0xFF7C6BE0.toInt())
+				else Ui.gradient(intArrayOf(0xFFFFE14D.toInt(), 0xFFFFB020.toInt()), 24f)
+			setPadding(30, 0, 30, 0) }
+		f.addView(ribbon, FrameLayout.LayoutParams(WRAP, 48, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+		f.tag = cover
 		return f
 	}
 
@@ -497,12 +553,12 @@ class TvActivity : AppCompatActivity()
 
 		// the row
 		val stage = FrameLayout(this).apply { clipChildren = false; clipToPadding = false }
-		val cw = 400; val ch = 500
+		val cw = 400; val ch = 500 + ribbonH // cover 400x500 + its label row above
 		val cards = games.map { g -> posterCard(g) }
 		val refl = games.map { g -> reflection(g) }
-		val rowTop = top + 130
+		val rowTop = top + 104
 		games.indices.forEach { i ->
-			stage.addView(refl[i], FrameLayout.LayoutParams(cw, 170).apply { topMargin = rowTop + ch + 10 })
+			stage.addView(refl[i], FrameLayout.LayoutParams(cw, 120).apply { topMargin = rowTop + ch + 10 })
 			stage.addView(cards[i], FrameLayout.LayoutParams(cw, ch).apply { topMargin = rowTop })
 			cards[i].cameraDistance = 9000f * resources.displayMetrics.density
 			refl[i].cameraDistance = 9000f * resources.displayMetrics.density
@@ -510,8 +566,8 @@ class TvActivity : AppCompatActivity()
 		v.addView(stage, FrameLayout.LayoutParams(1920, 1080))
 		val title = text(this, "", 40f, Ui.TEXT, W.BOLD, Gravity.CENTER)
 		val sub = text(this, "", 26f, Ui.MUTED, gravity = Gravity.CENTER)
-		v.addView(title, lp(1920, WRAP, 0, rowTop + ch + 60))
-		v.addView(sub, lp(1920, WRAP, 0, rowTop + ch + 116))
+		v.addView(title, lp(1920, WRAP, 0, rowTop + ch + 36))
+		v.addView(sub, lp(1920, WRAP, 0, rowTop + ch + 92))
 
 		layoutRow = { animate ->
 			games.indices.forEach { i ->
@@ -529,11 +585,11 @@ class TvActivity : AppCompatActivity()
 					else { view.translationX = x.toFloat(); view.rotationY = rot; view.scaleX = sc; view.scaleY = sc; view.alpha = a }
 				}
 				cards[i].elevation = if(sel) 40f else 10f - kotlin.math.abs(d)
-				cards[i].background = Ui.round(0, 18f, if(sel) 6 else 3, if(sel) 0xFFC4B5FD.toInt() else 0xFF4338CA.toInt())
+				(cards[i].tag as View).foreground = Ui.round(0, 18f, if(sel) 6 else 3, if(sel) 0xFFC4B5FD.toInt() else 0xFF4338CA.toInt())
 			}
 			val g = games[focus]
 			title.text = g.title
-			sub.text = when(g.state) { GameState.SOON -> "COMING SOON · ซับไทยกำลังจะมา"; else -> "ซับไทยพร้อม ✔ · กด ✕ เพื่อเลือก" }
+			sub.text = when(g.state) { GameState.SOON -> "เข้าวันที่ ${g.date ?: "เร็ว ๆ นี้"} · ซับไทยพร้อมตั้งแต่วันเกมออก"; else -> "ซับไทยพร้อม ✔ · กด ✕ เพื่อเลือก" }
 			sub.setTextColor(if(g.state == GameState.SOON) Ui.MUTED else Ui.OK)
 			chipCards.forEach { it.refresh() }
 		}
@@ -542,8 +598,8 @@ class TvActivity : AppCompatActivity()
 		fun pick()
 		{
 			val g = games[focus]
-			if(g.state == GameState.SOON) { toast("${g.title} · เร็ว ๆ นี้"); return }
-			sp.edit().putString(KEY_GAME, g.id).apply()
+			if(g.state == GameState.SOON) { toast("${g.title} · เข้า ${g.date ?: "เร็ว ๆ นี้"}"); return }
+			sp.edit().putString(KEY_GAME, g.id).putString(KEY_GAME_NAME, g.title).apply()
 			if(onboarding) { sp.edit().putBoolean(KEY_ONBOARDED, true).apply(); showTab(0, Trans.LEFT) }
 			else { toast("เลือก ${g.title} แล้ว ✔"); showTab(0, Trans.RIGHT) }
 		}
@@ -704,9 +760,18 @@ class TvActivity : AppCompatActivity()
 		// big ซับไทย on/off
 		val toggle = Card(this, 40f, Ui.PANEL)
 		toggle.grow = 1.03f
-		val img = Ui.topImage(this, R.drawable.gta_shot1, 0.66f)
+		// the picked game's own art (sharp, high resolution) instead of one GTA shot for every game
+		val picked = pickedGame()
+		sp.edit().putString(KEY_GAME_NAME, picked.title).apply()
+		val heroRes = heroArt[picked.id]
+		val img: View = when
+		{
+			heroRes != null -> artView(heroRes, 940)
+			picked.poster != 0 -> artView(picked.poster, 940)
+			else -> posterArt(picked)
+		}
 		val imgBox = FrameLayout(this); imgBox.addView(img, FrameLayout.LayoutParams(MATCH, MATCH))
-		imgBox.alpha = 0.55f
+		imgBox.alpha = 0.9f
 		Ui.clipRound(imgBox, 38f)
 		toggle.addView(imgBox, FrameLayout.LayoutParams(MATCH, MATCH).apply { setMargins(4, 4, 4, 4) })
 		val shade = View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0, 0xEB07050C.toInt())).apply { cornerRadius = 38f } }
@@ -717,6 +782,11 @@ class TvActivity : AppCompatActivity()
 		sw.addView(swText, FrameLayout.LayoutParams(WRAP, MATCH).apply { leftMargin = 30 })
 		sw.addView(knob, FrameLayout.LayoutParams(76, 76).apply { topMargin = 10; leftMargin = 10 })
 		toggle.addView(sw, FrameLayout.LayoutParams(190, 96, Gravity.TOP or Gravity.END).apply { setMargins(0, 50, 50, 0) })
+		// which game the subtitles are for (change it in เลือกเกม)
+		val gameTag = text(this, "เกม · " + picked.title, 28f, Ui.TEXT, W.SEMIBOLD).apply {
+			maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+			background = Ui.round(0xC0120A22.toInt(), 30f, 2, Ui.VIOLET2); setPadding(28, 12, 28, 14) }
+		toggle.addView(gameTag, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.START).apply { setMargins(50, 60, 270, 0) })
 		val tc = Ui.col(this)
 		val big = text(this, "ซับไทย", 92f, Ui.TEXT, W.EXTRABOLD)
 		val sub = text(this, "", 30f, 0xFFE7DEFD.toInt())
@@ -746,16 +816,27 @@ class TvActivity : AppCompatActivity()
 		val status = Ui.col(this)
 		val tiles = HashMap<String, TextView>()
 		val subs = HashMap<String, TextView>()
+		var checkCard: Card? = null
 		for(r in 0 until 2)
 		{
 			val row = Ui.row(this)
 			for(k in 0 until 2)
 			{
-				val key = listOf("pad", "ai", "pic", "band")[r * 2 + k]
-				val cell = Ui.col(this).apply { background = Ui.round(Ui.PANEL, 22f, 2, Ui.LINE); setPadding(26, 20, 26, 20) }
+				val key = listOf("check", "ai", "pic", "band")[r * 2 + k]
+				val inner = Ui.col(this).apply { setPadding(26, 20, 26, 20) }
 				val t1 = text(this, "", 26f, Ui.TEXT); val t2 = text(this, "", 21f, Ui.MUTED)
-				cell.addView(t1); cell.addView(t2, llp(WRAP, WRAP, t = 2))
+				inner.addView(t1); inner.addView(t2, llp(WRAP, WRAP, t = 2))
 				tiles[key] = t1; subs[key] = t2
+				val cell: View = if(key == "check")
+				{
+					// "เช็กก่อนเข้าเกม": everything the game needs, in one place (shakes when something is missing)
+					Card(this, 22f, Ui.PANEL).apply {
+						grow = 1.04f
+						addView(inner, FrameLayout.LayoutParams(MATCH, MATCH))
+						setOnClickListener { openChecklist() }
+					}.also { checkCard = it }
+				}
+				else inner.apply { background = Ui.round(Ui.PANEL, 22f, 2, Ui.LINE) }
 				row.addView(cell, llp(0, 120, 1f, l = if(k == 0) 0 else 20))
 			}
 			status.addView(row, llp(MATCH, WRAP, t = 20))
@@ -808,6 +889,7 @@ class TvActivity : AppCompatActivity()
 		Thread {
 			val cloud = CloudTranslator(prefs.serverUrl, prefs.cloudCode, CloudTranslator.deviceId(this))
 			val pr = cloud.check()
+			aiCheck = Pair(System.currentTimeMillis(), pr)
 			main.post {
 				when(pr)
 				{
@@ -843,17 +925,22 @@ class TvActivity : AppCompatActivity()
 		}
 		vm.displayHosts.value?.let { lastHosts = it; renderHosts(it) } ?: renderHosts(emptyList())
 		vm.displayHosts.observe(this) { list -> if(tab == 0 && list.map { it.host + it.registeredHost?.id } != lastHosts?.map { it.host + it.registeredHost?.id }) { lastHosts = list; renderHosts(list) } }
+		var lastShake = 0L
 		val tick = object : Runnable { override fun run() {
-			if(isHdmi())
-			{
-				val okOv = com.metallic.chiaki.hdmi.HdmiModeService.canDrawOverlays(this@TvActivity)
-				setTile("pad", okOv, if(com.metallic.chiaki.hdmi.HdmiModeService.running) "โหมด 4K ทำงานอยู่" else if(okOv) "โหมด 4K พร้อม" else "ยังไม่อนุญาตแสดงทับ",
-					if(okOv) "จอยต่อ PS5 ตามปกติ" else "กดการ์ด PS5 แล้วทำตามข้อแรก")
-			}
+			val checks = quickChecks()
+			val bad = checks.values.count { it == false }
+			if(bad == 0) setTile("check", true, "เช็กครบ พร้อมเล่น", if(checks.values.any { it == null }) "กำลังตรวจ… · กดดูรายการ" else "เช็กก่อนเข้าเกม · กดดูรายการ")
 			else
 			{
-				val pads = Diag.gamepads()
-				setTile("pad", pads.isNotEmpty(), if(pads.isNotEmpty()) "จอยพร้อม" else "ยังไม่มีจอย", if(pads.isNotEmpty()) pads.first().take(24) else "ไปที่แท็บ จอย เพื่อจับคู่")
+				setTile("check", false, "ยังไม่ครบ $bad ข้อ", "เช็กก่อนเข้าเกม · กดดูและแก้")
+				// a little shake every few seconds so nobody misses it
+				val now = System.currentTimeMillis()
+				val c = checkCard
+				if(c != null && now - lastShake > 4000 && c.isShown)
+				{
+					lastShake = now
+					android.animation.ObjectAnimator.ofFloat(c, "translationX", 0f, -16f, 16f, -12f, 12f, -6f, 6f, 0f).setDuration(560).start()
+				}
 			}
 			main.postDelayed(this, 1500) } }
 		startRefresh(tick)
@@ -921,13 +1008,78 @@ class TvActivity : AppCompatActivity()
 		}
 		if(com.metallic.chiaki.hdmi.HdmiModeService.running)
 		{
-			if(sp.getString(KEY_PLAY_MODE, "stream") == "hdmi") { hdmiPicker(); return }
+			if(sp.getString(KEY_PLAY_MODE, "stream") == "hdmi") { goToPs5Input(); return }
 			// the player switched to playing through the app (1080p): 4K mode must not keep pulling the TV to HDMI
 			com.metallic.chiaki.hdmi.HdmiModeService.stop(this, "user:เปลี่ยนเป็นเล่นผ่านแอป")
 			toast("หยุดโหมด 4K แล้ว · กำลังเตรียมเล่นผ่านแอป")
 		}
 
-		preflight(host, registeredHost)
+		play(host, registeredHost)
+	}
+
+	/** Name of the picked game, for "connecting to …" messages. */
+	private fun gameName() = sp.getString(KEY_GAME_NAME, null) ?: "Grand Theft Auto VI"
+
+	/**
+	 * PS5 card pressed: straight into the game, no checklist and no HDMI question (the "เช็กก่อนเข้าเกม" tile on the
+	 * home page holds those, and shakes when something is missing). Only what cannot work stops here.
+	 */
+	private fun play(host: DisplayHost, registeredHost: RegisteredHost)
+	{
+		val hdmi = sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
+		if(hdmi && !com.metallic.chiaki.hdmi.HdmiModeService.canDrawOverlays(this))
+		{
+			toast("โหมด 4K ยังไม่ได้อนุญาตแสดงทับ · แก้ตามรายการนี้ก่อน")
+			preflight(host, registeredHost); return
+		}
+		fun go(h: DisplayHost)
+		{
+			toast("กำลังเชื่อมต่อ PS5 · เกม " + gameName())
+			if(hdmi) startHdmi(h, registeredHost) else connect(h, registeredHost)
+		}
+		if(host is DiscoveredDisplayHost && host.discoveredHost.state == DiscoveryHost.State.STANDBY)
+		{
+			// asleep: wake it, then go in by itself once it answers
+			vm.discoveryManager.sendWakeup(host.host, registeredHost.rpRegistKey, registeredHost.target.isPS5)
+			toast("กำลังปลุก PS5 · รอสักครู่ แล้วจะเข้าเกมเอง")
+			val started = System.currentTimeMillis()
+			main.postDelayed(object : Runnable { override fun run() {
+				if(isFinishing || isDestroyed) return
+				val cur = vm.displayHosts.value?.firstOrNull { it.host == host.host && it.registeredHost != null }
+				if(cur is DiscoveredDisplayHost && cur.discoveredHost.state == DiscoveryHost.State.READY) { go(cur); return }
+				if(System.currentTimeMillis() - started > 40_000) { toast("ปลุก PS5 ไม่สำเร็จ · ดูวิธีแก้ในรายการ"); preflight(host, registeredHost); return }
+				main.postDelayed(this, 1000)
+			} }, 1500)
+			return
+		}
+		go(host)
+	}
+
+	/** Home tile "เช็กก่อนเข้าเกม": the full checklist for the PS5 that is paired (or what is missing). */
+	private fun openChecklist()
+	{
+		val h = vm.displayHosts.value?.firstOrNull { it.registeredHost != null }
+		preflight(h, h?.registeredHost)
+	}
+
+	/** Quick version of the checklist for the home tile. null = not known yet (still checking). */
+	private fun quickChecks(): Map<String, Boolean?>
+	{
+		val hdmi = sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
+		val m = LinkedHashMap<String, Boolean?>()
+		m["pad"] = if(hdmi) com.metallic.chiaki.hdmi.HdmiModeService.canDrawOverlays(this) else Diag.gamepads().isNotEmpty()
+		m["subs"] = TranslatorPrefs(this).enabled
+		m["ai"] = aiCheck?.second?.let { it == CloudTranslator.Problem.NONE || it == CloudTranslator.Problem.DAILY_LIMIT || it == CloudTranslator.Problem.POOL_EMPTY }
+		val h = vm.displayHosts.value?.firstOrNull { it.registeredHost != null }
+		m["ps5"] = when(h)
+		{
+			null -> false
+			is DiscoveredDisplayHost -> h.discoveredHost.state == DiscoveryHost.State.READY
+			is ManualDisplayHost -> true
+			else -> false
+		}
+		if(hdmi) m["hdmi"] = hdmiInputs().let { ins -> ins.isEmpty() || ins.any { it.id == sp.getString(KEY_PS5_INPUT, null) } }
+		return m
 	}
 
 	private fun modeLabel(hdmi: Boolean) =
@@ -948,7 +1100,7 @@ class TvActivity : AppCompatActivity()
 	{
 		val info = ConnectInfo(host.isPS5, host.host, registeredHost.rpRegistKey, registeredHost.rpKey, Preferences(this).videoProfile)
 		com.metallic.chiaki.hdmi.HdmiModeService.start(this, info)
-		toast("เริ่มโหมด 4K แล้ว ✔ กำลังเปลี่ยนไปช่อง HDMI ของ PS5…")
+		toast("เริ่มโหมด 4K แล้ว ✔ เกม ${gameName()} · กำลังเปลี่ยนไปช่อง HDMI ของ PS5…")
 		// give the hidden reader a moment to start, then show the PS5's own 4K picture
 		main.postDelayed({ goToPs5Input() }, 1500)
 	}
@@ -976,14 +1128,23 @@ class TvActivity : AppCompatActivity()
 	}
 	catch(_: Throwable) { false }
 
-	/** 4K mode started (or already running): the player picks the PS5's HDMI input, every time, so a wrong pick is easy to fix. */
-	private fun goToPs5Input() = hdmiPicker()
+	/**
+	 * 4K mode started (or already running): straight to the PS5's HDMI input picked before (in the checklist).
+	 * Only asks when none was picked yet, or the TV does not let apps switch the input (then it says how).
+	 */
+	private fun goToPs5Input()
+	{
+		val saved = sp.getString(KEY_PS5_INPUT, null)
+		val ins = hdmiInputs()
+		if(saved != null && ins.any { it.id == saved } && openHdmiInput(saved)) return
+		hdmiPicker()
+	}
 
 	/**
 	 * Full-screen page: "which HDMI input is the PS5 on?". Every input is a big card (signal / last used / sound-bar port
 	 * marked), with ย้อนกลับ and หยุดโหมด 4K buttons. Nothing is picked automatically.
 	 */
-	private fun hdmiPicker()
+	private fun hdmiPicker(chooseOnly: Boolean = false, onClose: (() -> Unit)? = null)
 	{
 		val inputs = hdmiInputs()
 		val saved = sp.getString(KEY_PS5_INPUT, null)
@@ -994,7 +1155,7 @@ class TvActivity : AppCompatActivity()
 			else "เลือกช่องที่เสียบสาย HDMI จาก PS5 · ไม่ใช่ช่อง eARC / ARC ที่ต่อลำโพงหรือซาวด์บาร์ · เลือกผิด กลับมาเลือกใหม่ได้ทุกครั้ง",
 			24f, Ui.MUTED).apply { setLineSpacing(0f, 1.25f) }, llp(1200, WRAP, t = 8))
 		var closed = false
-		fun close() { if(closed) return; closed = true; keyCatcher = null; dropPanel(panel, 160) }
+		fun close() { if(closed) return; closed = true; keyCatcher = null; dropPanel(panel, 160); onClose?.invoke() }
 		openPanels[panel] = { close() }
 		var focus: View? = null
 		var row: LinearLayout? = null
@@ -1015,7 +1176,8 @@ class TvActivity : AppCompatActivity()
 			card.setOnClickListener {
 				sp.edit().putString(KEY_PS5_INPUT, inp.id).apply()
 				close()
-				if(!openHdmiInput(inp.id)) toast("เปิดช่องนี้ไม่ได้ · ใช้ปุ่ม Input ที่รีโมททีวีแทน")
+				if(chooseOnly) toast("บันทึกแล้ว ✔ PS5 อยู่ช่อง ${inp.label} · ครั้งต่อไปเข้าเกมได้เลย")
+				else if(!openHdmiInput(inp.id)) toast("เปิดช่องนี้ไม่ได้ · ใช้ปุ่ม Input ที่รีโมททีวีแทน")
 			}
 			row!!.addView(card, llp(0, 130, 1f, l = if(k % 3 == 0) 0 else 18))
 			if(focus == null && inp.id == saved) focus = card
@@ -1033,7 +1195,7 @@ class TvActivity : AppCompatActivity()
 		}
 		val back = button("← ย้อนกลับ", inputs.isEmpty()) { close() }
 		buttons.addView(back, llp(0, 92, 1f))
-		buttons.addView(button("หยุดโหมด 4K", false) {
+		if(com.metallic.chiaki.hdmi.HdmiModeService.running) buttons.addView(button("หยุดโหมด 4K", false) {
 			close(); com.metallic.chiaki.hdmi.HdmiModeService.stop(this, "user:กดหยุดโหมด 4K"); toast("หยุดโหมด 4K แล้ว · เล่นผ่านแอปได้ตามปกติ") }, llp(0, 92, 1f, l = 18))
 		box.addView(buttons, llp(1200, WRAP, t = 30))
 		box.addView(text(this, "เล่นด้วยจอยที่ต่อ PS5 · ซับไทยขึ้นทับภาพเอง (เปิด Subtitles ในเกม) · เลิกเล่น: กลับมาที่แอป › การ์ด \"เลิกเล่น\"",
@@ -1095,7 +1257,7 @@ class TvActivity : AppCompatActivity()
 	 * Checklist before every game: nothing starts until the controller, Thai subtitles, AI and the PS5 are all ready,
 	 * so nobody sits in a game wondering why there are no subtitles. Each line says what is wrong and fixes it on ✕.
 	 */
-	private fun preflight(host0: DisplayHost, registeredHost: RegisteredHost)
+	private fun preflight(host0: DisplayHost?, registeredHost0: RegisteredHost?)
 	{
 		val panel = FrameLayout(this).apply { setBackgroundColor(0xEE07050C.toInt()); isClickable = true }
 		val box = Ui.col(this).apply { background = Ui.round(Ui.PANEL2, 36f, 3, Ui.VIOLET2); setPadding(64, 48, 64, 48) }
@@ -1129,9 +1291,10 @@ class TvActivity : AppCompatActivity()
 		data class Row(val card: Card, val mark: TextView, val title: TextView, val sub: TextView)
 		val rows = HashMap<String, Row>()
 		var wakeSent = false
-		fun currentHost(): DisplayHost = vm.displayHosts.value?.firstOrNull { it.host == host0.host && it.registeredHost != null } ?: host0
+		fun currentHost(): DisplayHost? = vm.displayHosts.value?.firstOrNull { (host0 == null || it.host == host0.host) && it.registeredHost != null } ?: host0
+		fun reg(): RegisteredHost? = registeredHost0 ?: currentHost()?.registeredHost
 		val fixes = HashMap<String, () -> Unit>()
-		for(key in listOf("pad", "subs", "ai", "ps5"))
+		for(key in listOf("pad", "subs", "ai", "ps5", "hdmi"))
 		{
 			val card = Card(this, 22f); card.grow = 1.02f
 			val r = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(30, 0, 30, 0) }
@@ -1142,7 +1305,7 @@ class TvActivity : AppCompatActivity()
 			r.addView(mark, llp(70, WRAP)); r.addView(c, llp(0, WRAP, 1f, l = 10))
 			card.addView(r, FrameLayout.LayoutParams(MATCH, MATCH))
 			card.setOnClickListener { fixes[key]?.invoke() }
-			box.addView(card, llp(1100, 112, t = 18))
+			box.addView(card, llp(1100, 94, t = 12))
 			rows[key] = Row(card, mark, t1, t2)
 		}
 		val go = Card(this, 30f); go.grow = 1.04f
@@ -1159,7 +1322,10 @@ class TvActivity : AppCompatActivity()
 		paintTips()
 		goRow.addView(tipsBtn, llp(260, 100, l = 20))
 		goRow.addView(go, llp(0, 100, 1f, l = 20))
-		box.addView(goRow, llp(1100, WRAP, t = 26))
+		box.addView(goRow, llp(1100, WRAP, t = 22))
+		// the PS5 draws this banner itself (on its HDMI picture), the app cannot remove it: the PS5 setting can
+		box.addView(text(this, "แถบ \"เชื่อมต่อกับการเล่นระยะไกลแล้ว\" ค้างบนจอ = ข้อความของ PS5 เอง · ปิดได้ที่ PS5: ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"ซ่อนป๊อปอัปสถานะการเชื่อมต่อการเล่นระยะไกล\"",
+			20f, Ui.DIM).apply { setLineSpacing(0f, 1.2f) }, llp(1100, WRAP, t = 14))
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
 		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
 		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(220).start()
@@ -1183,8 +1349,11 @@ class TvActivity : AppCompatActivity()
 		tipsBtn.setOnClickListener { sp.edit().putBoolean(KEY_HIDE_TIPS, !tipsHidden()).apply(); paintTips(); tick.run() }
 		go.setOnClickListener {
 			if(!allOk) { toast("ยังไม่ครบ · กดที่ข้อที่มี ✕ เพื่อแก้ก่อน"); return@setOnClickListener }
+			val h = currentHost(); val r = reg()
 			close()
-			if(hdmi()) startHdmi(currentHost(), registeredHost) else connect(currentHost(), registeredHost)
+			if(h == null || r == null) return@setOnClickListener
+			toast("กำลังเชื่อมต่อ PS5 · เกม " + gameName())
+			if(hdmi()) startHdmi(h, r) else connect(h, r)
 		}
 		// every line that is not ready opens step-by-step help with a button that does the fix
 		fun ready(key: String) = rows[key]?.mark?.text == "✔"
@@ -1236,16 +1405,23 @@ class TvActivity : AppCompatActivity()
 					"ตรวจว่าทีวีต่ออินเทอร์เน็ตอยู่ (ลองเปิด YouTube)"), "ตรวจใหม่") { aiCheck = null; tick.run() }
 			}
 		}
+		lateinit var myKeys: (KeyEvent) -> Boolean
+		fixes["hdmi"] = { hdmiPicker(chooseOnly = true) { keyCatcher = myKeys; rows["hdmi"]?.card?.requestFocus(); tick.run() } }
 		fixes["ps5"] = {
 			val h = currentHost()
+			val r = reg()
 			when
 			{
+				h == null || r == null -> guide("ยังไม่ได้จับคู่ PS5", listOf(
+					"เปิด PS5 ให้อยู่หน้าหลัก และต่อเน็ตบ้านวงเดียวกับทีวี",
+					"กด \"จับคู่ PS5\" ด้านล่าง แล้วทำตามขั้นตอน (ทำครั้งเดียว)"), "จับคู่ PS5") {
+					startActivity(Intent(this, RegistActivity::class.java)) }
 				ready("ps5") -> toast("PS5 พร้อมแล้ว ✔")
 				h is DiscoveredDisplayHost && h.discoveredHost.state == DiscoveryHost.State.STANDBY -> guide("PS5 อยู่โหมดพัก", listOf(
 					"กด \"ปลุก PS5\" ด้านล่าง แล้วรอประมาณ 10 วินาที",
 					"ถ้าปลุกไม่ได้: ที่ PS5 ไปที่ ตั้งค่า › ระบบ › ประหยัดพลังงาน › ฟีเจอร์ในโหมดพัก › เปิด \"คงการเชื่อมต่ออินเทอร์เน็ต\" และ \"เปิด PS5 จากเครือข่าย\"",
 					"หรือกดปุ่มเปิดที่ตัว PS5 / ปุ่ม PS ที่จอยที่ต่อกับ PS5"),
-					"ปลุก PS5") { vm.discoveryManager.sendWakeup(h.host, registeredHost.rpRegistKey, registeredHost.target.isPS5); wakeSent = true; tick.run() }
+					"ปลุก PS5") { vm.discoveryManager.sendWakeup(h.host, r.rpRegistKey, r.target.isPS5); wakeSent = true; tick.run() }
 				else -> guide("ยังไม่เจอ PS5", listOf(
 					"เปิด PS5 ให้อยู่หน้าหลัก (ไม่ใช่ปิดเครื่องสนิท)",
 					"ทีวีกับ PS5 ต้องต่อเน็ตบ้านวงเดียวกัน (เราเตอร์ตัวเดียวกัน) · แนะนำ PS5 ต่อสาย LAN",
@@ -1298,6 +1474,7 @@ class TvActivity : AppCompatActivity()
 			val h = currentHost()
 			when
 			{
+				h == null -> set("ps5", false, "ยังไม่ได้จับคู่ PS5", "กดที่นี่เพื่อจับคู่ (ทำครั้งเดียว)")
 				h is DiscoveredDisplayHost && h.discoveredHost.state == DiscoveryHost.State.READY ->
 					set("ps5", true, "เจอ " + (h.name ?: "PS5") + " แล้ว", "เปิดอยู่ · อยู่เน็ตบ้านเดียวกับทีวี")
 				h is DiscoveredDisplayHost && h.discoveredHost.state == DiscoveryHost.State.STANDBY ->
@@ -1306,12 +1483,28 @@ class TvActivity : AppCompatActivity()
 				h is ManualDisplayHost -> set("ps5", true, (h.name ?: "PS5") + " (เพิ่มด้วย IP)", "ตรวจสถานะล่วงหน้าไม่ได้ · ให้ PS5 เปิดอยู่หน้าหลัก")
 				else -> set("ps5", false, "ยังไม่เจอ PS5", "เปิด PS5 ให้อยู่หน้าหลัก · ทีวีกับ PS5 ต้องใช้เน็ตบ้านวงเดียวกัน")
 			}
-			allOk = rows.values.all { it.mark.text == "✔" }
+			// 5. HDMI 4K mode: which HDMI input the PS5 is on (asked here once, not before every game)
+			val hr = rows["hdmi"]!!
+			if(hdmi())
+			{
+				hr.card.visibility = View.VISIBLE
+				val ins = hdmiInputs()
+				val m = ins.firstOrNull { it.id == sp.getString(KEY_PS5_INPUT, null) }
+				when
+				{
+					ins.isEmpty() -> set("hdmi", true, "เปลี่ยนไปช่อง PS5 ด้วยรีโมททีวี", "ทีวีนี้ไม่ให้แอปเปลี่ยนช่องเอง · กด Input / Source แล้วเลือกช่องที่เสียบ PS5")
+					m != null -> set("hdmi", true, "PS5 อยู่ช่อง " + m.label, "กดที่นี่ถ้าต้องการเปลี่ยนช่อง")
+					else -> set("hdmi", false, "ยังไม่ได้เลือกช่อง HDMI ของ PS5", "กดที่นี่แล้วเลือกช่องที่เสียบ PS5 (เลือกครั้งเดียว)")
+				}
+			}
+			else { hr.card.visibility = View.GONE; hr.mark.text = "✔" }
+			allOk = rows.values.all { it.mark.text == "✔" } && currentHost() != null
 			goText.text = if(allOk) "เริ่มเล่น ▶" else "ยังไม่ครบ ${rows.values.count { it.mark.text != "✔" }} ข้อ"
 			go.alpha = if(allOk) 1f else 0.55f
 			main.postDelayed(this, 1500)
 		} }
-		keyCatcher = { e -> if(e.keyCode == KeyEvent.KEYCODE_BACK && !PadConfig.fromPad(e)) { if(e.action == KeyEvent.ACTION_UP) close(); true } else false }
+		myKeys = { e -> if(e.keyCode == KeyEvent.KEYCODE_BACK && !PadConfig.fromPad(e)) { if(e.action == KeyEvent.ACTION_UP) close(); true } else false }
+		keyCatcher = myKeys
 		tick.run()
 		main.post { (rows.values.firstOrNull { it.mark.text == "✕" }?.card ?: go).requestFocus() }
 	}
@@ -1708,6 +1901,8 @@ class TvActivity : AppCompatActivity()
 	{
 		const val KEY_ONBOARDED = "tv_onboarded"
 		const val KEY_GAME = "tv_game"
+		/** Display name of the picked game ("connecting to …" messages, the in-game status line). */
+		const val KEY_GAME_NAME = "tv_game_name"
 		/** Built-in game (works offline); the id the server knows GTA VI by. */
 		const val DEFAULT_GAME = "gta6"
 		/** Last game list from the server's GET /v1/games, JSON [{id,name}]. */

@@ -118,7 +118,8 @@ class TranslatorController(
 					// one plain line in Thai; nothing technical before the game
 					if(p == CloudTranslator.Problem.NONE || p == CloudTranslator.Problem.OFFLINE)
 					{
-						status(if(p == CloudTranslator.Problem.NONE) "✔ พร้อมแปล · ซับไทยจะขึ้นเองเมื่อเข้าเกม (เปิด Subtitles ในเกม)"
+						val gn = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).getString("tv_game_name", null)
+						status(if(p == CloudTranslator.Problem.NONE) "✔ พร้อมแปล" + (if(gn != null) " $gn" else "") + " · ซับไทยจะขึ้นเองเมื่อเข้าเกม (เปิด Subtitles ในเกม)"
 							else "ต่ออินเทอร์เน็ตไม่ได้ · ตรวจเน็ตของทีวี")
 						main.postDelayed({ if(running.get()) ui.showStatus(null) }, 6000)
 					}

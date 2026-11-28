@@ -163,6 +163,31 @@ class CloudTranslator(private val serverUrl: String, private val licence: String
 		}
 
 
+		/**
+		 * GET /v1/games: the games the owner switched on in the admin page, as (id, name), in the server's order.
+		 * Ids are kept exactly as sent: the TV sends the same id back as `game`. Null when the server can't be reached.
+		 * Blocking: call from a background thread.
+		 */
+		fun games(serverUrl: String): List<Pair<String, String>>?
+		{
+			if(serverUrl.isBlank()) return null
+			var conn: HttpURLConnection? = null
+			return try
+			{
+				conn = (URL(serverUrl.trimEnd('/') + "/v1/games").openConnection() as HttpURLConnection).apply {
+					requestMethod = "GET"; connectTimeout = 3000; readTimeout = 5000 }
+				if(conn.responseCode !in 200..299) return null
+				val arr = JSONObject(conn.inputStream.bufferedReader(Charsets.UTF_8).readText()).optJSONArray("games") ?: return null
+				(0 until arr.length()).mapNotNull { i ->
+					val o = arr.optJSONObject(i) ?: return@mapNotNull null
+					val id = o.optString("id")
+					if(id.isBlank()) null else id to o.optString("name").ifBlank { id }
+				}.distinctBy { it.first }
+			}
+			catch(e: Exception) { Log.w(TAG, "game list failed", e); null }
+			finally { conn?.disconnect() }
+		}
+
 		/** When AI translation opens (server lock until the game is out), ms; 0 = unknown. */
 		@Volatile var aiStart = 0L
 		fun aiStartText() = if(aiStart > 0) java.text.SimpleDateFormat("d MMM yyyy HH:mm น.", java.util.Locale("th", "TH")).format(java.util.Date(aiStart)) else "วันที่เกมออก"

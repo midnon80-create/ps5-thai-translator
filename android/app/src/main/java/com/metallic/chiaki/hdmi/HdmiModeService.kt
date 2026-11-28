@@ -209,7 +209,8 @@ class HdmiModeService : Service()
 		}.also { im?.registerInputDeviceListener(it, main) }
 		val overlayUi = TranslatorOverlay(root, root.findViewById(R.id.hdmiVideo))
 		ui = overlayUi
-		overlayUi.showStatus("กำลังเชื่อมต่อ PS5 เพื่ออ่านซับ…")
+		val gameName = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).getString("tv_game_name", null)
+		overlayUi.showStatus("กำลังเชื่อมต่อ PS5" + (if(gameName != null) " · เกม $gameName" else "") + " เพื่ออ่านซับ…")
 
 		// 2. hidden stream decoded into an image buffer (nothing on screen)
 		val rt = HandlerThread("hdmi-frames").also { it.start() }
