@@ -31,7 +31,7 @@ object SessionReport
 					.put("device", CloudTranslator.deviceId(app))
 					.put("model", Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.DEVICE + ")")
 					.put("android", Build.VERSION.SDK_INT)
-					.put("version", com.metallic.chiaki.BuildConfig.VERSION_NAME)
+					.put("version", com.metallic.chiaki.BuildConfig.VERSION_NAME + (if(com.metallic.chiaki.store.Store.IS_PLAY) "-play" else ""))
 					.put("mode", mode)
 					.put("secs", secs)
 					.put("res", res)

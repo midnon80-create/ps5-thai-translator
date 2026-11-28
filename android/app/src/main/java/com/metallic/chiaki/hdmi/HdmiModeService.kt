@@ -51,12 +51,15 @@ class HdmiModeService : Service()
 			private set
 		/** Last thing that went wrong, shown on the home screen. */
 		@Volatile var lastProblem: String? = null
+		/** Why 4K mode ended, for the end-of-game report ("user:..." = the player did it, "system:..." = the TV did). */
+		@Volatile var stopReason: String? = null
 
 		fun canDrawOverlays(c: Context) = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(c)
 
 		fun start(c: Context, info: ConnectInfo)
 		{
 			lastProblem = null
+			stopReason = null
 			val i = Intent(c, HdmiModeService::class.java).putExtra(EXTRA_CONNECT_INFO, info)
 			// Play build: a plain service (started while the app is on screen); the Thai overlay window keeps it alive
 			if(com.metallic.chiaki.store.Store.IS_PLAY) c.startService(i) else ContextCompat.startForegroundService(c, i)
@@ -77,8 +80,9 @@ class HdmiModeService : Service()
 		}
 
 		/** Stops 4K mode: straight to the running service (asking Android to start it with "stop" can be refused). */
-		fun stop(c: Context)
+		fun stop(c: Context, reason: String = "user:หยุดจากแอป")
 		{
+			stopReason = reason
 			val s = instance
 			if(s != null) { s.main.post { s.shutDown() }; return }
 			try { c.startService(Intent(c, HdmiModeService::class.java).setAction(ACTION_STOP)) } catch(_: Throwable) { }
@@ -275,6 +279,7 @@ class HdmiModeService : Service()
 				val now = SystemClock.elapsedRealtime()
 				if(now - backAt < 2500L) {
 					lastProblem = null
+					stopReason = "user:กดย้อนกลับ 2 ครั้ง"
 					androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).edit()
 						.putBoolean(com.metallic.chiaki.tv.TvActivity.KEY_SHOW_PAD_OFF, true).apply()
 					shutDown()
@@ -307,6 +312,7 @@ class HdmiModeService : Service()
 	override fun onTaskRemoved(rootIntent: Intent?)
 	{
 		lastProblem = null
+		stopReason = "user:ปัดแอปทิ้งจากรายการแอป"
 		shutDown()
 		super.onTaskRemoved(rootIntent)
 	}
@@ -435,7 +441,8 @@ class HdmiModeService : Service()
 		{
 			val stats = translator?.stats()
 			if(stats != null && startedAt > 0)
-				com.metallic.chiaki.translate.SessionReport.send(this, "hdmi", (SystemClock.elapsedRealtime() - startedAt) / 1000, stats, null, lastProblem)
+				com.metallic.chiaki.translate.SessionReport.send(this, "hdmi", (SystemClock.elapsedRealtime() - startedAt) / 1000, stats, null,
+					lastProblem ?: stopReason ?: "system:ทีวีปิดโหมด 4K เอง (ไม่ได้สั่งจากแอป)")
 		}
 		catch(_: Throwable) { }
 		startedAt = 0

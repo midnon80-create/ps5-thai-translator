@@ -70,8 +70,11 @@ class StreamActivity : AppCompatActivity()
 
 	private fun setupTranslator()
 	{
-		// Ask for full brightness while playing (TVs that dim apps in eco modes may honour it; others ignore it)
-		window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }
+		// Full brightness while playing on TVs only (eco modes dim apps). On a phone / tablet this locked the screen at
+		// full brightness and the player could not turn it down: there the system brightness stays in charge.
+		val tv = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+			(getSystemService(android.app.UiModeManager::class.java)?.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION)
+		if(tv) window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }
 		val ui = com.metallic.chiaki.translate.TranslatorOverlay(binding.root, binding.surfaceView)
 		translator = TranslatorController(this, binding.surfaceView, ui)
 	}

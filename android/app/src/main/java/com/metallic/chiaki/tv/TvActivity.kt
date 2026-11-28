@@ -776,7 +776,7 @@ class TvActivity : AppCompatActivity()
 	/** Stops everything that talks to the PS5 (HDMI mode too) and closes the app. */
 	private fun quitApp()
 	{
-		try { if(com.metallic.chiaki.hdmi.HdmiModeService.running) com.metallic.chiaki.hdmi.HdmiModeService.stop(this) } catch(_: Throwable) { }
+		try { if(com.metallic.chiaki.hdmi.HdmiModeService.running) com.metallic.chiaki.hdmi.HdmiModeService.stop(this, "user:เลิกเล่น") } catch(_: Throwable) { }
 		try { vm.discoveryManager.active = false } catch(_: Throwable) { }
 		// Android does not let apps switch a Bluetooth controller off: tell the player the one-button way, and to keep
 		// the TV's Bluetooth on (turning it off also cuts the TV remote)
@@ -836,7 +836,7 @@ class TvActivity : AppCompatActivity()
 		{
 			if(sp.getString(KEY_PLAY_MODE, "stream") == "hdmi") { hdmiPicker(); return }
 			// the player switched to playing through the app (1080p): 4K mode must not keep pulling the TV to HDMI
-			com.metallic.chiaki.hdmi.HdmiModeService.stop(this)
+			com.metallic.chiaki.hdmi.HdmiModeService.stop(this, "user:เปลี่ยนเป็นเล่นผ่านแอป")
 			toast("หยุดโหมด 4K แล้ว · กำลังเตรียมเล่นผ่านแอป")
 		}
 
@@ -947,7 +947,7 @@ class TvActivity : AppCompatActivity()
 		val back = button("← ย้อนกลับ", inputs.isEmpty()) { close() }
 		buttons.addView(back, llp(0, 92, 1f))
 		buttons.addView(button("หยุดโหมด 4K", false) {
-			close(); com.metallic.chiaki.hdmi.HdmiModeService.stop(this); toast("หยุดโหมด 4K แล้ว · เล่นผ่านแอปได้ตามปกติ") }, llp(0, 92, 1f, l = 18))
+			close(); com.metallic.chiaki.hdmi.HdmiModeService.stop(this, "user:กดหยุดโหมด 4K"); toast("หยุดโหมด 4K แล้ว · เล่นผ่านแอปได้ตามปกติ") }, llp(0, 92, 1f, l = 18))
 		box.addView(buttons, llp(1200, WRAP, t = 30))
 		box.addView(text(this, "เล่นด้วยจอยที่ต่อ PS5 · ซับไทยขึ้นทับภาพเอง (เปิด Subtitles ในเกม) · เลิกเล่น: กลับมาที่แอป › การ์ด \"เลิกเล่น\"",
 			21f, Ui.DIM, gravity = Gravity.CENTER), llp(1200, WRAP, t = 16))
@@ -1587,6 +1587,15 @@ class TvActivity : AppCompatActivity()
 		}
 		if(event.action == KeyEvent.ACTION_UP && (event.keyCode == KeyEvent.KEYCODE_BACK) && tab > 0)
 		{ showTab(0, Trans.RIGHT); return true }
+		// "back" on the home page while 4K mode runs: the player is going to the TV / the PS5 input, not quitting.
+		// Closing the app here ended 4K mode, so the game "kicked out" (TVs that do not let apps switch the input make
+		// the player leave the app to switch it). Keep 4K running: leave the app in the background. เลิกเล่น = quit card.
+		if(event.keyCode == KeyEvent.KEYCODE_BACK && tab == 0 && openPanels.isEmpty() && keyCatcher == null &&
+			com.metallic.chiaki.hdmi.HdmiModeService.running && !PadConfig.fromPad(event))
+		{
+			if(event.action == KeyEvent.ACTION_UP) { toast("โหมด 4K ยังทำงานอยู่ · เลิกเล่น: เปิดแอปแล้วกดการ์ด \"เลิกเล่น\""); moveTaskToBack(true) }
+			return true
+		}
 		// menus: give Android the corrected button (on generic-driver PlayStation pads ✕ arrives as B = "back")
 		if(PadConfig.fromPad(event))
 		{
@@ -1604,7 +1613,7 @@ class TvActivity : AppCompatActivity()
 		stopRefresh()
 		// the player closed the app (back out of the home screen / closed it): 4K mode and every connection end
 		// with it; nothing reconnects until the app is opened again
-		if(isFinishing) try { com.metallic.chiaki.hdmi.HdmiModeService.stop(this) } catch(_: Throwable) { }
+		if(isFinishing) try { com.metallic.chiaki.hdmi.HdmiModeService.stop(this, "user:ปิดแอป") } catch(_: Throwable) { }
 		super.onDestroy()
 	}
 
