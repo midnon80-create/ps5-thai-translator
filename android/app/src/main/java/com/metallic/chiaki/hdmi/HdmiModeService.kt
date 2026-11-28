@@ -98,8 +98,6 @@ class HdmiModeService : Service()
 	private var readerThread: HandlerThread? = null
 	private var overlay: View? = null
 	private var ui: TranslatorOverlay? = null
-	/** Hides the PS5's own "connected to Remote Play" box with the same spot of the stream picture (see BannerCover). */
-	@Volatile private var cover: BannerCover? = null
 	private var translator: TranslatorController? = null
 	private var startedAt = 0L
 
@@ -198,11 +196,6 @@ class HdmiModeService : Service()
 			// While our own app is on screen it must let every key through, or the app's pages cannot be used.
 			WINDOW_FLAGS or (if(appInFront) PASS_THROUGH else 0),
 			PixelFormat.TRANSLUCENT)
-		// under the Thai text and status (index 1, right after the picture stand-in)
-		val bc = BannerCover(this).also { it.showing = !appInFront }
-		(root as android.view.ViewGroup).addView(bc, 1, android.view.ViewGroup.LayoutParams(
-			android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
-		cover = bc
 		wm.addView(root, lp)
 		overlay = root
 		overlayLp = lp
@@ -256,7 +249,8 @@ class HdmiModeService : Service()
 		{
 			is ConnectedEvent -> { translator?.setStreamConnected(true); connectedAt = SystemClock.elapsedRealtime()
 				ui?.showStatus(if(tipsHidden()) "✔ ซับไทยพร้อม" else "✔ ซับไทยพร้อม · จอยที่ต่อทีวีใช้เล่นได้เลย · เลิกเล่น: กดย้อนกลับที่รีโมท 2 ครั้ง")
-				main.postDelayed({ ui?.showStatus(null) }, 9000) }
+				main.postDelayed({ ui?.showStatus(null) }, 9000)
+				bannerTip() }
 			// PS5 gone / asks for a PIN: everything stops at once (no message left on the TV, no reconnecting);
 			// the reason is shown next time the app is opened
 			is LoginPinRequestEvent -> { lastProblem = "PS5 ขอรหัส PIN ผู้ใช้ · ปิดรหัสล็อกผู้ใช้ใน PS5 หรือใช้โหมดเล่นผ่านแอป"; shutDown() }
@@ -296,7 +290,6 @@ class HdmiModeService : Service()
 		lp.flags = WINDOW_FLAGS or (if(appInFront) PASS_THROUGH else 0)
 		try { getSystemService(WindowManager::class.java).updateViewLayout(v, lp) } catch(_: Throwable) { }
 		if(!appInFront) v.post { v.requestFocus() }
-		cover?.showing = !appInFront
 	}
 	private var padListener: android.hardware.input.InputManager.InputDeviceListener? = null
 
@@ -357,6 +350,23 @@ class HdmiModeService : Service()
 
 	// no Thai line for a long time (PS5 left on its home screen, TV switched to something else): stop by itself
 	private var connectedAt = 0L
+	/**
+	 * "เชื่อมต่อกับการเล่นระยะไกลแล้ว" at the top of the TV is drawn by the PS5 itself (it shows while Remote Play is
+	 * connected and someone plays on the console), so no app can remove it. Only the PS5 setting turns it off:
+	 * say where, right on the game picture, for the first 5 games.
+	 */
+	private fun bannerTip()
+	{
+		val sp = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+		val n = sp.getInt("ps5_banner_tip_n", 0)
+		if(n >= 5) return
+		sp.edit().putInt("ps5_banner_tip_n", n + 1).apply()
+		main.postDelayed({
+			ui?.showStatus("แถบ \"เชื่อมต่อกับการเล่นระยะไกลแล้ว\" ด้านบนเป็นของ PS5 · ปิดถาวร: PS5 › ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"ซ่อนป๊อปอัปสถานะการเชื่อมต่อการเล่นระยะไกล\"")
+			main.postDelayed({ ui?.showStatus(null) }, 15_000)
+		}, 9500)
+	}
+
 	private fun tipsHidden() = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
 		.getBoolean(com.metallic.chiaki.tv.TvActivity.KEY_HIDE_TIPS, false)
 	private var noSubTipShown = false
@@ -393,8 +403,6 @@ class HdmiModeService : Service()
 		val img = try { r.acquireLatestImage() } catch(_: Throwable) { null } ?: return
 		try
 		{
-			// every picture (30 a second; 20 on weaker TVs) for the patch over the PS5's box
-			try { cover?.feed(img, if(com.metallic.chiaki.translate.TranslatorController.frameWidth > 960) 0L else 45L) } catch(_: Throwable) { }
 			val now = SystemClock.elapsedRealtime()
 			if(now - frameAt < 120) return // the reader reads at most ~5 a second; never copy more than that
 			val plane = img.planes[0]
@@ -496,7 +504,7 @@ class HdmiModeService : Service()
 		reader = null
 		readerThread?.quitSafely(); readerThread = null
 		overlay?.let { v -> try { getSystemService(WindowManager::class.java).removeView(v) } catch(_: Throwable) { } }
-		overlay = null; ui = null; cover = null
+		overlay = null; ui = null
 		if(!com.metallic.chiaki.store.Store.IS_PLAY)
 			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
 	}
