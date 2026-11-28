@@ -217,8 +217,6 @@ open class Card(c: Context, private val radius: Float = 26f, private val fill: I
 {
 	var grow = 1.05f
 
-	override fun performClick(): Boolean { Sfx.play(Sfx.S.CLICK); return super.performClick() }
-
 	init
 	{
 		isFocusable = true
@@ -227,7 +225,6 @@ open class Card(c: Context, private val radius: Float = 26f, private val fill: I
 		clipChildren = false
 		refresh()
 		setOnFocusChangeListener { _, f ->
-			if(f) Sfx.focus()
 			refresh()
 			animate().scaleX(if(f) grow else 1f).scaleY(if(f) grow else 1f).setDuration(200).setInterpolator(Ui.ease()).start()
 			Ui.glow(this, f)

@@ -249,7 +249,8 @@ class HdmiModeService : Service()
 		{
 			is ConnectedEvent -> { translator?.setStreamConnected(true); connectedAt = SystemClock.elapsedRealtime()
 				ui?.showStatus(if(tipsHidden()) "✔ ซับไทยพร้อม" else "✔ ซับไทยพร้อม · จอยที่ต่อทีวีใช้เล่นได้เลย · เลิกเล่น: กดย้อนกลับที่รีโมท 2 ครั้ง")
-				main.postDelayed({ ui?.showStatus(null) }, 9000) }
+				main.postDelayed({ ui?.showStatus(null) }, 9000)
+				bannerTip() }
 			// PS5 gone / asks for a PIN: everything stops at once (no message left on the TV, no reconnecting);
 			// the reason is shown next time the app is opened
 			is LoginPinRequestEvent -> { lastProblem = "PS5 ขอรหัส PIN ผู้ใช้ · ปิดรหัสล็อกผู้ใช้ใน PS5 หรือใช้โหมดเล่นผ่านแอป"; shutDown() }
@@ -349,6 +350,23 @@ class HdmiModeService : Service()
 
 	// no Thai line for a long time (PS5 left on its home screen, TV switched to something else): stop by itself
 	private var connectedAt = 0L
+	/**
+	 * "เชื่อมต่อกับการเล่นระยะไกลแล้ว" at the top of the TV is drawn by the PS5 itself (it shows while Remote Play is
+	 * connected and someone plays on the console), so no app can remove it. Only the PS5 setting turns it off:
+	 * say where, right on the game picture, for the first 5 games.
+	 */
+	private fun bannerTip()
+	{
+		val sp = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+		val n = sp.getInt("ps5_banner_tip_n", 0)
+		if(n >= 5) return
+		sp.edit().putInt("ps5_banner_tip_n", n + 1).apply()
+		main.postDelayed({
+			ui?.showStatus("แถบ \"เชื่อมต่อกับการเล่นระยะไกลแล้ว\" ด้านบนเป็นของ PS5 · ปิดถาวร: PS5 › ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"ซ่อนป๊อปอัปสถานะการเชื่อมต่อการเล่นระยะไกล\"")
+			main.postDelayed({ ui?.showStatus(null) }, 15_000)
+		}, 9500)
+	}
+
 	private fun tipsHidden() = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
 		.getBoolean(com.metallic.chiaki.tv.TvActivity.KEY_HIDE_TIPS, false)
 	private var noSubTipShown = false

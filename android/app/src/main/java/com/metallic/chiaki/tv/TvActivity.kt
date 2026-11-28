@@ -89,7 +89,6 @@ class TvActivity : AppCompatActivity()
 	{
 		super.onCreate(savedInstanceState)
 		stage = Stage(this)
-		Sfx.init(this)
 		setContentView(stage)
 		hideCursor(window.decorView)
 		WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -176,7 +175,8 @@ class TvActivity : AppCompatActivity()
 	{
 		val old = page
 		page = v
-		stopRefresh()
+		if(!freshRefresher) stopRefresh()
+		freshRefresher = false
 		root.addView(v, FrameLayout.LayoutParams(1920, 1080))
 		// anything older than the page being replaced goes now
 		pages.filter { it !== old && it !== v }.forEach { it.animate().cancel(); root.removeView(it) }
@@ -593,16 +593,14 @@ class TvActivity : AppCompatActivity()
 			sub.text = when(g.state) { GameState.SOON -> "เข้าวันที่ ${g.date ?: "เร็ว ๆ นี้"} · ซับไทยพร้อมตั้งแต่วันเกมออก"; else -> "ซับไทยพร้อม ✔ · กด ✕ เพื่อเลือก" }
 			sub.setTextColor(if(g.state == GameState.SOON) Ui.MUTED else Ui.OK)
 			chipCards.forEach { it.refresh() }
-			if(animate) Sfx.play(Sfx.S.TICK)
 		}
 		layoutRow(false)
 
 		fun pick()
 		{
 			val g = games[focus]
-			if(g.state == GameState.SOON) { Sfx.play(Sfx.S.WARN); toast("${g.title} · เข้า ${g.date ?: "เร็ว ๆ นี้"}"); return }
+			if(g.state == GameState.SOON) { toast("${g.title} · เข้า ${g.date ?: "เร็ว ๆ นี้"}"); return }
 			sp.edit().putString(KEY_GAME, g.id).putString(KEY_GAME_NAME, g.title).apply()
-			Sfx.play(Sfx.S.CONFIRM)
 			if(onboarding) { sp.edit().putBoolean(KEY_ONBOARDED, true).apply(); showTab(0, Trans.LEFT) }
 			else { toast("เลือก ${g.title} แล้ว ✔"); showTab(0, Trans.RIGHT) }
 		}
@@ -748,7 +746,6 @@ class TvActivity : AppCompatActivity()
 		// from the content, "down" always reaches the tab bar; from the tab bar "up" goes back into the content
 		navCards.forEach { it.nextFocusUpId = View.NO_ID }
 		tab = i
-		if(t == Trans.LEFT || t == Trans.RIGHT) Sfx.play(Sfx.S.PAGE)
 		go(v, t, firstFocusable(content) ?: navCards[i])
 		if(i == 0) startStoreOnce()
 		if(sp.getBoolean(KEY_ONBOARDED, false).not()) sp.edit().putBoolean(KEY_ONBOARDED, true).apply()
@@ -809,7 +806,6 @@ class TvActivity : AppCompatActivity()
 			val on = !TranslatorPrefs(this).enabled
 			sp.edit().putBoolean("tr_enabled", on).apply()
 			paint(on, true)
-			Sfx.play(if(on) Sfx.S.ON else Sfx.S.OFF)
 		}
 		v.addView(toggle, lp(939, 790, 90, 150))
 
@@ -838,7 +834,7 @@ class TvActivity : AppCompatActivity()
 						grow = 1.04f
 						addView(inner, FrameLayout.LayoutParams(MATCH, MATCH))
 						setOnClickListener { openChecklist() }
-					}.also { checkCard = it }
+					}.also { checkCard = it; checkTile = it }
 				}
 				else inner.apply { background = Ui.round(Ui.PANEL, 22f, 2, Ui.LINE) }
 				row.addView(cell, llp(0, 120, 1f, l = if(k == 0) 0 else 20))
@@ -877,7 +873,7 @@ class TvActivity : AppCompatActivity()
 		col.addView(quit, llp(MATCH, 104, t = 22))
 		v.addView(col, lp(751, WRAP, 1079, 150))
 
-		fun ok(b: Boolean) = if(b) "✔ " else "! "
+		fun ok(b: Boolean) = if(b) "✔ " else "✕ "
 		fun setTile(k: String, good: Boolean, title: String, s: String)
 		{
 			tiles[k]?.text = android.text.SpannableStringBuilder(ok(good)).apply {
@@ -933,19 +929,15 @@ class TvActivity : AppCompatActivity()
 		val tick = object : Runnable { override fun run() {
 			val checks = quickChecks()
 			val bad = checks.values.count { it == false }
-			if(bad == 0) setTile("check", true, "เช็กครบ พร้อมเล่น", if(checks.values.any { it == null }) "กำลังตรวจ… · กดดูรายการ" else "เช็กก่อนเข้าเกม · กดดูรายการ")
+			if(bad == 0)
+				setTile("check", true, if(checks.values.any { it == null }) "กำลังเช็กการเชื่อมต่อ…" else "การเชื่อมต่อครบสมบูรณ์",
+					"เช็กครบทุกข้อ · กดดูรายการ")
 			else
 			{
-				setTile("check", false, "ยังไม่ครบ $bad ข้อ", "เช็กก่อนเข้าเกม · กดดูและแก้")
+				setTile("check", false, "ยังไม่ครบ $bad ข้อ", "เข้าเกมไม่ได้ · กดดูและแก้")
 				// a little shake every few seconds so nobody misses it
 				val now = System.currentTimeMillis()
-				val c = checkCard
-				if(c != null && now - lastShake > 4000 && c.isShown)
-				{
-					lastShake = now
-					Sfx.play(Sfx.S.WARN)
-					android.animation.ObjectAnimator.ofFloat(c, "translationX", 0f, -16f, 16f, -12f, 12f, -6f, 6f, 0f).setDuration(560).start()
-				}
+				if(now - lastShake > 4000) { lastShake = now; shakeCheck() }
 			}
 			main.postDelayed(this, 1500) } }
 		startRefresh(tick)
@@ -1032,15 +1024,11 @@ class TvActivity : AppCompatActivity()
 	private fun play(host: DisplayHost, registeredHost: RegisteredHost)
 	{
 		val hdmi = sp.getString(KEY_PLAY_MODE, "stream") == "hdmi"
-		if(hdmi && !com.metallic.chiaki.hdmi.HdmiModeService.canDrawOverlays(this))
-		{
-			toast("โหมด 4K ยังไม่ได้อนุญาตแสดงทับ · แก้ตามรายการนี้ก่อน")
-			preflight(host, registeredHost); return
-		}
+		// anything ✕ on the checklist: the tile shakes and nothing starts
+		if(blockedByChecklist { play(host, registeredHost) }) return
 		fun go(h: DisplayHost)
 		{
 			toast("กำลังเชื่อมต่อ PS5 · เกม " + gameName())
-			Sfx.play(Sfx.S.CONFIRM)
 			if(hdmi) startHdmi(h, registeredHost) else connect(h, registeredHost)
 		}
 		if(host is DiscoveredDisplayHost && host.discoveredHost.state == DiscoveryHost.State.STANDBY)
@@ -1059,6 +1047,48 @@ class TvActivity : AppCompatActivity()
 			return
 		}
 		go(host)
+	}
+
+	private var checkTile: Card? = null
+
+	private fun shakeCheck()
+	{
+		val c = checkTile ?: return
+		if(!c.isShown) return
+		android.animation.ObjectAnimator.ofFloat(c, "translationX", 0f, -18f, 18f, -14f, 14f, -7f, 7f, 0f).setDuration(560).start()
+	}
+
+	/**
+	 * Something on the checklist is ✕: no game. The tile shakes and takes the focus, the toast says what is missing.
+	 * The PS5 itself is not judged here (asleep is fine, play() wakes it). AI that failed is checked once more first,
+	 * so a short hiccup does not stop anybody.
+	 */
+	private fun blockedByChecklist(onPass: () -> Unit): Boolean
+	{
+		val names = mapOf("pad" to "จอย", "subs" to "ซับไทยปิดอยู่", "ai" to "AI", "hdmi" to "ช่อง HDMI")
+		fun missing() = quickChecks().filter { it.key != "ps5" && it.value == false }.keys.map { names[it] ?: it }
+		var miss = missing()
+		if(miss.isEmpty()) return false
+		if(miss == listOf("AI"))
+		{
+			toast("กำลังเช็ก AI อีกครั้ง…")
+			Thread {
+				val prefs = TranslatorPrefs(this)
+				val pr = CloudTranslator(prefs.serverUrl, prefs.cloudCode, CloudTranslator.deviceId(this)).check()
+				aiCheck = Pair(System.currentTimeMillis(), pr)
+				main.post { if(missing().isEmpty()) onPass() else refuse(missing()) }
+			}.start()
+			return true
+		}
+		refuse(miss)
+		return true
+	}
+
+	private fun refuse(miss: List<String>)
+	{
+		if(tab != 0) showTab(0, Trans.RIGHT)
+		main.postDelayed({ checkTile?.requestFocus(); shakeCheck() }, 250)
+		toast("ยังเข้าเกมไม่ได้ ✕ ยังไม่ครบ: " + miss.joinToString(" · ") + " · กดแถบเช็กลิสต์เพื่อแก้")
 	}
 
 	/** Home tile "เช็กก่อนเข้าเกม": the full checklist for the PS5 that is paired (or what is missing). */
@@ -1161,7 +1191,7 @@ class TvActivity : AppCompatActivity()
 			else "เลือกช่องที่เสียบสาย HDMI จาก PS5 · ไม่ใช่ช่อง eARC / ARC ที่ต่อลำโพงหรือซาวด์บาร์ · เลือกผิด กลับมาเลือกใหม่ได้ทุกครั้ง",
 			24f, Ui.MUTED).apply { setLineSpacing(0f, 1.25f) }, llp(1200, WRAP, t = 8))
 		var closed = false
-		fun close() { if(closed) return; closed = true; Sfx.play(Sfx.S.CLOSE); keyCatcher = null; dropPanel(panel, 160); onClose?.invoke() }
+		fun close() { if(closed) return; closed = true; keyCatcher = null; dropPanel(panel, 160); onClose?.invoke() }
 		openPanels[panel] = { close() }
 		var focus: View? = null
 		var row: LinearLayout? = null
@@ -1218,7 +1248,6 @@ class TvActivity : AppCompatActivity()
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
 		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
 		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(200).start()
-		Sfx.play(Sfx.S.OPEN)
 		keyCatcher = { e -> if((e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B) && !PadConfig.fromPad(e)) { if(e.action == KeyEvent.ACTION_UP) close(); true } else false }
 		val f = focus ?: back
 		main.post { f.requestFocus() }
@@ -1345,11 +1374,10 @@ class TvActivity : AppCompatActivity()
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
 		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
 		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(220).start()
-		Sfx.play(Sfx.S.OPEN)
 
 		var closed = false
 		lateinit var tick: Runnable
-		fun close() { if(closed) return; closed = true; Sfx.play(Sfx.S.CLOSE); main.removeCallbacks(tick); keyCatcher = null; dropPanel(panel, 180) }
+		fun close() { if(closed) return; closed = true; main.removeCallbacks(tick); keyCatcher = null; dropPanel(panel, 180) }
 		openPanels[panel] = { close() }
 		fun set(key: String, good: Boolean?, title: String, sub: String)
 		{
@@ -1568,10 +1596,7 @@ class TvActivity : AppCompatActivity()
 			Topic("ฟอนต์", "tr_font", "kanit", TranslatorPrefs.Font.values().filter { it != TranslatorPrefs.Font.NOTO }.map { Opt(it.title, null, it.value) }, "แบบตัวอักษร"),
 			Topic("เล่นแบบ", KEY_PLAY_MODE, "stream", listOf(
 				Opt("ผ่านแอป · 1080p", "ทีวีทุกรุ่น กล่อง ดองเกิล · ปรับภาพอัตโนมัติ", "stream"),
-				Opt("4K · HDMI", "PS5 เสียบทีวีเครื่องนี้ · ภาพ 4K จาก PS5 ตรง ๆ", "hdmi")), "ภาพเกมมาจากไหน"),
-			Topic("เสียงเมนู", Sfx.KEY, "on", listOf(
-				Opt("เปิด", "เสียงตอนเลื่อน เลือกเกม และเปลี่ยนหน้า", "on"),
-				Opt("ปิด", "ไม่มีเสียงในเมนู", "off")), "เสียงในแอป"))
+				Opt("4K · HDMI", "PS5 เสียบทีวีเครื่องนี้ · ภาพ 4K จาก PS5 ตรง ๆ", "hdmi")), "ภาพเกมมาจากไหน"))
 		fun labelOf(t: Topic) = t.opts.firstOrNull { it.value == cur(t) }?.label ?: ""
 
 		fun save(t: Topic, value: String)
@@ -1870,12 +1895,13 @@ class TvActivity : AppCompatActivity()
 
 	// ------------------------------------------------------------------ live refresh, keys
 
-	private fun startRefresh(r: Runnable) { stopRefresh(); refresher = r; main.post(r) }
+	// set when a page being built starts its refresher, so go() (called right after) keeps it running
+	private var freshRefresher = false
+	private fun startRefresh(r: Runnable) { stopRefresh(); refresher = r; freshRefresher = true; main.post(r) }
 	private fun stopRefresh() { refresher?.let { main.removeCallbacks(it) }; refresher = null }
 
 	override fun dispatchKeyEvent(event: KeyEvent): Boolean
 	{
-		if(event.action == KeyEvent.ACTION_DOWN) Sfx.lastKeyAt = android.os.SystemClock.elapsedRealtime()
 		keyCatcher?.let { if(it(event)) return true }
 		val pv = padView
 		if(pv != null && PadConfig.fromPad(event))
