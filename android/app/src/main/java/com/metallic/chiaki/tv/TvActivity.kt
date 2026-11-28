@@ -89,6 +89,7 @@ class TvActivity : AppCompatActivity()
 	{
 		super.onCreate(savedInstanceState)
 		stage = Stage(this)
+		Sfx.init(this)
 		setContentView(stage)
 		hideCursor(window.decorView)
 		WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -350,12 +351,12 @@ class TvActivity : AppCompatActivity()
 		"tombraider" to R.drawable.poster_tombraider, "ff7" to R.drawable.poster_ff7, "edge" to R.drawable.poster_edge,
 		"007" to R.drawable.poster_007, "requiem" to R.drawable.poster_requiem, "mw4" to R.drawable.poster_mw4,
 		"dawnwalker" to R.drawable.poster_dawnwalker, "crimson" to R.drawable.poster_crimson,
-		"blackflag" to R.drawable.poster_blackflag, "onimusha" to R.drawable.poster_onimusha)
+		"blackflag" to R.drawable.poster_blackflag, "onimusha" to R.drawable.poster_onimusha, "rdr2" to R.drawable.poster_rdr2)
 
 	/** Wide art without the logo, behind the ซับไทย card on the home page (the picked game). */
 	private val heroArt = mapOf("gta6" to R.drawable.hero_gta6, "007" to R.drawable.hero_007, "requiem" to R.drawable.hero_requiem,
 		"mw4" to R.drawable.hero_mw4, "dawnwalker" to R.drawable.hero_dawnwalker, "crimson" to R.drawable.hero_crimson,
-		"blackflag" to R.drawable.hero_blackflag, "onimusha" to R.drawable.hero_onimusha)
+		"blackflag" to R.drawable.hero_blackflag, "onimusha" to R.drawable.hero_onimusha, "rdr2" to R.drawable.hero_rdr2)
 
 	/** "Coming soon" teasers shown while the server doesn't list them as playable (soonest first). */
 	private val soonGames = listOf(
@@ -592,14 +593,16 @@ class TvActivity : AppCompatActivity()
 			sub.text = when(g.state) { GameState.SOON -> "เข้าวันที่ ${g.date ?: "เร็ว ๆ นี้"} · ซับไทยพร้อมตั้งแต่วันเกมออก"; else -> "ซับไทยพร้อม ✔ · กด ✕ เพื่อเลือก" }
 			sub.setTextColor(if(g.state == GameState.SOON) Ui.MUTED else Ui.OK)
 			chipCards.forEach { it.refresh() }
+			if(animate) Sfx.play(Sfx.S.TICK)
 		}
 		layoutRow(false)
 
 		fun pick()
 		{
 			val g = games[focus]
-			if(g.state == GameState.SOON) { toast("${g.title} · เข้า ${g.date ?: "เร็ว ๆ นี้"}"); return }
+			if(g.state == GameState.SOON) { Sfx.play(Sfx.S.WARN); toast("${g.title} · เข้า ${g.date ?: "เร็ว ๆ นี้"}"); return }
 			sp.edit().putString(KEY_GAME, g.id).putString(KEY_GAME_NAME, g.title).apply()
+			Sfx.play(Sfx.S.CONFIRM)
 			if(onboarding) { sp.edit().putBoolean(KEY_ONBOARDED, true).apply(); showTab(0, Trans.LEFT) }
 			else { toast("เลือก ${g.title} แล้ว ✔"); showTab(0, Trans.RIGHT) }
 		}
@@ -742,10 +745,10 @@ class TvActivity : AppCompatActivity()
 			else -> helpContent()
 		}
 		v.addView(content, 0, FrameLayout.LayoutParams(1920, 1080))
-		v.addView(freeBadge(), FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply { topMargin = 50; rightMargin = 90 })
 		// from the content, "down" always reaches the tab bar; from the tab bar "up" goes back into the content
 		navCards.forEach { it.nextFocusUpId = View.NO_ID }
 		tab = i
+		if(t == Trans.LEFT || t == Trans.RIGHT) Sfx.play(Sfx.S.PAGE)
 		go(v, t, firstFocusable(content) ?: navCards[i])
 		if(i == 0) startStoreOnce()
 		if(sp.getBoolean(KEY_ONBOARDED, false).not()) sp.edit().putBoolean(KEY_ONBOARDED, true).apply()
@@ -806,6 +809,7 @@ class TvActivity : AppCompatActivity()
 			val on = !TranslatorPrefs(this).enabled
 			sp.edit().putBoolean("tr_enabled", on).apply()
 			paint(on, true)
+			Sfx.play(if(on) Sfx.S.ON else Sfx.S.OFF)
 		}
 		v.addView(toggle, lp(939, 790, 90, 150))
 
@@ -939,6 +943,7 @@ class TvActivity : AppCompatActivity()
 				if(c != null && now - lastShake > 4000 && c.isShown)
 				{
 					lastShake = now
+					Sfx.play(Sfx.S.WARN)
 					android.animation.ObjectAnimator.ofFloat(c, "translationX", 0f, -16f, 16f, -12f, 12f, -6f, 6f, 0f).setDuration(560).start()
 				}
 			}
@@ -1035,6 +1040,7 @@ class TvActivity : AppCompatActivity()
 		fun go(h: DisplayHost)
 		{
 			toast("กำลังเชื่อมต่อ PS5 · เกม " + gameName())
+			Sfx.play(Sfx.S.CONFIRM)
 			if(hdmi) startHdmi(h, registeredHost) else connect(h, registeredHost)
 		}
 		if(host is DiscoveredDisplayHost && host.discoveredHost.state == DiscoveryHost.State.STANDBY)
@@ -1155,7 +1161,7 @@ class TvActivity : AppCompatActivity()
 			else "เลือกช่องที่เสียบสาย HDMI จาก PS5 · ไม่ใช่ช่อง eARC / ARC ที่ต่อลำโพงหรือซาวด์บาร์ · เลือกผิด กลับมาเลือกใหม่ได้ทุกครั้ง",
 			24f, Ui.MUTED).apply { setLineSpacing(0f, 1.25f) }, llp(1200, WRAP, t = 8))
 		var closed = false
-		fun close() { if(closed) return; closed = true; keyCatcher = null; dropPanel(panel, 160); onClose?.invoke() }
+		fun close() { if(closed) return; closed = true; Sfx.play(Sfx.S.CLOSE); keyCatcher = null; dropPanel(panel, 160); onClose?.invoke() }
 		openPanels[panel] = { close() }
 		var focus: View? = null
 		var row: LinearLayout? = null
@@ -1163,15 +1169,24 @@ class TvActivity : AppCompatActivity()
 			if(k % 3 == 0) { row = Ui.row(this); box.addView(row, llp(1200, WRAP, t = if(k == 0) 26 else 16)) }
 			val card = Card(this, 24f, Ui.PANEL) { inp.id == saved }
 			card.grow = 1.05f
-			val c = Ui.col(this).apply { setPadding(26, 18, 26, 18); gravity = Gravity.CENTER_VERTICAL }
-			c.addView(text(this, inp.label, 34f, Ui.TEXT, W.SEMIBOLD).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+			val c = Ui.col(this).apply { setPadding(26, 16, 22, 16); gravity = Gravity.CENTER_VERTICAL }
+			// long input names ("HDMI 3 (eARC/ARC)") shrink to fit one line instead of wrapping out of the card
+			val name = text(this, inp.label, 34f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER_VERTICAL).apply { maxLines = 1; includeFontPadding = false }
+			androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(name, 20, 34, 1, android.util.TypedValue.COMPLEX_UNIT_PX)
+			c.addView(name, llp(MATCH, 50))
+			// status as small coloured chips on one row under the name
 			val tags = ArrayList<Pair<String, Int>>()
 			tags += if(inp.live) "● มีสัญญาณ" to Ui.OK else "○ ไม่มีสัญญาณ" to Ui.DIM
 			if(inp.id == saved) tags += "ใช้ครั้งก่อน" to Ui.VIOLET2
 			if(inp.arc) tags += "ช่องลำโพง?" to Ui.WARN
-			c.addView(text(this, android.text.SpannableStringBuilder().apply {
-				tags.forEachIndexed { i, (t, col) -> if(i > 0) append("  ·  "); val s = length; append(t)
-					setSpan(android.text.style.ForegroundColorSpan(col), s, length, 0) } }, 21f, Ui.MUTED), llp(WRAP, WRAP, t = 4))
+			val chips = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL }
+			tags.forEachIndexed { i, (t, col) ->
+				chips.addView(text(this, t, 19f, col, W.MEDIUM, Gravity.CENTER).apply {
+					maxLines = 1; includeFontPadding = false
+					background = Ui.round((col and 0x00FFFFFF) or 0x24000000, 16f, 2, (col and 0x00FFFFFF) or 0x66000000.toInt())
+					setPadding(14, 0, 14, 0) }, llp(WRAP, 32, l = if(i == 0) 0 else 8))
+			}
+			c.addView(chips, llp(MATCH, WRAP, t = 8))
 			card.addView(c, FrameLayout.LayoutParams(MATCH, MATCH))
 			card.setOnClickListener {
 				sp.edit().putString(KEY_PS5_INPUT, inp.id).apply()
@@ -1203,6 +1218,7 @@ class TvActivity : AppCompatActivity()
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
 		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
 		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(200).start()
+		Sfx.play(Sfx.S.OPEN)
 		keyCatcher = { e -> if((e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B) && !PadConfig.fromPad(e)) { if(e.action == KeyEvent.ACTION_UP) close(); true } else false }
 		val f = focus ?: back
 		main.post { f.requestFocus() }
@@ -1329,10 +1345,11 @@ class TvActivity : AppCompatActivity()
 		panel.addView(box, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER))
 		root.addView(panel, FrameLayout.LayoutParams(1920, 1080))
 		panel.alpha = 0f; panel.animate().alpha(1f).setDuration(220).start()
+		Sfx.play(Sfx.S.OPEN)
 
 		var closed = false
 		lateinit var tick: Runnable
-		fun close() { if(closed) return; closed = true; main.removeCallbacks(tick); keyCatcher = null; dropPanel(panel, 180) }
+		fun close() { if(closed) return; closed = true; Sfx.play(Sfx.S.CLOSE); main.removeCallbacks(tick); keyCatcher = null; dropPanel(panel, 180) }
 		openPanels[panel] = { close() }
 		fun set(key: String, good: Boolean?, title: String, sub: String)
 		{
@@ -1551,7 +1568,10 @@ class TvActivity : AppCompatActivity()
 			Topic("ฟอนต์", "tr_font", "kanit", TranslatorPrefs.Font.values().filter { it != TranslatorPrefs.Font.NOTO }.map { Opt(it.title, null, it.value) }, "แบบตัวอักษร"),
 			Topic("เล่นแบบ", KEY_PLAY_MODE, "stream", listOf(
 				Opt("ผ่านแอป · 1080p", "ทีวีทุกรุ่น กล่อง ดองเกิล · ปรับภาพอัตโนมัติ", "stream"),
-				Opt("4K · HDMI", "PS5 เสียบทีวีเครื่องนี้ · ภาพ 4K จาก PS5 ตรง ๆ", "hdmi")), "ภาพเกมมาจากไหน"))
+				Opt("4K · HDMI", "PS5 เสียบทีวีเครื่องนี้ · ภาพ 4K จาก PS5 ตรง ๆ", "hdmi")), "ภาพเกมมาจากไหน"),
+			Topic("เสียงเมนู", Sfx.KEY, "on", listOf(
+				Opt("เปิด", "เสียงตอนเลื่อน เลือกเกม และเปลี่ยนหน้า", "on"),
+				Opt("ปิด", "ไม่มีเสียงในเมนู", "off")), "เสียงในแอป"))
 		fun labelOf(t: Topic) = t.opts.firstOrNull { it.value == cur(t) }?.label ?: ""
 
 		fun save(t: Topic, value: String)
@@ -1855,6 +1875,7 @@ class TvActivity : AppCompatActivity()
 
 	override fun dispatchKeyEvent(event: KeyEvent): Boolean
 	{
+		if(event.action == KeyEvent.ACTION_DOWN) Sfx.lastKeyAt = android.os.SystemClock.elapsedRealtime()
 		keyCatcher?.let { if(it(event)) return true }
 		val pv = padView
 		if(pv != null && PadConfig.fromPad(event))
