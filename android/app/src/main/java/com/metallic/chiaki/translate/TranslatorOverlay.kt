@@ -49,7 +49,7 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 
 	// the "previous line" switch (settings): turned off while playing = the dim line goes at once, never comes back
 	private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-		if(key == TranslatorPrefs.KEY_SHOW_PREVIOUS && !prefs.showPrevious) screenText.post {
+		if((key == TranslatorPrefs.KEY_SHOW_PREVIOUS && !prefs.showPrevious) || key == TranslatorPrefs.KEY_PREVIOUS_ABOVE) screenText.post {
 			screenText.removeCallbacks(dropPrevious)
 			prevThai = null
 			if(screenText.isVisible && curThai.isNotEmpty()) setText(screenText, curThai, curEnglish)
@@ -98,7 +98,15 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 		// black outline around the chosen colour (yellow / white / green), thicker when there is no band behind
 		view.outlineWidthPx = textPx * scale * (if(prefs.backgroundAlpha == 0) 0.11f else 0.07f)
 		val main = if(showEnglish) thai + '\n' + english else thai
-		view.text = if(previous == null) main else android.text.SpannableStringBuilder().apply {
+		view.maxLines = if(previous != null && prefs.previousAbove) 5 else 3
+		view.text = if(previous == null) main else if(prefs.previousAbove) android.text.SpannableStringBuilder().apply {
+			// its own row above the new line: a bit smaller and in another colour, so the eye goes to the new line first
+			append(previous)
+			setSpan(FillColorSpan(PREVIOUS_COLOR), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			setSpan(android.text.style.RelativeSizeSpan(0.82f), 0, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			append('\n')
+			append(main)
+		} else android.text.SpannableStringBuilder().apply {
 			// the line before stays a moment on the same line, in another colour, so a fast cutscene can still be read
 			append(previous)
 			append("  ›  ")
@@ -124,11 +132,12 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 		if(english != curEnglish)
 		{
 			// a new line: the previous Thai line moves up (dimmer) for PREVIOUS_KEEP_MS if it was shown only briefly
-			prevThai = if(prefs.showPrevious && screenText.isVisible && curThai.isNotEmpty() && now - screenShownAt < PREVIOUS_IF_SHOWN_UNDER_MS) curThai else null
+			val above = prefs.previousAbove
+			prevThai = if(prefs.showPrevious && screenText.isVisible && curThai.isNotEmpty() && (above || now - screenShownAt < PREVIOUS_IF_SHOWN_UNDER_MS)) curThai else null
 			curEnglish = english
 			screenShownAt = now
 			screenText.removeCallbacks(dropPrevious)
-			if(prevThai != null) screenText.postDelayed(dropPrevious, PREVIOUS_KEEP_MS)
+			if(prevThai != null) screenText.postDelayed(dropPrevious, if(above) PREVIOUS_ABOVE_KEEP_MS else PREVIOUS_KEEP_MS)
 		}
 		// same English line again = the better (AI) version of it replaces the quick one in place
 		curThai = thai
@@ -438,6 +447,7 @@ class TranslatorOverlay(private val root: View, private val video: View) : Trans
 	{
 		const val PREVIOUS_IF_SHOWN_UNDER_MS = 3000L
 		const val PREVIOUS_KEEP_MS = 2500L
+		const val PREVIOUS_ABOVE_KEEP_MS = 4500L
 		/** The longest a Thai line can stay up (game subtitles change well before this). */
 		const val MAX_LINE_MS = 10_000L
 		/** The line before, shown in front of the new one on the same line. */

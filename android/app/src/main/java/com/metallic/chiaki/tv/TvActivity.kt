@@ -1572,7 +1572,7 @@ class TvActivity : AppCompatActivity()
 		val draft = HashMap<String, String>() // choice the remote is on (preview only)
 		fun cur(t: Topic) = draft[t.key] ?: when(t.key)
 		{
-			TranslatorPrefs.KEY_SHOW_PREVIOUS -> if(sp.getBoolean(t.key, true)) "1" else "0"
+			TranslatorPrefs.KEY_SHOW_PREVIOUS -> if(!sp.getBoolean(t.key, true)) "0" else if(sp.getBoolean(TranslatorPrefs.KEY_PREVIOUS_ABOVE, false)) "above" else "1"
 			TranslatorPrefs.KEY_MODE -> when(TranslatorPrefs(this).mode) { TranslatorPrefs.Mode.BOTH -> "both"; TranslatorPrefs.Mode.SPEECH -> "speech"; else -> "screen" }
 			KEY_PLAY_MODE -> sp.getString(KEY_PLAY_MODE, "stream") ?: "stream"
 			else -> sp.getString(t.key, t.def) ?: t.def
@@ -1592,7 +1592,9 @@ class TvActivity : AppCompatActivity()
 			Topic("ตำแหน่งซับไทย", TranslatorPrefs.KEY_POSITION, "above", listOf(
 				Opt("เหนือซับอังกฤษ", null, "above"), Opt("ใต้ซับอังกฤษ", "ไม่ทับกัน", "below"), Opt("บนสุดของจอ", null, "top")), "ซับไทยอยู่ตรงไหนของจอ"),
 			Topic("ประโยคก่อนหน้า", TranslatorPrefs.KEY_SHOW_PREVIOUS, "1", listOf(
-				Opt("แสดง", "ประโยคเก่าสีฟ้าอยู่หน้าประโยคใหม่สักครู่", "1"), Opt("ไม่แสดง", "เฉพาะประโยคล่าสุด", "0")), "ประโยคที่อ่านไม่ทัน"),
+				Opt("ข้างหน้า", "ประโยคเก่าสีฟ้าอยู่หน้าประโยคใหม่สักครู่", "1"),
+				Opt("บรรทัดบน", "ประโยคเก่าสีฟ้าอยู่เหนือประโยคใหม่ · สำหรับคนอ่านไม่ทัน", "above"),
+				Opt("ไม่แสดง", "เฉพาะประโยคล่าสุด", "0")), "ประโยคที่อ่านไม่ทัน"),
 			Topic("ฟอนต์", "tr_font", "kanit", TranslatorPrefs.Font.values().filter { it != TranslatorPrefs.Font.NOTO }.map { Opt(it.title, null, it.value) }, "แบบตัวอักษร"),
 			Topic("เล่นแบบ", KEY_PLAY_MODE, "stream", listOf(
 				Opt("ผ่านแอป · 1080p", "ทีวีทุกรุ่น กล่อง ดองเกิล · ปรับภาพอัตโนมัติ", "stream"),
@@ -1604,7 +1606,7 @@ class TvActivity : AppCompatActivity()
 			when(t.key)
 			{
 				TranslatorPrefs.KEY_MODE -> { TranslatorPrefs(this).setMode(when(value) { "both" -> TranslatorPrefs.Mode.BOTH; "speech" -> TranslatorPrefs.Mode.SPEECH; else -> TranslatorPrefs.Mode.SCREEN }); clearAutoMode() }
-				TranslatorPrefs.KEY_SHOW_PREVIOUS -> sp.edit().putBoolean(t.key, value == "1").apply()
+				TranslatorPrefs.KEY_SHOW_PREVIOUS -> sp.edit().putBoolean(t.key, value != "0").putBoolean(TranslatorPrefs.KEY_PREVIOUS_ABOVE, value == "above").apply()
 				KEY_PLAY_MODE -> {
 					sp.edit().putString(KEY_PLAY_MODE, value).apply()
 					if(value == "stream") { DeviceCaps.apply(this, "auto"); if(com.metallic.chiaki.hdmi.HdmiModeService.running) com.metallic.chiaki.hdmi.HdmiModeService.stop(this) }
@@ -1645,7 +1647,10 @@ class TvActivity : AppCompatActivity()
 			thai.outlineColor = 0xFF000000.toInt()
 			thai.outlineWidthPx = px * (if(bgA == 0) 0.11f else 0.07f)
 			thai.background = if(bgA == 0) null else android.graphics.drawable.ColorDrawable(bgA shl 24)
-			thai.text = if(c(TranslatorPrefs.KEY_SHOW_PREVIOUS, "1") == "1") android.text.SpannableStringBuilder("ใจเย็น ๆ  ›  ").apply {
+			thai.text = if(c(TranslatorPrefs.KEY_SHOW_PREVIOUS, "1") == "above") android.text.SpannableStringBuilder("ใจเย็น ๆ").apply {
+				setSpan(com.metallic.chiaki.translate.FillColorSpan(0xFF9FB4FF.toInt()), 0, length, 0)
+				setSpan(android.text.style.RelativeSizeSpan(0.82f), 0, length, 0); append("\nเครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า") }
+				else if(c(TranslatorPrefs.KEY_SHOW_PREVIOUS, "1") == "1") android.text.SpannableStringBuilder("ใจเย็น ๆ  ›  ").apply {
 				setSpan(com.metallic.chiaki.translate.FillColorSpan(0xFF9FB4FF.toInt()), 0, length, 0); append("เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า") }
 				else "เครียดเกินไปหรือเปล่า มีอะไรหรือเปล่า"
 			val pos = c(TranslatorPrefs.KEY_POSITION, "above")
