@@ -44,6 +44,34 @@ class RegistExecuteActivity: AppCompatActivity()
 		return code to reason
 	}
 
+	/**
+	 * What the TV's own network looks like, for "PS5 did not answer": the TV's addresses, a VPN, and whether the PS5
+	 * address that was tried is on the TV's own home network at all. A photo of this tells what is wrong.
+	 */
+	private fun netFacts(): String
+	{
+		return try
+		{
+			val tv = java.net.NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+				.filter { it.isUp && !it.isLoopback }
+				.flatMap { ni -> ni.inetAddresses.toList().filterIsInstance<java.net.Inet4Address>().map { ni.name to it.hostAddress } }
+			val cm = getSystemService(android.net.ConnectivityManager::class.java)
+			val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+			val vpn = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+			val wifi = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+			val tried = viewModel.firstHost
+			fun prefix(ip: String?) = ip?.split('.')?.take(3)?.joinToString(".")
+			val sameNet = tried == null || tried == "255.255.255.255" || tv.any { prefix(it.second) == prefix(tried) }
+			val ver = try { packageManager.getPackageInfo(packageName, 0).versionName } catch(_: Throwable) { "?" }
+			"\n\nข้อมูลสำหรับแก้ (ถ่ายรูปส่งผู้ขายได้)\n" +
+				"แอป $ver · ทีวีต่อ " + (if(wifi) "Wi-Fi" else "สาย LAN/อื่น") + (if(vpn) " · มี VPN เปิดอยู่ ✕" else "") + "\n" +
+				"เลข IP ทีวี: " + (if(tv.isEmpty()) "ไม่มี (ทีวีไม่ได้ต่อเน็ต)" else tv.joinToString(", ") { it.second + " (" + it.first + ")" }) + "\n" +
+				"PS5 ที่ลอง: " + (tried ?: "-") +
+				(if(!sameNet) "\n✕ เลข PS5 ไม่อยู่วงเดียวกับทีวี (3 ชุดแรกต้องตรงกัน) · ลบ PS5 นี้ในแอป หรือกดรีเซ็ตแอป แล้วจับคู่ใหม่" else "")
+		}
+		catch(_: Throwable) { "" }
+	}
+
 	private fun failTitle(): String
 	{
 		val r = ps5Reason() ?: return "แอปคุยกับ PS5 ไม่ได้"
@@ -58,7 +86,7 @@ class RegistExecuteActivity: AppCompatActivity()
 			"2. PS5 ต้องเปิดอยู่ (ไม่ใช่โหมดพัก) และเปิดค้างหน้ารหัส 8 หลักไว้\n" +
 			"3. ถ้าทีวีเปิดแอป VPN หรือแอปบล็อกโฆษณา/เปลี่ยน DNS อยู่ ให้ปิดก่อน\n" +
 			"4. ดูเลข IP จริงของ PS5: ตั้งค่า › เครือข่าย › สถานะการเชื่อมต่อ › ดูสถานะการเชื่อมต่อ · ถ้าไม่ตรงกับที่แอปลอง ให้ลบ PS5 เดิมในแอปแล้วเพิ่มด้วยเลข IP นี้\n" +
-			"5. ยังไม่ได้: ปิด-เปิด PS5 กับเราเตอร์ แล้วลองใหม่"
+			"5. ยังไม่ได้: ปิด-เปิด PS5 กับเราเตอร์ แล้วลองใหม่" + netFacts()
 		if(r.second == 0x80108b10L) return "มีอุปกรณ์อื่นต่อเล่นระยะไกลกับ PS5 อยู่\n\nวิธีแก้\n" +
 			"1. ปิดแอปเล่นระยะไกลในมือถือ / คอม / ทีวีเครื่องอื่น\n" +
 			"2. แล้วกดลองใหม่"
