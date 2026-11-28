@@ -27,12 +27,48 @@ class RegistExecuteActivity: AppCompatActivity()
 	{
 		const val EXTRA_REGIST_INFO = "regist_info"
 		const val EXTRA_ASSIGN_MANUAL_HOST_ID = "assign_manual_host_id"
+		const val EXTRA_PSN_NAME = "psn_name"
 
 		const val RESULT_FAILED = Activity.RESULT_FIRST_USER
 	}
 
 	private lateinit var viewModel: RegistExecuteViewModel
 	private lateinit var binding: ActivityRegistExecuteBinding
+
+	/** What the PS5 answered (from the pairing log): null = it never answered. */
+	private fun ps5Reason(): Pair<Int, Long>?
+	{
+		val log = viewModel.logNow()
+		val code = Regex("Regist received HTTP code (\\d+)").find(log)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+		val reason = Regex("Application Reason: 0x([0-9a-fA-F]+)").find(log)?.groupValues?.get(1)?.toLongOrNull(16) ?: 0L
+		return code to reason
+	}
+
+	private fun failTitle(): String
+	{
+		val r = ps5Reason() ?: return "แอปคุยกับ PS5 ไม่ได้"
+		return if(r.second == 0x80108b10L) "PS5 กำลังถูกใช้เล่นระยะไกลอยู่" else "PS5 ไม่รับ: ไอดีกับรหัส 8 หลักไม่ใช่ชุดเดียวกัน"
+	}
+
+	private fun failMessage(): String
+	{
+		val name = intent.getStringExtra(EXTRA_PSN_NAME)
+		val r = ps5Reason() ?: return "PS5 ไม่ตอบเลย (ไม่เกี่ยวกับรหัสผิด)\n\nวิธีแก้\n" +
+			"1. ทีวีกับ PS5 ต้องต่อเน็ตบ้านวงเดียวกัน\n" +
+			"2. PS5 ต้องเปิดอยู่ (ไม่ใช่โหมดพัก) และเปิดค้างหน้ารหัส 8 หลักไว้\n" +
+			"3. ยังไม่ได้: ปิด-เปิด PS5 กับเราเตอร์ แล้วลองใหม่"
+		if(r.second == 0x80108b10L) return "มีอุปกรณ์อื่นต่อเล่นระยะไกลกับ PS5 อยู่\n\nวิธีแก้\n" +
+			"1. ปิดแอปเล่นระยะไกลในมือถือ / คอม / ทีวีเครื่องอื่น\n" +
+			"2. แล้วกดลองใหม่"
+		return (if(name != null) "แอปใช้ไอดี: $name\n\n" else "") +
+			"รหัส 8 หลักผูกกับผู้ใช้ที่กดขอรหัสบน PS5 · ไอดีในแอปต้องเป็นคนเดียวกันเป๊ะ\n\n" +
+			"วิธีแก้ (ทำได้ทุกไอดี)\n" +
+			"1. ที่ PS5 สลับไปเป็นผู้ใช้ไอดีที่จะใช้ (กดปุ่ม PS › รูปโปรไฟล์ › สลับผู้ใช้)\n" +
+			"2. ในไอดีนั้น: ตั้งค่า › ระบบ › การเล่นระยะไกล › เปิด \"เปิดใช้การเล่นระยะไกล\"\n" +
+			"3. ยังอยู่ไอดีนั้น: กด \"จับคู่อุปกรณ์\" ขอรหัสใหม่ (รหัสใช้ได้ 5 นาที)\n" +
+			"4. ในแอปพิมพ์ชื่อออนไลน์ไอดีของผู้ใช้คนนั้น (ดูที่ ตั้งค่า › ผู้ใช้และบัญชี › บัญชี › โปรไฟล์)\n" +
+			"5. ใส่รหัสใหม่แล้วกดจับคู่"
+	}
 
 	override fun onCreate(savedInstanceState: Bundle?)
 	{
@@ -71,7 +107,8 @@ class RegistExecuteActivity: AppCompatActivity()
 					setResult(RESULT_FAILED)
 					if(dialog == null && !isFinishing)
 						dialog = MaterialAlertDialogBuilder(this)
-							.setMessage(R.string.regist_info_failed)
+							.setTitle(failTitle())
+							.setMessage(failMessage())
 							.setPositiveButton("ลองใหม่") { _, _ -> finish() }
 							.setOnDismissListener { dialog = null }
 							.create()

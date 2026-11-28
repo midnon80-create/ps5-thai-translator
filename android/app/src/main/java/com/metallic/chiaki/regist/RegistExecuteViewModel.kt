@@ -35,6 +35,8 @@ class RegistExecuteViewModel(val database: AppDatabase): ViewModel()
 	private var regist: Regist? = null
 
 	val logText: LiveData<String> = log.logText.asLiveData()
+	/** The pairing log right now (the LiveData above can lag a moment behind). */
+	fun logNow(): String = log.logText.value
 
 	var host: RegistHost? = null
 		private set

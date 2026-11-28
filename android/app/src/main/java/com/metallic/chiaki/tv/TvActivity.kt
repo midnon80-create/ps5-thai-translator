@@ -104,8 +104,9 @@ class TvActivity : AppCompatActivity()
 		// clear button fixes from older versions once: the controller layout is now detected automatically
 		if(PadConfig.migrateOnce(this)) toast("อัปเดตการตั้งค่าจอยใหม่แล้ว ✔ ปุ่มจอย PS4/PS5 ถูกต้องอัตโนมัติ")
 
-		if(!sp.getBoolean(KEY_ONBOARDED, false)) showSplash()
-		else showTab(0, Trans.FADE)
+		// no welcome slides: straight into the app (GTA VI is the game until another is picked in เลือกเกม)
+		if(!sp.getBoolean(KEY_ONBOARDED, false)) sp.edit().putBoolean(KEY_ONBOARDED, true).apply()
+		showTab(0, Trans.FADE)
 	}
 
 	override fun onStart()
@@ -211,128 +212,6 @@ class TvActivity : AppCompatActivity()
 		t.alpha = 0f; t.translationY = -20f
 		t.animate().alpha(1f).translationY(0f).setDuration(250).start()
 		main.postDelayed({ t.animate().alpha(0f).setDuration(300).withEndAction { root.removeView(t) }.start() }, 3200)
-	}
-
-	// ------------------------------------------------------------------ welcome (first launch only)
-
-	private fun showSplash()
-	{
-		val v = FrameLayout(this)
-		val c = Ui.col(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
-		val logo = Ui.image(this, R.drawable.eyes_logo, android.widget.ImageView.ScaleType.FIT_CENTER)
-		Ui.clipRound(logo, 70f)
-		c.addView(logo, llp(330, 330))
-		c.addView(text(this, "Eyesmaxxing", 84f, Ui.TEXT, W.BOLD, Gravity.CENTER), llp(WRAP, WRAP, t = 34))
-		c.addView(text(this, "ซับไทยสด ๆ บนเกม PS5 · ผ่านทีวีของคุณ", 32f, Ui.MUTED, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 10))
-		v.addView(c, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER).apply { topMargin = -40 })
-		v.addView(Ui.hint(this, listOf("✕" to "กดปุ่มใดก็ได้เพื่อเริ่ม")), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
-		v.setOnClickListener { showFeature(0, Trans.LEFT) }
-		go(v, Trans.FADE)
-		keyCatcher = { e -> if(e.action == KeyEvent.ACTION_UP) { showFeature(0, Trans.LEFT) }; true }
-	}
-
-	private val features = listOf(
-		Triple(R.drawable.gta_shot1, arrayOf("ซับไทยขึ้น", "ทันที", "\nเหนือซับอังกฤษ"),
-			"เล่นเกมผ่านทีวีตามปกติ แอปอ่านซับอังกฤษของเกมแล้วขึ้นคำแปลไทยให้เอง ไม่บังภาพ ไม่ต้องกดอะไรเพิ่ม"),
-		Triple(R.drawable.gta_shot2, arrayOf("แปลแบบ", "วัยรุ่นไทย", "\nได้อารมณ์ ไม่แข็งทื่อ"),
-			"AI เลือกคำให้เข้ากับฉาก ด่าก็ด่าตามต้นฉบับ สุภาพก็สุภาพ อ่านแล้วอินเหมือนดูหนังพากย์ไทย"),
-		Triple(R.drawable.gta_shot3, arrayOf("ลื่น เบาเครื่อง\nจอยใช้ได้", "ปกติ", ""),
-			"อ่านเฉพาะแถบซับด้านล่างจอ ใช้เน็ตและสเปกทีวีน้อย ภาพคมชัดปรับให้เหมาะกับทีวีแต่ละเครื่องอัตโนมัติ"))
-
-	private fun showFeature(i: Int, t: Trans)
-	{
-		val (img, title, body) = features[i]
-		val v = FrameLayout(this)
-		v.addView(Ui.brand(this), lp(WRAP, WRAP, 64, 44))
-		val shot = Ui.topImage(this, img, 1f)
-		val shotBox = FrameLayout(this).apply { background = Ui.round(0, 28f, 2, Ui.LINE); elevation = 30f }
-		shotBox.addView(shot, FrameLayout.LayoutParams(MATCH, MATCH))
-		Ui.clipRound(shotBox, 28f)
-		v.addView(shotBox, lp(1080, 690, 90, 185))
-		(shot as android.widget.ImageView).scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-
-		val c = Ui.col(this)
-		c.addView(text(this, "ฟีเจอร์ ${i + 1}/3", 24f, Ui.GLOW).apply {
-			background = Ui.round(0, 30f, 2, 0x80C084FC.toInt()); setPadding(20, 6, 20, 6) }, llp(WRAP, WRAP))
-		val h = android.text.SpannableStringBuilder().apply {
-			append(title[0])
-			val s = length; append(title[1]); setSpan(android.text.style.ForegroundColorSpan(Ui.VIOLET2), s, length, 0)
-			append(title[2])
-		}
-		c.addView(text(this, h, 64f, Ui.TEXT, W.BOLD).apply { setLineSpacing(0f, 1.12f) }, llp(WRAP, WRAP, t = 26))
-		c.addView(text(this, body, 30f, Ui.MUTED).apply { setLineSpacing(0f, 1.3f) }, llp(MATCH, WRAP, t = 22))
-		c.addView(note(), llp(MATCH, WRAP, t = 40))
-		v.addView(c, lp(590, WRAP, 1240, 240))
-
-		v.addView(Ui.dots(this, 4, i), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 110 })
-		val hints = if(i == 0) listOf("▶" to "ถัดไป", "○" to "ข้าม") else listOf("◀" to "ก่อนหน้า", "▶" to "ถัดไป", "○" to "ข้าม")
-		v.addView(Ui.hint(this, hints), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
-		v.setOnClickListener { if(i < 2) showFeature(i + 1, Trans.LEFT) else showFree(Trans.LEFT) }
-		go(v, t)
-		keyCatcher = { e ->
-			if(e.action == KeyEvent.ACTION_UP) when(e.keyCode)
-			{
-				KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A ->
-					if(i < 2) showFeature(i + 1, Trans.LEFT) else showFree(Trans.LEFT)
-				KeyEvent.KEYCODE_DPAD_LEFT -> if(i > 0) showFeature(i - 1, Trans.RIGHT)
-				KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_BUTTON_B -> showFree(Trans.LEFT)
-			}
-			true
-		}
-	}
-
-	/** Bold "GTA 6 only for now" note shown on every slide. */
-	private fun note(): View
-	{
-		val n = Ui.col(this).apply {
-			background = Ui.gradient(intArrayOf(0x388B5CF6, 0x148B5CF6), 20f, stroke = 2, strokeColor = 0x99A78BFA.toInt())
-			setPadding(28, 22, 28, 22)
-		}
-		n.addView(text(this, "⚠ ตอนนี้แปลได้เฉพาะ GTA 6 เท่านั้น", 31f, Ui.TEXT, W.EXTRABOLD))
-		n.addView(text(this, "เกมอื่นจะทยอยเพิ่มเข้ามาเรื่อย ๆ ในอนาคต", 24f, Ui.VIOLET2), llp(WRAP, WRAP, t = 4))
-		return n
-	}
-
-	private fun pill(label: String, onClick: () -> Unit): Card = Card(this, 60f).apply {
-		val t = text(context, label, 34f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER)
-		addView(t, FrameLayout.LayoutParams(MATCH, MATCH))
-		grow = 1.07f
-		setOnClickListener { onClick() }
-	}.also { card ->
-		// purple button look (ring on focus comes from Card)
-		card.setOnFocusChangeListener { _, f ->
-			card.background = Ui.gradient(intArrayOf(Ui.VIOLET, Ui.PURPLE), 60f, stroke = if(f) 5 else 0, strokeColor = Ui.RING)
-			card.animate().scaleX(if(f) 1.07f else 1f).scaleY(if(f) 1.07f else 1f).setDuration(200).setInterpolator(Ui.ease()).start()
-			Ui.glow(card, f)
-		}
-		card.background = Ui.gradient(intArrayOf(Ui.VIOLET, Ui.PURPLE), 60f)
-	}
-
-	/** "เล่นฟรี": the app costs nothing. */
-	private fun showFree(t: Trans)
-	{
-		keyCatcher = null
-		val v = FrameLayout(this)
-		v.addView(Ui.brand(this), lp(WRAP, WRAP, 64, 44))
-		val c = Ui.col(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
-		c.addView(text(this, "ไม่มีค่าใช้จ่าย", 26f, Ui.VIOLET2).apply {
-			background = Ui.round(Ui.PANEL2, 40f, 2, Ui.LINE); setPadding(26, 10, 26, 10) })
-		c.addView(text(this, "เล่นฟรี", 170f, Ui.TEXT, W.EXTRABOLD, Gravity.CENTER).apply {
-			paint.shader = android.graphics.LinearGradient(0f, 0f, 0f, 190f, 0xFFFFFFFF.toInt(), 0xFFC4B5FD.toInt(), android.graphics.Shader.TileMode.CLAMP)
-			setShadowLayer(60f, 0f, 0f, 0x668B5CF6)
-		}, llp(WRAP, WRAP, t = 10))
-		c.addView(text(this, "ซับไทยครบทุกฟีเจอร์", 56f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER), llp(WRAP, WRAP, t = 6))
-		c.addView(text(this, "ไม่ต้องสมัคร · ไม่ต้องใส่รหัส · ไม่ต้องผูกบัตร", 30f, Ui.MUTED, gravity = Gravity.CENTER), llp(WRAP, WRAP, t = 18))
-		val cta = pill("เริ่มเลย") { showDeviceCheck(Trans.LEFT) }
-		c.addView(cta, llp(440, 100, t = 40))
-		v.addView(c, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER).apply { topMargin = -30 })
-		v.addView(Ui.dots(this, 4, 3), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 110 })
-		v.addView(Ui.hint(this, listOf("✕" to "เริ่ม", "◀" to "ก่อนหน้า")), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
-		go(v, t, cta)
-		keyCatcher = { e ->
-			if(e.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B)
-			{ if(e.action == KeyEvent.ACTION_UP) showFeature(2, Trans.RIGHT); true } else false
-		}
 	}
 
 	/** Small "เล่นฟรี" banner on the main screen. */
@@ -493,7 +372,7 @@ class TvActivity : AppCompatActivity()
 				val gp = gamesPage
 				if(changed && gp != null && gp.isAttachedToWindow && (page === gp || gp.parent === page))
 				{
-					if(gamesPageOnboarding) showGamePicker(Trans.NONE) else showTab(3, Trans.NONE)
+					showTab(3, Trans.NONE)
 				}
 			}
 		}.start()
@@ -662,85 +541,6 @@ class TvActivity : AppCompatActivity()
 		cards.forEachIndexed { i, c -> c.setOnClickListener { if(i == focus) pick() else { focus = i; layoutRow(true) } } }
 		v.post { focusStrip.requestFocus() }
 		return v
-	}
-
-	private fun showGamePicker(t: Trans)
-	{
-		keyCatcher = null
-		val v = gamesContent(true) as FrameLayout
-		v.addView(Ui.brand(this), lp(WRAP, WRAP, 64, 44))
-		v.addView(Ui.hint(this, listOf("◀ ▶" to "เลื่อน", "✕" to "เลือก")), FrameLayout.LayoutParams(MATCH, WRAP, Gravity.BOTTOM).apply { bottomMargin = 42 })
-		go(v, t)
-		keyCatcher = { e ->
-			if(e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B)
-			{ if(e.action == KeyEvent.ACTION_UP) showDeviceCheck(Trans.RIGHT); true } else false
-		}
-	}
-
-	// ------------------------------------------------------------------ device check (first launch)
-
-	private fun showDeviceCheck(t: Trans)
-	{
-		keyCatcher = null
-		val caps = DeviceCaps(this)
-		val v = FrameLayout(this)
-		v.addView(Ui.brand(this), lp(WRAP, WRAP, 64, 44))
-		val c = Ui.col(this)
-		c.addView(text(this, "ตรวจความพร้อมทีวีของคุณ", 54f, Ui.TEXT, W.BOLD))
-		c.addView(text(this, "แอปตรวจให้อัตโนมัติ และตั้งค่าภาพให้เหมาะกับเครื่องนี้แล้ว", 27f, Ui.MUTED), llp(WRAP, WRAP, t = 6))
-		val grid = Ui.col(this).apply { background = Ui.round(Ui.PANEL, 26f, 2, Ui.LINE); setPadding(34, 26, 34, 26) }
-		val pads = Diag.gamepads()
-		val items = listOf(
-			Triple(caps.sdk >= 26, "Android ${caps.android} · ชิป ${if(caps.is64) "64" else "32"} บิต",
-				if(caps.sdk >= 28 && caps.is64) "รองรับเต็มที่" else if(caps.sdk >= 24) "ใช้ได้ · ทีวีรุ่นนี้อาจช้ากว่ารุ่นใหม่" else "เก่าเกินไป"),
-			Triple(caps.hevc1080, if(caps.hevc1080) "ถอดรหัสภาพ HEVC ได้" else "ไม่มีตัวถอดรหัส HEVC",
-				"ตั้งภาพ ${caps.autoTitle(this)} ให้อัตโนมัติ"),
-			Triple(caps.wired || caps.wifiGhz == 5.0, if(caps.wired) "ต่อสาย LAN" else if(caps.wifiGhz == 5.0) "Wi-Fi 5GHz" else if(caps.wifiGhz == 2.4) "Wi-Fi 2.4GHz" else "อินเทอร์เน็ต",
-				if(caps.wired || caps.wifiGhz == 5.0) "เหมาะกับภาพคมชัดสูง" else "แนะนำ Wi-Fi 5GHz หรือสาย LAN เพื่อภาพลื่น"),
-			Triple(pads.isNotEmpty(), if(pads.isNotEmpty()) "จอยต่อกับทีวีแล้ว" else "ยังไม่พบจอยที่ต่อกับทีวี",
-				if(pads.isNotEmpty()) pads.first() else "กด \"จับคู่จอย\" ด้านล่าง ทำครั้งเดียว"))
-		for(r in 0 until 2)
-		{
-			val row = Ui.row(this)
-			for(k in 0 until 2)
-			{
-				val (ok, title, sub) = items[r * 2 + k]
-				val cell = Ui.row(this)
-				cell.addView(text(this, if(ok) "✔" else "!", 34f, if(ok) Ui.OK else Ui.WARN, W.BOLD, Gravity.CENTER), llp(46, WRAP))
-				val tc = Ui.col(this)
-				tc.addView(text(this, title, 28f, Ui.TEXT))
-				tc.addView(text(this, sub, 22f, Ui.MUTED), llp(WRAP, WRAP, t = 2))
-				cell.addView(tc, llp(WRAP, WRAP, l = 16))
-				row.addView(cell, llp(0, WRAP, 1f))
-			}
-			grid.addView(row, llp(MATCH, WRAP, t = if(r == 0) 0 else 22))
-		}
-		c.addView(grid, llp(MATCH, WRAP, t = 30))
-
-		val padRow = Ui.row(this).apply { gravity = Gravity.CENTER_VERTICAL; background = Ui.round(Ui.PANEL, 26f, 2, Ui.LINE); setPadding(34, 26, 34, 26) }
-		val pt = Ui.col(this)
-		pt.addView(text(this, "จอยต้องต่อกับทีวี (ไม่ใช่กับ PS5)", 32f, Ui.TEXT, W.SEMIBOLD))
-		pt.addView(text(this, "Sony กำหนดให้การเล่นผ่านทีวีรับปุ่มจากจอยที่ต่อกับทีวีเท่านั้น · เสียบสาย USB เข้าทีวีก็ได้ หรือกดจับคู่บลูทูธ (ที่จอยกด Create + PS ค้างจนไฟกะพริบ)",
-			24f, Ui.MUTED).apply { setLineSpacing(0f, 1.3f) }, llp(MATCH, WRAP, t = 6))
-		padRow.addView(pt, llp(0, WRAP, 1f))
-		val pair = Card(this, 50f).apply {
-			addView(text(context, "จับคู่จอย", 28f, Ui.TEXT, W.SEMIBOLD, Gravity.CENTER), FrameLayout.LayoutParams(MATCH, MATCH))
-			setOnClickListener { openBluetooth() } }
-		padRow.addView(pair, llp(260, 84, l = 30))
-		c.addView(padRow, llp(MATCH, WRAP, t = 26))
-
-		val info = text(this, "สิทธิ์ที่แอปใช้: อินเทอร์เน็ต (แปลภาษา) และเครือข่ายในบ้าน (หา PS5) · ไม่ต้องกดอนุญาตอะไรเพิ่ม · แอปไม่เก็บภาพหรือเสียงไว้ในเครื่อง",
-			23f, Ui.MUTED).apply { setLineSpacing(0f, 1.3f) }
-		c.addView(info, llp(MATCH, WRAP, t = 22))
-		v.addView(c, lp(1740, WRAP, 90, 150))
-
-		val start = pill("ถัดไป ▶") { showGamePicker(Trans.LEFT) }
-		v.addView(start, lp(400, 96, 760, 930))
-		go(v, t, start)
-		keyCatcher = { e ->
-			if(e.keyCode == KeyEvent.KEYCODE_BACK || e.keyCode == KeyEvent.KEYCODE_BUTTON_B)
-			{ if(e.action == KeyEvent.ACTION_UP) showFree(Trans.RIGHT); true } else false
-		}
 	}
 
 	private fun openBluetooth()
@@ -1919,7 +1719,6 @@ class TvActivity : AppCompatActivity()
 				sp.edit().putBoolean(KEY_HIDE_TIPS, !tipsHidden()).apply()
 				toast(if(tipsHidden()) "ซ่อนคำแนะนำแล้ว" else "แสดงคำแนะนำแล้ว"); showTab(4, Trans.NONE) })
 			add(Triple("ตั้งค่าขั้นสูง", "ภาพ เสียง และตัวเลือกทั้งหมด") { startActivity(Intent(this@TvActivity, SettingsActivity::class.java)) })
-			add(Triple("ดูหน้าแนะนำอีกครั้ง", "ฟีเจอร์ และวิธีเริ่มใช้งาน") { showFeature(0, Trans.LEFT); tab = -1 })
 		}
 		var row: LinearLayout? = null
 		items.forEachIndexed { k, (title, sub, action) ->

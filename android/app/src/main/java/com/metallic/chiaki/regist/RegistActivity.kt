@@ -81,11 +81,8 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 		binding.pinEditText.setOnEditorActionListener { _, _, _ -> hideKeyboard(); binding.registButton.requestFocus(); true }
 		binding.psnIdEditText.setOnEditorActionListener { _, _, _ -> binding.pinEditText.requestFocus(); true }
 
-		// the PSN name typed last time, so a second PS5 needs nothing new
-		if(savedInstanceState == null && binding.psnIdEditText.text.isNullOrEmpty())
-			androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-				.getString(PREF_LAST_PSN_NAME, null)
-				?.let { binding.psnIdEditText.setText(it) }
+		// the name field starts EMPTY: a name kept from before (old ID, or restored by Android after a reinstall)
+		// paired the wrong account with the new ID's 8-digit code, and the PS5 refused it every time
 
 		binding.ps4VersionRadioGroup.check(when(viewModel.ps4Version.value ?: RegistViewModel.ConsoleVersion.PS5) {
 			RegistViewModel.ConsoleVersion.PS5 -> R.id.ps5RadioButton
@@ -248,6 +245,7 @@ class RegistActivity: AppCompatActivity(), RevealActivity
 
 		Intent(this, RegistExecuteActivity::class.java).also {
 			it.putExtra(RegistExecuteActivity.EXTRA_REGIST_INFO, registInfo)
+			it.putExtra(RegistExecuteActivity.EXTRA_PSN_NAME, if(nameLike) psnId else null)
 			if(intent.hasExtra(EXTRA_ASSIGN_MANUAL_HOST_ID))
 				it.putExtra(RegistExecuteActivity.EXTRA_ASSIGN_MANUAL_HOST_ID, intent.getLongExtra(EXTRA_ASSIGN_MANUAL_HOST_ID, 0L))
 			startActivityForResult(it, REQUEST_REGIST)
